@@ -76,6 +76,13 @@ Where deleted things wait 30 days before they are gone for good.
 The default start view: what's next, Routines due, Goal progress, streaks and stats.
 _Avoid_: Today, home
 
+**What's next**:
+The Dashboard's ranked list of Tasks and Milestones that need attention soon, each with the reason it is there.
+_Avoid_: Top 3, focus list
+
+**Behind pace**:
+A Goal whose progress is below a straight line from its start to its target date.
+
 **View**:
 A saved configuration of what to show (scope, filters, grouping, sort, layout, fields), such as the Dashboard, Calendar or a custom view.
 _Avoid_: Filter, perspective, page
