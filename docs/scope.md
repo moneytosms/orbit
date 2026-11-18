@@ -57,7 +57,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 | **Slipping** view | 1 | One last-touched timestamp and a query; stops projects silently dying |
 | Recently captured feed | 1 | A query on creation time; confirms a quick capture landed where it should |
 | Voice capture via the keyboard mic | 1 | Free: Android's keyboard dictation already types into quick-add, and the parser routes it |
-| Global search (SQLite FTS5) | 2 | Built into SQLite; finds anything across tasks, goals and pages |
+| Command palette with fuzzy full-text search | 1 | One Ctrl+K box finds anything and runs any action, offline, in `orbit-core` |
 
 ## Phase 2 (deferred, not built in v1)
 
