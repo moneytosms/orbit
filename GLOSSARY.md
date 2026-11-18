@@ -16,6 +16,18 @@ _Avoid_: List, board, area
 An outcome with a done-condition and an optional target date that tasks and milestones count toward.
 _Avoid_: Objective, OKR, roadmap (a roadmap is a Goal's view, not a separate thing)
 
+**Routine**:
+A habit checked in on a schedule, either ongoing or time-boxed to a number of days; a missed day is missed, never overdue.
+_Avoid_: Habit (in UI copy is fine, not in code), recurring task, streak
+
+**Check-in**:
+One day's record of a Routine: done, skipped, or missed.
+_Avoid_: Completion, log entry
+
+**Recurring task**:
+A Task that comes back on its recurrence after completion and stays overdue until done.
+_Avoid_: Routine, repeat
+
 **Page**:
 A standalone markdown document, optionally with attachments, that can be linked to goals, projects and tasks.
 _Avoid_: Note, doc
