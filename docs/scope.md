@@ -32,7 +32,7 @@ Project-first and Area-first people both fit: use Projects, or put everything st
 | Example | Pay rent monthly | Take medicine daily for 2 weeks; gym Mon/Wed/Fri | Read 5 books; get an internship |
 | Missed it | Stays overdue until done | That day is missed; no pile-up | Progress just doesn't move |
 | Tracks | Next due date | Daily check-ins, streak, completion rate | % progress toward a target |
-| Lives in UI | Task lists, Today | Today's Routines strip, Routines page | Horizon view, Goal page |
+| Lives in UI | Task lists, Dashboard | Dashboard Routines section, Routines page | Horizon view, Goal page |
 
 A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays its own thing.
 
@@ -44,7 +44,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
   - **Time of day:** morning, afternoon, evening, anytime, or an exact time.
   - **Reminder:** optional, on-device (see Reminders).
 - **Quick capture too:** `routine take medicine daily 9am for 2 weeks` via the same quick-add parser.
-- **Daily tracking:** Today shows due Routines grouped by time of day; one tap checks in, long-press skips.
+- **Daily tracking:** the Dashboard shows due Routines grouped by time of day; one tap checks in, long-press skips.
 - **Streaks:** current streak, best streak, completion rate. A skipped day doesn't break a streak; a missed one does.
 - **Ending:** a time-boxed Routine archives itself at its end date with its final completion rate. An ongoing one can be paused or archived.
 - **Stardust:** check-ins earn Stardust.
@@ -53,8 +53,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 
 | Feature | Phase | Why keep |
 |---|---|---|
-| Routines with streaks | 1 | Separates habits from tasks so Today isn't a wall of reminders |
-| Today **Top 3** (star to pin) | 1 | One field; forces focus on what matters today |
+| Routines with streaks | 1 | Separates habits from tasks so the Dashboard isn't a wall of reminders |
 | **Slipping** view | 1 | One last-touched timestamp and a query; stops projects silently dying |
 | Recently captured feed | 1 | A query on creation time; confirms a quick capture landed where it should |
 | Voice capture via the keyboard mic | 1 | Free: Android's keyboard dictation already types into quick-add, and the parser routes it |
@@ -63,7 +62,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 ## Phase 2 (deferred, not built in v1)
 
 - **Server push:** daily summary and missed-routine alerts via self-hosted ntfy.
-- **Google Calendar:** read-only events in Today and the Calendar view, with integration health in Settings.
+- **Google Calendar:** read-only events on the Dashboard and the Calendar view, with integration health in Settings.
 
 ## Removed
 
@@ -74,7 +73,7 @@ People, content pipeline, books and Kindle import, inventory, the Library (notes
 - Areas, Projects, Inbox; tasks with sections, subtasks, priorities, labels, due dates, recurring tasks.
 - Goals with milestones and progress.
 - Routines (above).
-- Views: Inbox, Today (Top 3, Routines strip, tasks), Upcoming, Calendar, Area/Project list/board, Horizon, Slipping, Recently captured, plus saved custom views.
+- Views: Inbox, Dashboard (What's next, Routines, Goal progress, streaks, stats), Upcoming, Calendar, Area/Project list/board, Horizon, Slipping, Recently captured, plus saved custom views.
 - Quick capture: Android widget, share target, desktop hotkey, web quick-add, CLI; Todoist-style syntax.
 - Offline queue with background sync.
 - Reminders on phone and desktop (see Reminders).
@@ -91,14 +90,14 @@ Scheduled on each device from synced data; no server involved.
 ## Calendar view (native, v1)
 
 - Month, week and day layouts.
-- Shows tasks by due date/time, Routine days (with check-in state), Goal target dates and milestones.
+- Shows tasks by due date/time and deadline, Routine days (with check-in state), Goal target dates and milestones.
 - Drag a task to reschedule; click an empty slot to quick-add with that date prefilled.
 - Uses only Orbit's own data. External calendars arrive in Phase 2.
 
 ## Editable views and appearance (v1)
 
 - **Every view is a saved configuration:** which Areas/Projects/labels it includes, filters (due, priority, done), grouping, sort, layout (list, board, calendar) and which fields show on each task.
-- **Today is assembled from sections** you toggle and reorder: Top 3, Routines, overdue, due today, Slipping, Recently captured.
+- **The Dashboard is assembled from sections** you toggle and reorder: What's next, Routines, Goal progress, streaks, stats, Slipping, Recently captured.
 - **Custom views:** save any configuration as a named view (Todoist-filter style) and pin it to the sidebar.
 - **Sidebar:** reorder or hide views, Areas and Projects; choose the start view.
 - **Appearance:** light/dark/system theme, accent colour, density (compact/comfortable), font size.
