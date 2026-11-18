@@ -20,6 +20,14 @@ _Avoid_: List, board
 An outcome with a done-condition and an optional target date that tasks and milestones count toward. Its progress is a Count (done linked items out of all linked), a Target (a number reached by progress entries) or Manual (done or not).
 _Avoid_: Objective, OKR
 
+**Roadmap**:
+A plan of ordered Phases over any time span, owned by an Area, Project or Goal; it has no done-condition of its own.
+_Avoid_: Plan, timeline (that is a layout)
+
+**Phase**:
+One ordered stage of a Roadmap, optionally dated, that gathers Goals, Projects, Milestones and Tasks without moving them.
+_Avoid_: Stage, sprint
+
 **Sub-goal**:
 A Goal directly under another Goal, counting as one unit toward it; only one level deep.
 
@@ -45,7 +53,7 @@ A Task that comes back on its recurrence after completion and stays overdue unti
 _Avoid_: Routine, repeat
 
 **Page**:
-A markdown document, optionally with attachments, owned by one Area, Project or Goal; an owner can have many Pages.
+A markdown document, optionally with attachments, owned by one Area, Project, Goal or Roadmap; an owner can have many Pages.
 _Avoid_: Note, doc
 
 **Link**:
