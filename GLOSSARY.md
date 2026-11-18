@@ -8,9 +8,13 @@ A self-hostable personal planner: capture tasks fast, and connect them to the go
 A single actionable thing to do, optionally with a due date, priority, labels and a recurrence.
 _Avoid_: To-do, item (when the kind is known), card
 
+**Area**:
+The top level of the tree: a part of life (Home, College, Career) that holds Projects, Tasks, Goals and Routines.
+_Avoid_: Domain, space, workspace, category
+
 **Project**:
-A container where tasks live, with no end state of its own.
-_Avoid_: List, board, area
+An optional container of Tasks inside an Area, with no end state of its own.
+_Avoid_: List, board
 
 **Goal**:
 An outcome with a done-condition and an optional target date that tasks and milestones count toward.
@@ -41,4 +45,8 @@ Adding a task in one short step from any surface (widget, share sheet, hotkey, q
 _Avoid_: Quick add (that is the in-app input box only)
 
 **Inbox**:
-The default Project that captured tasks land in until organised.
+The built-in Area where uncategorised captures land; it cannot be deleted and its Tasks never need filing.
+
+**View**:
+A saved configuration of what to show (scope, filters, grouping, sort, layout, fields), such as Today, Calendar or a custom view.
+_Avoid_: Filter, perspective, page
