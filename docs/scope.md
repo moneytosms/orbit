@@ -1,6 +1,6 @@
 # Orbit scope (draft)
 
-Status: **draft**. Open questions at the bottom feed the [v1 map](https://github.com/moneytosms/orbit/issues/1).
+Status: **draft**. Decisions here feed the [v1 map](https://github.com/moneytosms/orbit/issues/1).
 Sources: planning chat decisions, the v1 map, `docs/adr/0001-stack.md`, and a creator's "personal dashboard built in Claude Code" video, filtered to cheap, high-value ideas only.
 
 ## Principles
