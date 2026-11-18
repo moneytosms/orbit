@@ -42,7 +42,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
   - **Schedule:** daily, specific weekdays, every N days, or N times per week (gym 3x, any days). All in v1.
   - **Length:** ongoing (gym), or time-boxed: N days from a start date (medicine for 14 days).
   - **Time of day:** morning, afternoon, evening, anytime, or an exact time.
-  - **Reminder:** Phase 2 (see Notifications).
+  - **Reminder:** optional, on-device (see Reminders).
 - **Quick capture too:** `routine take medicine daily 9am for 2 weeks` via the same quick-add parser.
 - **Daily tracking:** Today shows due Routines grouped by time of day; one tap checks in, long-press skips.
 - **Streaks:** current streak, best streak, completion rate. A skipped day doesn't break a streak; a missed one does.
@@ -62,7 +62,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 
 ## Phase 2 (deferred, not built in v1)
 
-- **Notifications:** on-device reminders and alarms for tasks and Routines, default reminder on timed tasks, plus server push (daily summary, missed routine) via self-hosted ntfy.
+- **Server push:** daily summary and missed-routine alerts via self-hosted ntfy.
 - **Google Calendar:** read-only events in Today and the Calendar view, with integration health in Settings.
 
 ## Removed
@@ -77,7 +77,16 @@ People, content pipeline, books and Kindle import, inventory, the Library (notes
 - Views: Inbox, Today (Top 3, Routines strip, tasks), Upcoming, Calendar, Area/Project list/board, Horizon, Slipping, Recently captured, plus saved custom views.
 - Quick capture: Android widget, share target, desktop hotkey, web quick-add, CLI; Todoist-style syntax.
 - Offline queue with background sync.
+- Reminders on phone and desktop (see Reminders).
 - Stardust. Todoist import (active items). Basic Pages with attachments.
+
+## Reminders (v1)
+
+Scheduled on each device from synced data; no server involved.
+- **Android:** exact alarms (`setAlarmClock`, `USE_EXACT_ALARM`), re-registered after reboot. Fire offline, app closed.
+- **Desktop (Linux):** system notifications via Tauri's notification plugin while Orbit is open or in the tray. Cheap: the app already holds the synced schedule.
+- **Web:** browser notifications while a tab is open.
+- Timed tasks get a reminder by default; per-task and per-Routine override.
 
 ## Calendar view (native, v1)
 
@@ -109,8 +118,3 @@ People, content pipeline, books and Kindle import, inventory, the Library (notes
 ## UI layer
 
 Svelte 5, with headless behaviour from a Svelte-native library (Bits UI or similar) for menus, dialogs and popovers. Vercel's UI SDK (public beta, Nov 2026) is a candidate for drag and drop and keyboard navigation once its Svelte adapter is proven; it is not a v1 dependency. See the comparison in the planning chat.
-
-## Open questions
-
-1. **Routine vs recurring task:** Orbit keeps them distinct (a recurring task stays overdue; a Routine is check-in based, with streaks). Is that how you see it, or should a Routine just be a recurring task with a streak counter?
-2. **Reminders:** "Notifications to Phase 2" was read as including on-device reminders. Keep it that way, or bring device reminders back into v1?
