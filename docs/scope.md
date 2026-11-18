@@ -96,7 +96,7 @@ Scheduled on each device from synced data; no server involved.
 
 ## Editable views and appearance (v1)
 
-- **Every view is a saved configuration:** which Areas/Projects/labels it includes, filters (due, priority, done), grouping, sort, layout (list, board, calendar) and which fields show on each task.
+- **Every view is a saved configuration:** which Areas/Projects/labels it includes, filters (due, priority, done), grouping, sort, layout (list, board, calendar, timeline, table) and which fields show on each task.
 - **The Dashboard is assembled from sections** you toggle and reorder: What's next, Routines, Goal progress, streaks, stats, Slipping, Recently captured.
 - **Custom views:** save any configuration as a named view (Todoist-filter style) and pin it to the sidebar.
 - **Sidebar:** reorder or hide views, Areas and Projects; choose the start view.

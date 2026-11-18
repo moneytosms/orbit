@@ -18,7 +18,7 @@ _Avoid_: List, board
 
 **Goal**:
 An outcome with a done-condition and an optional target date that tasks and milestones count toward. Its progress is a Count (done linked items out of all linked), a Target (a number reached by progress entries) or Manual (done or not).
-_Avoid_: Objective, OKR, roadmap (a roadmap is a Goal's view, not a separate thing)
+_Avoid_: Objective, OKR
 
 **Sub-goal**:
 A Goal directly under another Goal, counting as one unit toward it; only one level deep.
