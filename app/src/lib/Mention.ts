@@ -1,3 +1,4 @@
+import { Node } from '@tiptap/core'
 import { Mention } from '@tiptap/extension-mention'
 import { PluginKey } from '@tiptap/pm/state'
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion'
@@ -112,7 +113,10 @@ export const OrbitLink = Mention.extend<OrbitLinkOptions>({
     return [{ tag: 'span[data-type="orbitLink"]' }]
   },
   parseMarkdown(token, helpers) {
-    const id = idOf(String(token.href ?? ''))
+    const href = String(token.href ?? '')
+    if (href.startsWith('blob:'))
+      return helpers.createNode('blobRef', { hash: href.slice(5), name: String(token.text ?? ''), image: false })
+    const id = idOf(href)
     // The first handler for a token wins, so ordinary links are passed on to the Link mark here.
     if (!id)
       return helpers.applyMark('link', helpers.parseInline(token.tokens ?? []), {
@@ -167,5 +171,71 @@ export const OrbitLink = Mention.extend<OrbitLinkOptions>({
       },
     })
     return [Suggestion(make('[[', true)), Suggestion(make('@', false))]
+  },
+})
+
+const blobName = (s: string) => s.replace(/[[\]\\]/g, '')
+
+export type BlobRefOptions = {
+  /** An object URL for an attachment, or undefined when it can't be had. */
+  url: (hash: string) => Promise<string | undefined>
+}
+
+/** An attachment: `![name](blob:<hash>)` shows inline, `[name](blob:<hash>)` is a chip that downloads. */
+export const BlobRef = Node.create<BlobRefOptions>({
+  name: 'blobRef',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  markdownTokenName: 'image',
+  addOptions() {
+    return { url: async () => undefined }
+  },
+  addAttributes() {
+    return { hash: { default: '' }, name: { default: '' }, image: { default: true } }
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-type="blobRef"]' }]
+  },
+  renderHTML({ node }) {
+    return ['span', { 'data-type': 'blobRef' }, String(node.attrs.name)]
+  },
+  parseMarkdown(token, helpers) {
+    const href = String(token.href ?? '')
+    const name = String(token.text ?? '')
+    if (!href.startsWith('blob:')) return helpers.createNode('text', { text: name })
+    return helpers.createNode('blobRef', { hash: href.slice(5), name, image: true })
+  },
+  renderMarkdown(node) {
+    return `${node.attrs?.image ? '!' : ''}[${blobName(String(node.attrs?.name ?? ''))}](blob:${node.attrs?.hash})`
+  },
+  addNodeView() {
+    const o = this.options
+    return ({ node }) => {
+      const hash = String(node.attrs.hash)
+      const name = String(node.attrs.name)
+      if (node.attrs.image) {
+        const img = document.createElement('img')
+        img.className = 'orbit-blob-image'
+        img.alt = name
+        o.url(hash).then((u) => u && (img.src = u))
+        return { dom: img }
+      }
+      const dom = document.createElement('a')
+      dom.className = 'orbit-link orbit-blob-file'
+      dom.textContent = name
+      dom.contentEditable = 'false'
+      dom.onclick = async (e) => {
+        e.preventDefault()
+        const u = await o.url(hash)
+        if (!u) return
+        const a = document.createElement('a')
+        a.href = u
+        a.download = name
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(u), 10_000)
+      }
+      return { dom }
+    }
   },
 })

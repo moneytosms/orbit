@@ -22,6 +22,9 @@ pub struct Page {
     /// The `orbit:` targets in `body`, kept up to date by every body write.
     #[serde(default)]
     pub links: Vec<Uuid>,
+    /// The `blob:` sha256 hashes in `body`, kept up to date by every body write.
+    #[serde(default)]
+    pub blobs: Vec<String>,
 }
 
 /// Whether an edit made against `base_rev` clashes with the page as it is now.
@@ -58,6 +61,7 @@ mod tests {
             order: String::new(),
             trashed_at: None,
             links: vec![],
+            blobs: vec![],
         }
     }
 

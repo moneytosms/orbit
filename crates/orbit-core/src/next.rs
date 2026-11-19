@@ -281,6 +281,7 @@ mod tests {
             pinned_on: None,
             not_today_on: None,
             links: vec![],
+            blobs: vec![],
         }
     }
 

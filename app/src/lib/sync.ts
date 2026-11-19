@@ -20,6 +20,7 @@ import {
   whats_next,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
+import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
 
 export type Due = { date: string; time?: string | null }
@@ -34,6 +35,8 @@ export type Task = {
   description: string
   /** Ids this body links to, kept by core on every write. */
   links: string[]
+  /** Hashes of the attachments this description cites. */
+  blobs?: string[]
   due: Due | null
   deadline: string | null
   duration_min: number | null
@@ -129,6 +132,7 @@ export type Page = {
   title: string
   body: string
   links: string[]
+  blobs?: string[]
   rev: number
   order: string
   trashed_at: number | null
@@ -660,6 +664,8 @@ export function sync(): Promise<void> {
 
 async function flush() {
   for (;;) {
+    // Files go up before the commands that cite them.
+    await uploadPending((code) => rejected(code))
     const [outbox, token] = await tx(['outbox', 'meta'], (s) =>
       Promise.all([req<Command[]>(s('outbox').getAll()), req<number | undefined>(s('meta').get('token'))]),
     )
@@ -688,6 +694,8 @@ async function flush() {
       for (const cmd of commands) {
         const status = body.statuses[cmd.uuid]
         if (!status) continue // not answered: keep it queued
+        // The file isn't on the server yet: keep the command and its guess, and retry next sync.
+        if (status.status === 'error' && status.code === 'missing_blob') continue
         answered++
         if (status.status === 'error') {
           // Undo the guess; the delta brings back the server's row if it has one.

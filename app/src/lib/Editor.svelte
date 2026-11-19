@@ -6,7 +6,8 @@
   import type { SuggestionProps } from '@tiptap/suggestion'
   import { mount, unmount } from 'svelte'
   import MentionList from './MentionList.svelte'
-  import { OrbitLink, type LinkItem } from './Mention'
+  import { BlobRef, OrbitLink, type LinkItem } from './Mention'
+  import { addFile, blobUrl } from './blobs'
   import { createPage, linkTarget, restoreItem, searchLinks } from './sync'
 
   let {
@@ -67,11 +68,36 @@
     }
   }
 
+  let problem = $state('')
+
+  /** Stores each file locally and inserts its markdown; oversize files are refused with a message. */
+  async function attach(files: File[]) {
+    problem = ''
+    for (const f of files) {
+      try {
+        const { hash, markdown } = await addFile(f)
+        const image = markdown.startsWith('!')
+        const name = f.name || 'file'
+        $editor
+          .chain()
+          .focus()
+          .insertContent([
+            { type: 'blobRef', attrs: { hash, name, image } },
+            { type: 'text', text: ' ' },
+          ])
+          .run()
+      } catch (e) {
+        problem = e instanceof Error ? e.message : String(e)
+      }
+    }
+  }
+
   const editor = createEditor({
     editable: untrack(() => editable),
     extensions: [
       StarterKit,
       Markdown,
+      BlobRef.configure({ url: blobUrl }),
       OrbitLink.configure({
         items: async (char, query) => {
           const found = await searchLinks(char, query)
@@ -101,6 +127,20 @@
         role: 'textbox',
         class: 'editor-body',
       },
+      handleDrop: (_view, event) => {
+        const files = [...(event.dataTransfer?.files ?? [])]
+        if (!files.length) return false
+        event.preventDefault()
+        void attach(files)
+        return true
+      },
+      handlePaste: (_view, event) => {
+        const files = [...(event.clipboardData?.files ?? [])]
+        if (!files.length) return false
+        event.preventDefault()
+        void attach(files)
+        return true
+      },
     },
     onUpdate: () => {
       clearTimeout(timer)
@@ -126,6 +166,7 @@
 
 <div class="editor rounded-lg border border-line bg-surface px-3 py-2 focus-within:border-accent-line">
   <EditorContent editor={$editor} />
+  {#if problem}<p role="alert" class="mt-1 text-sm text-red-600">{problem}</p>{/if}
 </div>
 
 <style>
@@ -197,6 +238,11 @@
     margin-left: 0.4rem;
     text-decoration: underline;
     font-size: 0.85em;
+  }
+  .editor :global(.orbit-blob-image) {
+    display: block;
+    max-width: 100%;
+    border-radius: 6px;
   }
   .editor :global(hr) {
     border-top: 1px solid var(--color-line, currentColor);
