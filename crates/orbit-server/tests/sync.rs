@@ -50,7 +50,7 @@ async fn no_token_returns_a_full_snapshot_with_inbox() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox" }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "" }])
     );
     assert_eq!(res["statuses"], json!({}));
     assert!(res["token"].as_u64().unwrap() > 0);
@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "area_id": INBOX, "title": "Buy milk", "completed_at": 1002 }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "" }]);
     assert_eq!(res["delta"], done);
 
     // Another Device that last synced at t0 sees the same change.
@@ -177,7 +177,7 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
     let (_, res) = sync(&app, json!({ "v": 1, "token": 40, "commands": [] })).await;
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox" }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "" }])
     );
     assert_eq!(res["token"], 1);
 }
@@ -240,7 +240,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "area_id": INBOX, "title": "Buy milk", "completed_at": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "" }])
     );
 }
 
@@ -267,4 +267,186 @@ async fn the_response_clock_is_the_newest_edit_behind_the_delta() {
         json!({ "wall": 7000, "counter": 0, "device": DEVICE })
     );
     assert_eq!(other["delta"][1]["title"], "Oat milk");
+}
+
+const AREA: &str = "01900000-0000-7000-8000-0000000000a1";
+const PROJECT: &str = "01900000-0000-7000-8000-0000000000b1";
+const SUB: &str = "01900000-0000-7000-8000-00000000000b";
+const SUBSUB: &str = "01900000-0000-7000-8000-00000000000c";
+
+fn c(n: u32) -> String {
+    format!("01900000-0000-7000-8000-{n:012x}")
+}
+
+#[tokio::test]
+async fn a_bad_parent_is_rejected_with_a_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let cmds = vec![
+        cmd(
+            &c(0xc1),
+            "area.create",
+            json!({ "id": AREA, "name": "Home", "order": "a" }),
+            1000,
+        ),
+        // A Project under the Inbox, a Project under a missing parent, a Section under a Task.
+        cmd(
+            &c(0xc2),
+            "project.create",
+            json!({ "id": PROJECT, "parent_id": INBOX, "name": "P", "order": "a" }),
+            1001,
+        ),
+        cmd(
+            &c(0xc3),
+            "project.create",
+            json!({ "id": PROJECT, "parent_id": SUB, "name": "P", "order": "a" }),
+            1002,
+        ),
+        cmd(
+            &c(0xc4),
+            "task.create",
+            json!({ "id": TASK, "title": "T", "parent_id": AREA, "order": "a" }),
+            1003,
+        ),
+        cmd(
+            &c(0xc5),
+            "section.create",
+            json!({ "id": SUB, "parent_id": TASK, "name": "S", "order": "a" }),
+            1004,
+        ),
+        // The Inbox can't be moved, and an Area can't get a parent.
+        cmd(
+            &c(0xc6),
+            "item.move",
+            json!({ "id": INBOX, "parent_id": null, "order": "z" }),
+            1005,
+        ),
+        cmd(
+            &c(0xc7),
+            "item.move",
+            json!({ "id": AREA, "parent_id": TASK, "order": "z" }),
+            1006,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
+    let st = &res["statuses"];
+    assert_eq!(st[c(0xc1)], json!({ "status": "ok" }));
+    for n in [0xc2, 0xc3, 0xc5, 0xc6, 0xc7] {
+        assert_eq!(
+            st[c(n)],
+            json!({ "status": "error", "code": "bad_parent" }),
+            "{n:x}"
+        );
+    }
+    assert_eq!(st[c(0xc4)], json!({ "status": "ok" }));
+}
+
+#[tokio::test]
+async fn item_move_reparents_and_a_task_cannot_move_under_its_own_descendant() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let cmds = vec![
+        cmd(
+            &c(0xc1),
+            "area.create",
+            json!({ "id": AREA, "name": "Home", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xc2),
+            "task.create",
+            json!({ "id": TASK, "title": "T", "order": "a" }),
+            1001,
+        ),
+        cmd(
+            &c(0xc3),
+            "task.create",
+            json!({ "id": SUB, "title": "S", "parent_id": TASK, "order": "a" }),
+            1002,
+        ),
+        cmd(
+            &c(0xc4),
+            "item.move",
+            json!({ "id": TASK, "parent_id": AREA, "order": "b" }),
+            1003,
+        ),
+        cmd(
+            &c(0xc5),
+            "item.move",
+            json!({ "id": TASK, "parent_id": SUB, "order": "c" }),
+            1004,
+        ),
+        cmd(
+            &c(0xc6),
+            "item.move",
+            json!({ "id": TASK, "parent_id": TASK, "order": "c" }),
+            1005,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
+    let st = &res["statuses"];
+    assert_eq!(st[c(0xc4)], json!({ "status": "ok" }));
+    assert_eq!(
+        st[c(0xc5)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    assert_eq!(
+        st[c(0xc6)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    let moved = res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == TASK)
+        .unwrap();
+    assert_eq!(
+        (&moved["parent_id"], &moved["order"]),
+        (&json!(AREA), &json!("b"))
+    );
+}
+
+#[tokio::test]
+async fn completing_a_parent_completes_open_descendants_and_ships_them_in_deltas() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let cmds = vec![
+        cmd(
+            &c(0xc1),
+            "task.create",
+            json!({ "id": TASK, "title": "T", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xc2),
+            "task.create",
+            json!({ "id": SUB, "title": "S", "parent_id": TASK, "order": "a" }),
+            1001,
+        ),
+        cmd(
+            &c(0xc3),
+            "task.create",
+            json!({ "id": SUBSUB, "title": "SS", "parent_id": SUB, "order": "a" }),
+            1002,
+        ),
+        cmd(&c(0xc4), "task.complete", json!({ "id": SUBSUB }), 1500),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
+    let token = res["token"].clone();
+    // A second Device already has everything; it then gets only the cascade.
+    let done = cmd(&c(0xc5), "task.complete", json!({ "id": TASK }), 5000);
+    let (_, res) = sync(&app, json!({ "v": 1, "token": token, "commands": [done] })).await;
+    let done_at = |id: &str| {
+        res["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == id)
+            .map(|r| r["completed_at"].clone())
+    };
+    assert_eq!(done_at(TASK), Some(json!(5000)));
+    assert_eq!(done_at(SUB), Some(json!(5000)));
+    // Already-completed descendants keep their own time and don't ship.
+    assert_eq!(done_at(SUBSUB), None);
+    assert_eq!(res["clock"]["wall"], 5000);
 }

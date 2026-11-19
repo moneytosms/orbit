@@ -1,7 +1,14 @@
 import { apply, inbox_id, new_id, next_hlc, observe_hlc } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
-export type Task = { kind: 'task'; id: string; area_id: string; title: string; completed_at: number | null }
+export type Task = {
+  kind: 'task'
+  id: string
+  parent_id: string
+  title: string
+  completed_at: number | null
+  order: string
+}
 type Row = Task | { kind: 'area'; id: string; name: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: { id: string; title?: string }; hlc: Hlc }
@@ -26,7 +33,7 @@ export async function inboxTasks(): Promise<Task[]> {
   const rows: Row[] = await tx(['rows'], (s) => req(s('rows').getAll()))
   const inbox = inbox_id()
   // Ids are UUIDv7, so key order is creation order.
-  return rows.filter((r): r is Task => r.kind === 'task' && r.area_id === inbox && r.completed_at === null)
+  return rows.filter((r): r is Task => r.kind === 'task' && r.parent_id === inbox && r.completed_at === null)
 }
 
 export const createTask = (title: string) => enqueue('task.create', { id: newId(), title })
