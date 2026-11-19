@@ -1,6 +1,8 @@
 import {
   apply,
+  builtin_views,
   completion_for,
+  evaluate_view,
   goal_progress,
   hidden_ids,
   inbox_id,
@@ -28,6 +30,7 @@ export type Task = {
   label_ids: string[]
   recurrence: Recurrence | null
   goal_id: string | null
+  created_at: number | null
   trashed_at: number | null
 }
 export type Area = {
@@ -45,6 +48,7 @@ export type Project = {
   name: string
   order: string
   goal_id: string | null
+  touched_at: number | null
   trashed_at: number | null
   archived_at: number | null
 }
@@ -57,7 +61,7 @@ export type Section = {
   trashed_at: number | null
 }
 export type Label = { kind: 'label'; id: string; name: string }
-export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
+export type Settings = { kind: 'settings'; id: string; theme: string; accent: string; start_view: string }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
   Pick<
@@ -102,8 +106,32 @@ export type Page = {
   order: string
   trashed_at: number | null
 }
+export type Cond = { type: 'cond'; path: string; op: string; value?: unknown }
+export type Node = { type: 'group'; all: boolean; children: Node[] } | Cond
+export type Sort = { field: string; desc: boolean }
+/** A saved View. `entity` is what it lists: core stores it as `entity` because `kind` tags the Row. */
+export type View = {
+  kind: 'view'
+  id: string
+  name: string
+  icon: string
+  entity: 'task' | 'project' | 'goal' | 'page' | 'plan'
+  scope: string | null
+  filter: Node
+  sorts: Sort[]
+  group_by: string | null
+  layout: string
+  fields: string[]
+  show_completed: boolean
+  pinned: boolean
+  hidden: boolean
+  order: string
+  trashed_at: number | null
+  builtin: string | null
+}
+export type ViewGroup = { key: string; ids: string[] }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
-type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page
+type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page | View
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -214,16 +242,17 @@ export async function labels(): Promise<Label[]> {
 }
 
 /** The Settings row's appearance, or null before any Device set one. An empty field is unset. */
-export async function getSettings(): Promise<{ theme: string; accent: string } | null> {
+export async function getSettings(): Promise<{ theme: string; accent: string; start_view: string } | null> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
-  return row ? { theme: row.theme, accent: row.accent } : null
+  return row ? { theme: row.theme, accent: row.accent, start_view: row.start_view ?? '' } : null
 }
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
+export const setStartView = (v: string) => enqueue('settings.update', { start_view: v })
 export const deleteItem = (id: string) => enqueue('item.delete', { id })
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })
 export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
-export type Trashed = Exclude<Row, Completion | Label | Settings>
+export type Trashed = Exclude<Row, Completion | Label | Settings | View>
 /** Items deleted by hand (their own `trashed_at`), newest first. */
 export async function trashed(): Promise<Trashed[]> {
   return (await allRows())
@@ -320,6 +349,67 @@ export async function inheritedGoal(taskId: string): Promise<string | null> {
 /** Progress 0..1 and whether the Goal is behind its straight-line pace, from core. */
 export async function goalProgress(goalId: string): Promise<{ progress: number; behind: boolean }> {
   return JSON.parse(goal_progress(JSON.stringify(await allRows()), goalId, localToday()))
+}
+
+/** Built-in Views merged with stored rows (a stored row replaces its built-in), not trashed, in order. */
+export async function views(): Promise<View[]> {
+  const stored = (await allRows()).filter((r): r is View => r.kind === 'view')
+  const ids = new Set(stored.map((v) => v.id))
+  const builtins: View[] = JSON.parse(builtin_views())
+  return [...builtins.filter((v) => !ids.has(v.id)), ...stored].filter((v) => v.trashed_at == null).sort(byOrder)
+}
+export async function getView(id: string): Promise<View | undefined> {
+  return (await views()).find((v) => v.id === id)
+}
+/** Runs a View over every row, from core, with this device's local date. Rows keep the View's order. */
+export async function runView(id: string): Promise<{ groups: { key: string; rows: Row[] }[] }> {
+  const view = await getView(id)
+  if (!view) return { groups: [] }
+  const rows = await allRows()
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const groups: ViewGroup[] = JSON.parse(evaluate_view(JSON.stringify(view), JSON.stringify(rows), localToday()))
+  return { groups: groups.map((g) => ({ key: g.key, rows: g.ids.flatMap((i) => byId.get(i) ?? []) })) }
+}
+/** Creates a custom View listing `kind`, last in order, and returns its id. */
+export async function createView(name: string, kind: View['entity']): Promise<string> {
+  const id = newId()
+  const last = (await views())
+    .map((v) => v.order)
+    .sort()
+    .at(-1)
+  await enqueue('view.create', { id, name, kind, order: orderAfter(last) })
+  return id
+}
+export type ViewPatch = Partial<
+  Pick<
+    View,
+    | 'name'
+    | 'icon'
+    | 'scope'
+    | 'filter'
+    | 'sorts'
+    | 'group_by'
+    | 'layout'
+    | 'fields'
+    | 'show_completed'
+    | 'pinned'
+    | 'hidden'
+  >
+> & { kind?: View['entity'] }
+export const updateView = (id: string, patch: ViewPatch) => enqueue('view.update', { id, ...patch })
+/** Puts a built-in View back to its defaults. */
+export const resetView = (id: string) => enqueue('view.reset', { id })
+export const deleteView = (id: string) => enqueue('view.delete', { id })
+/** Pinned, visible Views in order, for the sidebar. */
+export async function pinnedViews(): Promise<View[]> {
+  return (await views()).filter((v) => v.pinned && !v.hidden)
+}
+/** Moves a View before `beforeId`, or last when null. */
+export async function reorderViews(id: string, beforeId: string | null) {
+  const rest = (await views()).filter((v) => v.id !== id)
+  const i = beforeId === null ? rest.length : rest.findIndex((v) => v.id === beforeId)
+  if (i < 0) return
+  await enqueue('view.update', { id, order: order_between(rest[i - 1]?.order, rest[i]?.order) })
 }
 
 /** A quick-add line as parsed by core `parse::parse` (`parse_quick_add`). */

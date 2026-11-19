@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }])
     );
 }
 
@@ -925,4 +925,73 @@ async fn an_archived_project_is_read_only_until_unarchived() {
     assert_eq!(res["statuses"][c(0xe9)], json!({ "status": "ok" }));
     assert_eq!(row(&res, TASK)["title"], "Yes");
     assert_eq!(row(&res, PROJECT)["archived_at"], Value::Null);
+}
+
+const UPCOMING: &str = "00000000-0000-7000-8000-000000000102";
+const VIEW: &str = "01900000-0000-7000-8000-0000000000f1";
+
+#[tokio::test]
+async fn a_hidden_builtin_view_syncs_and_a_builtin_cannot_be_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let t0 = snap["token"].clone();
+
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xf2), "view.update", json!({ "id": UPCOMING, "hidden": true }), 1000),
+            cmd(&c(0xf3), "view.delete", json!({ "id": UPCOMING }), 1001),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xf2)], json!({ "status": "ok" }));
+    assert_eq!(
+        res["statuses"][c(0xf3)],
+        json!({ "status": "error", "code": "bad_field" })
+    );
+    let view = row(&res, UPCOMING);
+    assert_eq!(view["kind"], "view");
+    assert_eq!(view["hidden"], true);
+    assert_eq!(view["trashed_at"], Value::Null);
+
+    // A second Device gets the same row.
+    let (_, other) = sync(&app, json!({ "v": 1, "token": t0, "commands": [] })).await;
+    assert_eq!(row(&other, UPCOMING)["hidden"], true);
+}
+
+#[tokio::test]
+async fn deleting_a_custom_view_trashes_it() {
+    let now = real_now();
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": snap["token"], "commands": [
+            cmd(&c(0xf4), "view.create", json!({ "id": VIEW, "name": "Mine", "kind": "task", "order": "a" }), now),
+            cmd(&c(0xf5), "view.delete", json!({ "id": VIEW }), now + 1),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xf4)], json!({ "status": "ok" }));
+    assert_eq!(res["statuses"][c(0xf5)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, VIEW)["trashed_at"], now + 1);
+}
+
+#[tokio::test]
+async fn a_project_is_touched_when_a_task_under_it_is_created() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xf6), "task.create", json!({ "id": SUBSUB, "title": "U", "parent_id": PROJECT, "order": "b" }), now + 500),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xf6)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, PROJECT)["touched_at"], now + 500);
 }

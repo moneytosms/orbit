@@ -393,6 +393,12 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
                 {
                     log_completion(&tx, old, cmd)?;
                 }
+                if matches!(
+                    &cmd.op,
+                    Op::TaskCreate { .. } | Op::TaskUpdate { .. } | Op::TaskComplete { .. }
+                ) {
+                    touch_project(&tx, &row, cmd.hlc.wall)?;
+                }
                 if let Op::TaskComplete { id, .. } = &cmd.op {
                     if let Some(old) = &existing {
                         log_completion(&tx, old, cmd)?;
@@ -414,6 +420,26 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
     )?;
     tx.commit()?;
     Ok(status)
+}
+
+/// Bump `touched_at` on the nearest Project above `row`, keeping its clocks.
+fn touch_project(conn: &Connection, row: &Row, wall: u64) -> rusqlite::Result<()> {
+    let mut next = row.parent_id();
+    // The depth cap guards against a parent cycle.
+    for _ in 0..32 {
+        let Some(id) = next else { return Ok(()) };
+        let Some((data, clocks)) = load(conn, &id.to_string())? else {
+            return Ok(());
+        };
+        let parent: Row = serde_json::from_str(&data).map_err(json_err)?;
+        if let Row::Project(mut p) = parent {
+            p.touched_at = p.touched_at.max(Some(wall));
+            let clocks: Clocks = serde_json::from_str(&clocks).map_err(json_err)?;
+            return write(conn, &Row::Project(p), &clocks);
+        }
+        next = parent.parent_id();
+    }
+    Ok(())
 }
 
 fn load_row(conn: &Connection, id: &str) -> rusqlite::Result<Option<Row>> {

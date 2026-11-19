@@ -5,6 +5,7 @@ pub mod parse;
 pub mod recur;
 pub mod theme;
 pub mod trash;
+pub mod view;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -93,6 +94,9 @@ pub struct Project {
     /// Unix ms when it was archived.
     #[serde(default)]
     pub archived_at: Option<u64>,
+    /// Unix ms of the last edit to it or a task under it.
+    #[serde(default)]
+    pub touched_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -139,6 +143,9 @@ pub struct Task {
     /// The one Goal this Task counts towards.
     #[serde(default)]
     pub goal_id: Option<Uuid>,
+    /// Unix ms when it was created.
+    #[serde(default)]
+    pub created_at: Option<u64>,
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
@@ -189,6 +196,8 @@ pub struct Settings {
     pub theme: String,
     #[serde(default)]
     pub accent: String,
+    #[serde(default)]
+    pub start_view: String,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -206,6 +215,7 @@ pub enum Row {
     Milestone(Milestone),
     Page(Page),
     Purged(Purged),
+    View(view::View),
 }
 
 impl Row {
@@ -222,6 +232,7 @@ impl Row {
             Row::Milestone(m) => m.id,
             Row::Page(p) => p.id,
             Row::Purged(p) => p.id,
+            Row::View(v) => v.id,
         }
     }
 
@@ -232,7 +243,8 @@ impl Row {
             | Row::Label(_)
             | Row::Settings(_)
             | Row::Completion(_)
-            | Row::Purged(_) => None,
+            | Row::Purged(_)
+            | Row::View(_) => None,
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
             Row::Task(t) => Some(t.parent_id),
@@ -479,7 +491,80 @@ pub enum Op {
         theme: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         accent: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_view: Option<String>,
     },
+    #[serde(rename = "view.create")]
+    ViewCreate {
+        id: Uuid,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
+        kind: view::ViewKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scope: Option<Uuid>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<view::Node>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sorts: Option<Vec<view::Sort>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_by: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        layout: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fields: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        show_completed: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pinned: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order: Option<String>,
+    },
+    /// Any field present changes; `filter` replaces the whole tree. Works on a built-in's id.
+    #[serde(rename = "view.update")]
+    ViewUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<view::ViewKind>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        scope: Option<Option<Uuid>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<view::Node>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sorts: Option<Vec<view::Sort>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        group_by: Option<Option<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        layout: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fields: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        show_completed: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pinned: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hidden: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order: Option<String>,
+    },
+    /// Built-ins only: back to the default.
+    #[serde(rename = "view.reset")]
+    ViewReset { id: Uuid },
+    /// Custom views only: to the Trash.
+    #[serde(rename = "view.delete")]
+    ViewDelete { id: Uuid },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -545,6 +630,10 @@ impl Op {
             | Op::PageCreate { id, .. }
             | Op::PageRename { id, .. }
             | Op::PageEditBody { id, .. }
+            | Op::ViewCreate { id, .. }
+            | Op::ViewUpdate { id, .. }
+            | Op::ViewReset { id }
+            | Op::ViewDelete { id }
             | Op::LabelCreate { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
@@ -588,7 +677,59 @@ impl Op {
             | Op::GoalCreate { .. }
             | Op::MilestoneCreate { .. }
             | Op::PageCreate { .. }
+            | Op::ViewCreate { .. }
             | Op::LabelCreate { .. } => vec![],
+            Op::ViewDelete { .. } => vec!["trashed_at"],
+            Op::ViewReset { .. } => vec![
+                "name",
+                "icon",
+                "entity",
+                "scope",
+                "filter",
+                "sorts",
+                "group_by",
+                "layout",
+                "fields",
+                "show_completed",
+                "pinned",
+                "hidden",
+                "order",
+                "trashed_at",
+            ],
+            Op::ViewUpdate {
+                name,
+                icon,
+                kind,
+                scope,
+                filter,
+                sorts,
+                group_by,
+                layout,
+                fields,
+                show_completed,
+                pinned,
+                hidden,
+                order,
+                ..
+            } => [
+                ("name", name.is_some()),
+                ("icon", icon.is_some()),
+                ("entity", kind.is_some()),
+                ("scope", scope.is_some()),
+                ("filter", filter.is_some()),
+                ("sorts", sorts.is_some()),
+                ("group_by", group_by.is_some()),
+                ("layout", layout.is_some()),
+                ("fields", fields.is_some()),
+                ("show_completed", show_completed.is_some()),
+                ("pinned", pinned.is_some()),
+                ("hidden", hidden.is_some()),
+                ("order", order.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
             Op::ItemDelete { .. } | Op::ItemRestore { .. } => vec!["trashed_at"],
             Op::ItemArchive { .. } | Op::ItemUnarchive { .. } => vec!["archived_at"],
             Op::PageRename { .. } => vec!["title"],
@@ -658,13 +799,19 @@ impl Op {
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
-            Op::SettingsUpdate { theme, accent } => {
-                [("theme", theme.is_some()), ("accent", accent.is_some())]
-                    .into_iter()
-                    .filter(|(_, present)| *present)
-                    .map(|(f, _)| f)
-                    .collect()
-            }
+            Op::SettingsUpdate {
+                theme,
+                accent,
+                start_view,
+            } => [
+                ("theme", theme.is_some()),
+                ("accent", accent.is_some()),
+                ("start_view", start_view.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
             Op::TaskComplete { .. } => vec!["completed_at"],
         }
     }
@@ -773,6 +920,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     goal_id: None,
                     trashed_at: None,
                     archived_at: None,
+                    touched_at: Some(cmd.hlc.wall),
                 }))
             }
         }
@@ -823,6 +971,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     label_ids: vec![],
                     recurrence: None,
                     goal_id: None,
+                    created_at: Some(cmd.hlc.wall),
                     trashed_at: None,
                 }))
             }
@@ -844,6 +993,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 Some(Row::Project(p)) => Ok(Row::Project(Project {
                     parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
                     order: order.clone(),
+                    touched_at: Some(cmd.hlc.wall.max(p.touched_at.unwrap_or(0))),
                     ..p
                 })),
                 Some(Row::Section(s)) => Ok(Row::Section(Section {
@@ -872,9 +1022,13 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..p
                 })),
-                Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_)) => {
-                    Err(ErrorCode::BadParent)
-                }
+                Some(
+                    Row::Label(_)
+                    | Row::Settings(_)
+                    | Row::Completion(_)
+                    | Row::Purged(_)
+                    | Row::View(_),
+                ) => Err(ErrorCode::BadParent),
                 None => Err(ErrorCode::NotFound),
             }
         }
@@ -935,10 +1089,15 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         Op::ProjectUpdate { goal_id, .. } => match existing {
             Some(Row::Project(p)) => Ok(Row::Project(Project {
                 goal_id: goal_id.unwrap_or(p.goal_id),
+                touched_at: Some(cmd.hlc.wall.max(p.touched_at.unwrap_or(0))),
                 ..p
             })),
             _ => Err(ErrorCode::NotFound),
         },
+        Op::ViewCreate { .. }
+        | Op::ViewUpdate { .. }
+        | Op::ViewReset { .. }
+        | Op::ViewDelete { .. } => view::apply(existing, cmd),
         Op::GoalCreate {
             id,
             parent_id,
@@ -1144,7 +1303,11 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 }))
             }
         }
-        Op::SettingsUpdate { theme, accent } => {
+        Op::SettingsUpdate {
+            theme,
+            accent,
+            start_view,
+        } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
                 Some(_) => return Err(ErrorCode::BadField),
@@ -1152,12 +1315,14 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     id: SETTINGS,
                     theme: String::new(),
                     accent: String::new(),
+                    start_view: String::new(),
                 },
             };
             Ok(Row::Settings(Settings {
                 id: SETTINGS,
                 theme: theme.clone().unwrap_or(old.theme),
                 accent: accent.clone().unwrap_or(old.accent),
+                start_view: start_view.clone().unwrap_or(old.start_view),
             }))
         }
     }
@@ -1224,6 +1389,7 @@ pub fn apply_lww(
     clocks: &mut Clocks,
     cmd: &Command,
 ) -> Result<Row, ErrorCode> {
+    let existing = existing.or_else(|| view::builtin_for(&cmd.op));
     let old = existing.clone();
     let new = apply(existing, cmd)?;
     let Some(old) = old else {
@@ -1435,7 +1601,7 @@ mod tests {
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
-                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null,
+                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
             })
         );
     }
@@ -1676,6 +1842,7 @@ mod tests {
             fields,
             [
                 ("completed_at", 1000),
+                ("created_at", 1000),
                 ("deadline", 1000),
                 ("description", 1000),
                 ("due", 1000),
@@ -1723,6 +1890,7 @@ mod tests {
             goal_id: None,
             trashed_at: None,
             archived_at: None,
+            touched_at: None,
         })
     }
     fn section(n: u128, parent: Uuid) -> Row {
@@ -1749,6 +1917,7 @@ mod tests {
             label_ids: vec![],
             recurrence: None,
             goal_id: None,
+            created_at: None,
             trashed_at: None,
         })
     }
@@ -2048,7 +2217,8 @@ mod tests {
             Row::Settings(Settings {
                 id: SETTINGS,
                 theme: "dracula".into(),
-                accent: String::new()
+                accent: String::new(),
+                start_view: String::new()
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

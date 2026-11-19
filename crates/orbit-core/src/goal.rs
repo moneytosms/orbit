@@ -204,6 +204,7 @@ mod tests {
             label_ids: vec![],
             recurrence: None,
             goal_id,
+            created_at: None,
             trashed_at: None,
         })
     }
@@ -217,6 +218,7 @@ mod tests {
             goal_id,
             trashed_at: None,
             archived_at: None,
+            touched_at: None,
         })
     }
 
