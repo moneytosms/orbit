@@ -1,0 +1,10 @@
+[package]
+name = "orbit-wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+orbit-core = { path = "../orbit-core" }

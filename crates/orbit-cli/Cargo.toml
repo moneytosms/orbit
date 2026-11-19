@@ -1,0 +1,8 @@
+[package]
+name = "orbit-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "orbit"
+path = "src/main.rs"

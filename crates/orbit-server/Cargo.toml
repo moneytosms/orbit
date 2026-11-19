@@ -1,0 +1,4 @@
+[package]
+name = "orbit-server"
+version.workspace = true
+edition.workspace = true
