@@ -1,6 +1,6 @@
 # Orbit Design System
 
-> **Source of truth.** Every value below comes from `prototypes/screens/index.html` on branch `prototype/screens` (commit `ac89c9c`), cited as `P:<line>`. Anything the file doesn't define is marked **TBD**. Orbit has no other theme or token file yet: `prototypes/themes/index.html` (branch `prototype/themes`) only explored palette strategies, and [Theme system and featured themes](https://github.com/moneytosms/orbit/issues/16) settled that Featured themes swap the accent on this base.
+> **Source of truth.** Every value below comes from `prototypes/screens/index.html` on branch `prototype/screens` (commit `ac89c9c`), cited as `P:<line>`; round 3 of the prototype moved line numbers, so `P:` refs point at that commit, while token values below are current. Anything the file doesn't define is marked **TBD**. Orbit has no other theme or token file yet: `prototypes/themes/index.html` (branch `prototype/themes`) only explored palette strategies, and [Theme system and featured themes](https://github.com/moneytosms/orbit/issues/16) settled that Featured themes swap the accent on this base.
 >
 > **Notion reference material.**
 > - *Accessed:* Notion's public brand guidelines page exists (notion.notion.site, "Notion Brand Guidelines"). It covers marks and trademark use, not UI tokens. It was found but not read in full.
@@ -60,7 +60,7 @@ Depth is a 1px hairline plus a faint two-layer warm shadow. Widgets and panels r
 - **Danger** (`{colors.danger}`: #bb3a2a / #ef8070, soft #f9e6e2 / #3a2320): Priority 1, overdue.
 - Priority colours map onto these: P1 danger, P2 warn, P3 college, P4 border-strong (P:125).
 
-**Known contrast gaps (to fix):** accent text on accent-soft is 3.88:1 and ok text on ok-soft is 4.39:1, both below 4.5:1 for 12.5px chips. A darker on-tint text token for each is **TBD**.
+**On-tint text tokens (round 3, fixes the earlier 3.88:1 and 4.39:1 gaps):** text on a soft tint uses a darker partner, never the fill colour: `{colors.accent-text}` #a3441f (5.29:1 on accent-soft; dark #e2835e, 5.08:1), `{colors.ok-text}` #2d6a3c (5.54:1; dark #7fc08c, 6.60:1), `{colors.warn-text}` #8a5307 (5.40:1), `{colors.danger-text}` #a8331f (5.52:1). Accent-coloured links and labels on paper also use `{colors.accent-text}`. Disabled buttons use sunk fill + muted text instead of faded accent.
 
 ## Typography
 
