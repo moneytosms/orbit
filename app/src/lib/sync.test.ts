@@ -23,6 +23,7 @@ import {
   getPage,
   getSettings,
   getTask,
+  runView,
   goalProgress,
   labels,
   moveItem,
@@ -280,12 +281,12 @@ test('createLabel adds a flat Label that a Task can carry, listed by name', asyn
 test('updateSettings creates the settings row, then changes only the fields given', async () => {
   expect(await getSettings()).toBeNull()
   await updateSettings({ theme: 'dark', accent: '#c2552f' })
-  expect(await getSettings()).toEqual({ theme: 'dark', accent: '#c2552f' })
+  expect(await getSettings()).toEqual({ theme: 'dark', accent: '#c2552f', start_view: '' })
   await updateSettings({ theme: 'light' })
-  expect(await getSettings()).toEqual({ theme: 'light', accent: '#c2552f' })
+  expect(await getSettings()).toEqual({ theme: 'light', accent: '#c2552f', start_view: '' })
   // Accent reset syncs as '' and reads back as cleared, not missing.
   await updateSettings({ accent: '' })
-  expect(await getSettings()).toEqual({ theme: 'light', accent: '' })
+  expect(await getSettings()).toEqual({ theme: 'light', accent: '', start_view: '' })
   await sync()
   const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'settings.update')
   expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }, { accent: '' }])
@@ -427,4 +428,15 @@ test('a full delta clears local rows but keeps the outbox', async () => {
   expect(await getTask(other)).toBeDefined()
   expect(await getTask(old)).toBeUndefined()
   expect(await getTask(kept)).toBeDefined()
+})
+
+test('runView on the built-in Upcoming returns a Task due tomorrow, grouped by day', async () => {
+  const d = new Date(Date.now() + 86_400_000)
+  const tomorrow = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const id = await createTask('Due tomorrow')
+  await updateTask(id, { due: { date: tomorrow } })
+  const upcoming = '00000000-0000-7000-8000-000000000102'
+  const { groups } = await runView(upcoming)
+  const hit = groups.find((g) => g.rows.some((r) => r.id === id))
+  expect(hit?.key).toBe(tomorrow)
 })

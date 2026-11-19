@@ -70,6 +70,22 @@ pub fn hidden_ids(rows_json: &str) -> Result<Vec<String>, JsError> {
         .collect())
 }
 
+/// Runs a View (JSON) over `rows_json` (a Row array); returns `[{key, ids}]`. `today` is `YYYY-MM-DD`.
+#[wasm_bindgen]
+pub fn evaluate_view(view_json: &str, rows_json: &str, today: &str) -> Result<String, JsError> {
+    let view: orbit_core::view::View = serde_json::from_str(view_json)?;
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    Ok(serde_json::to_string(&orbit_core::view::evaluate(
+        &view, &rows, today,
+    ))?)
+}
+
+/// The built-in Views as a JSON array.
+#[wasm_bindgen]
+pub fn builtin_views() -> Result<String, JsError> {
+    Ok(serde_json::to_string(&orbit_core::view::builtins())?)
+}
+
 #[wasm_bindgen]
 pub fn inbox_id() -> String {
     INBOX.to_string()

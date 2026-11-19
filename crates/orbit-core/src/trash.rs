@@ -20,6 +20,7 @@ impl Row {
             Row::Goal(r) => r.trashed_at,
             Row::Milestone(r) => r.trashed_at,
             Row::Page(r) => r.trashed_at,
+            Row::View(r) => r.trashed_at,
             Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_) => None,
         }
     }
@@ -43,6 +44,7 @@ impl Row {
             Row::Goal(r) => r.trashed_at = at,
             Row::Milestone(r) => r.trashed_at = at,
             Row::Page(r) => r.trashed_at = at,
+            Row::View(r) => r.trashed_at = at,
             Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_) => return false,
         }
         true
@@ -167,6 +169,7 @@ mod tests {
             goal_id: None,
             trashed_at: None,
             archived_at: None,
+            touched_at: None,
         })
     }
 
