@@ -24,3 +24,11 @@ export const readRoute = (): Route => {
   const r = location.hash.replace(/^#\/?/, '')
   return r in routes ? (r as Route) : 'inbox'
 }
+
+/** The screen on screen: a fixed route, or a Project or Area by id (`#/project/<id>`, `#/area/<id>`). */
+export type Screen = { name: Route } | { name: 'project' | 'area'; id: string }
+
+export const readScreen = (): Screen => {
+  const m = location.hash.match(/^#\/(project|area)\/([^/]+)$/)
+  return m ? { name: m[1] as 'project' | 'area', id: decodeURIComponent(m[2]) } : { name: readRoute() }
+}
