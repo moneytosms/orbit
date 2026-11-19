@@ -50,6 +50,8 @@ import {
   updateSettings,
   updateTask,
   VIEW_SLIPPING,
+  VIEW_HORIZON,
+  timelineData,
   type Task,
   parseFilter,
   printFilter,
@@ -641,4 +643,21 @@ test('a link target shows its live title and trashed or archived state; trashed 
   await archiveItem(proj)
   expect((await linkTarget(inProj))!.state).toBe('archived')
   expect(await linkTarget('00000000-0000-7000-8000-00000000dead')).toMatchObject({ state: 'purged' })
+})
+
+test('Horizon builtin runs and timelineData returns a milestone and a task tick', async () => {
+  const horizon = (await views()).find((v) => v.id === VIEW_HORIZON)
+  expect(horizon?.layout).toBe('timeline')
+  expect(horizon?.entity).toBe('goal')
+  await createArea('tl-area')
+  const areaId = (await tree()).find((t) => t.area.name === 'tl-area')!.area.id
+  const g = await createGoal(areaId, 'Horizon goal', { start: '2026-01-01', target_date: '2026-06-30' })
+  await createMilestone(g, 'Halfway', '2026-03-01')
+  const t = await createTask('Linked', INBOX)
+  await updateTask(t, { goal_id: g, due: { date: '2026-02-02' } })
+  const { groups } = await runView(VIEW_HORIZON)
+  expect(groups.flatMap((x) => x.rows).some((r) => r.id === g)).toBe(true)
+  const data = (await timelineData([g])).get(g)!
+  expect(data.milestones.map((m) => m.title)).toEqual(['Halfway'])
+  expect(data.ticks).toEqual([{ id: t, title: 'Linked', date: '2026-02-02' }])
 })

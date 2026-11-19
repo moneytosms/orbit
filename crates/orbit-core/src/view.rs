@@ -135,6 +135,7 @@ pub const VIEW_INBOX: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_000
 pub const VIEW_UPCOMING: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0102);
 pub const VIEW_SLIPPING: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0103);
 pub const VIEW_RECENT: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0104);
+pub const VIEW_HORIZON: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0105);
 
 fn cond(path: &str, op: CondOp, value: Value) -> Node {
     Node::Cond {
@@ -245,6 +246,21 @@ pub fn builtins() -> Vec<View> {
             true,
             "4",
         ),
+        View {
+            layout: "timeline".into(),
+            ..builtin(
+                VIEW_HORIZON,
+                "horizon",
+                "Horizon",
+                "clock",
+                ViewKind::Goal,
+                all(vec![]),
+                vec![],
+                None,
+                false,
+                "5",
+            )
+        },
     ]
 }
 
@@ -1248,11 +1264,18 @@ mod tests {
     #[test]
     fn builtins_are_pinned_with_stable_distinct_ids() {
         let b = builtins();
-        assert_eq!(b.len(), 4);
+        assert_eq!(b.len(), 5);
         assert!(b.iter().all(|v| v.pinned && v.builtin.is_some()));
         let mut seen: Vec<Uuid> = b.iter().map(|v| v.id).collect();
+        seen.sort();
         seen.dedup();
-        assert_eq!(seen.len(), 4);
+        assert_eq!(seen.len(), 5);
+        let h = b.iter().find(|v| v.id == VIEW_HORIZON).unwrap();
+        assert_eq!((h.kind, h.layout.as_str()), (ViewKind::Goal, "timeline"));
+        assert_eq!(
+            VIEW_HORIZON.to_string(),
+            "00000000-0000-7000-8000-000000000105"
+        );
         assert_eq!(builtins(), b);
     }
 
