@@ -5,6 +5,8 @@
   import type { Snippet } from 'svelte'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import * as Sheet from '$lib/components/ui/sheet'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import Composer from './Composer.svelte'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
   import { createArea, createProject, moveItem, orderBetween, type Area, type Project } from '$lib/sync'
@@ -16,25 +18,34 @@
     title,
     areas,
     inboxCount,
-    onNew,
+    parentId,
     children,
   }: {
     screen: Screen
     title: string
     areas: { area: Area; projects: Project[] }[]
     inboxCount: number
-    onNew: () => void
-    children: Snippet
+    parentId: string
+    children: Snippet<[(prefill?: string) => void]>
   } = $props()
   let drawer = $state(false)
+  let composing = $state(false)
+  let prefill = $state('')
+  let wide = $state(false)
 
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
   let newProject = $state<Record<string, string>>({})
 
-  function newTask() {
+  // Desktop gets a centred Dialog, phones a bottom Sheet.
+  function open(text = '') {
     drawer = false
-    onNew()
+    prefill = text
+    wide = matchMedia('(min-width: 768px)').matches
+    composing = true
+  }
+  function newTask() {
+    open()
   }
   function onkeydown(e: KeyboardEvent) {
     const t = e.target as HTMLElement
@@ -186,7 +197,7 @@
       <span class="size-8 desk:hidden"></span>
     </header>
     <main class="flex-1 overflow-y-auto">
-      <div class="mx-auto max-w-[860px] px-4 pt-2 pb-28 desk:px-10 desk:pb-16">{@render children()}</div>
+      <div class="mx-auto max-w-[860px] px-4 pt-2 pb-28 desk:px-10 desk:pb-16">{@render children(open)}</div>
     </main>
   </div>
 </div>
@@ -231,3 +242,22 @@
     {@render nav()}
   </Sheet.Content>
 </Sheet.Root>
+
+{#snippet composer()}
+  <Dialog.Title class="sr-only">New task</Dialog.Title>
+  <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
+{/snippet}
+
+{#if wide}
+  <Dialog.Root bind:open={composing}>
+    <Dialog.Content>
+      {@render composer()}
+    </Dialog.Content>
+  </Dialog.Root>
+{:else}
+  <Sheet.Root bind:open={composing}>
+    <Sheet.Content side="bottom" class="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      {@render composer()}
+    </Sheet.Content>
+  </Sheet.Root>
+{/if}

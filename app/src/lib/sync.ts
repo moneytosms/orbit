@@ -94,14 +94,17 @@ export const createProject = async (areaId: string, name: string) =>
   enqueue('project.create', { id: newId(), parent_id: areaId, name, order: await appendOrder(areaId) })
 export const createSection = async (parentId: string, name: string) =>
   enqueue('section.create', { id: newId(), parent_id: parentId, name, order: await appendOrder(parentId) })
-/** Without `parentId` the Task lands in the Inbox. */
-export const createTask = async (title: string, parentId?: string) =>
-  enqueue('task.create', {
-    id: newId(),
+/** Without `parentId` the Task lands in the Inbox. Returns the new Task's id. */
+export const createTask = async (title: string, parentId?: string) => {
+  const id = newId()
+  await enqueue('task.create', {
+    id,
     title,
     parent_id: parentId,
     order: await appendOrder(parentId ?? inbox_id()),
   })
+  return id
+}
 export const completeTask = (id: string) => enqueue('task.complete', { id })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
 export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
@@ -125,6 +128,66 @@ export async function getSettings(): Promise<{ theme: string; accent: string }> 
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
 export const moveItem = (id: string, parentId: string | null, order: string) =>
   enqueue('item.move', { id, parent_id: parentId, order })
+
+/** A quick-add line as parsed by core `parse::parse` (`parse_quick_add`). */
+export type Parsed = {
+  title: string
+  tokens: {
+    kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date'
+    text: string
+    value: string
+    start: number
+    end: number
+    known: boolean
+  }[]
+  priority: number | null
+  due: Due | null
+  place: string | null
+  goal: string | null
+  page: string | null
+  labels: string[]
+}
+
+/** The title a quick-add line saves: the parsed title, then the text of unknown `@ $ %` names in input order. */
+export const quickTitle = (p: Parsed) =>
+  [p.title, ...p.tokens.filter((t) => !t.known && t.kind !== 'label').map((t) => t.text)]
+    .filter((s) => s !== '')
+    .join(' ')
+
+/**
+ * Saves a parsed quick-add line. The Task goes under the named Area or Project, else `fallbackParentId`;
+ * unknown `#labels` are created; priority, due and labels go in one `task.update`. Returns the new id.
+ */
+export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<string> {
+  const name = p.place?.toLowerCase()
+  const areas = await tree()
+  const place =
+    name &&
+    (areas.find((a) => a.area.name.toLowerCase() === name)?.area.id ??
+      areas.flatMap((a) => a.projects).find((pr) => pr.name.toLowerCase() === name)?.id)
+  const all = await labels()
+  const ids = new Set<string>()
+  for (const l of p.labels) {
+    const hit = all.find((x) => x.name.toLowerCase() === l.toLowerCase())
+    if (hit) ids.add(hit.id)
+  }
+  for (const t of p.tokens.filter((t) => !t.known && t.kind === 'label')) {
+    const hit = all.find((x) => x.name.toLowerCase() === t.value.toLowerCase())
+    if (hit) ids.add(hit.id)
+    else {
+      const id = await createLabel(t.value)
+      all.push({ kind: 'label', id, name: t.value })
+      ids.add(id)
+    }
+  }
+  const id = await createTask(quickTitle(p), place || fallbackParentId)
+  const patch: TaskPatch = {}
+  if (p.priority != null) patch.priority = p.priority as Task['priority']
+  if (p.due) patch.due = p.due
+  if (ids.size) patch.label_ids = [...ids]
+  if (Object.keys(patch).length) await updateTask(id, patch)
+  return id
+}
 
 /** Applies a command to its row via core; throws the error code if core rejects it. */
 async function predict(rows: IDBObjectStore, cmd: Command) {
