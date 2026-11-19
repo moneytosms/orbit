@@ -11,6 +11,8 @@ import {
   next_hlc,
   observe_hlc,
   order_between,
+  parse_filter,
+  print_filter,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
@@ -614,4 +616,20 @@ export function start(onChange: () => void) {
   sync()
   addEventListener('focus', () => sync())
   setInterval(() => document.visibilityState === 'visible' && sync(), 60_000)
+}
+
+/** A typed-filter parse error: `start..end` are char offsets of the bad token. */
+export type FilterError = { start: number; end: number; message: string }
+const knownLabels = async () => JSON.stringify({ labels: (await labels()).map((l) => ({ id: l.id, name: l.name })) })
+/** Typed filter text to a filter tree; throws a `FilterError` pointing at the bad token. */
+export async function parseFilter(text: string): Promise<Node> {
+  try {
+    return JSON.parse(parse_filter(text, await knownLabels(), localToday()))
+  } catch (e) {
+    throw JSON.parse(e instanceof Error ? e.message : String(e)) as FilterError
+  }
+}
+/** A filter tree as typed filter text. */
+export async function printFilter(node: Node): Promise<string> {
+  return print_filter(JSON.stringify(node), await knownLabels())
 }

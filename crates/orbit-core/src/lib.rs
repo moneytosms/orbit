@@ -1,3 +1,4 @@
+pub mod filter_text;
 pub mod goal;
 pub mod order;
 pub mod page;

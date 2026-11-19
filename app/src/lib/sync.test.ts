@@ -48,6 +48,8 @@ import {
   updateTask,
   VIEW_SLIPPING,
   type Task,
+  parseFilter,
+  printFilter,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -482,4 +484,21 @@ test('reorderViews moves a view before another, then last', async () => {
   await reorderViews(second, null)
   ids = (await views()).map((v) => v.id)
   expect(ids.at(-1)).toBe(second)
+})
+
+test('typed filters round-trip through the tree and point at bad tokens', async () => {
+  const career = await createLabel('Career')
+  const text = 'p1 & #Career & due before: next week'
+  const tree = await parseFilter(text)
+  expect(tree).toEqual({
+    type: 'group',
+    all: true,
+    children: [
+      { type: 'cond', path: 'priority', op: 'is', value: 1 },
+      { type: 'cond', path: 'label', op: 'is', value: career },
+      { type: 'cond', path: 'due', op: 'before', value: '+1w' },
+    ],
+  })
+  expect(await printFilter(tree)).toBe(text)
+  await expect(parseFilter('p1 & #Nope')).rejects.toMatchObject({ start: 5, end: 10 })
 })
