@@ -260,11 +260,17 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
     };
     let status = match check_tree(&tx, existing.as_ref(), cmd)? {
         Some(code) => Status::Error { code },
-        None => match apply_lww(existing, &mut clocks, cmd) {
+        None => match apply_lww(existing.clone(), &mut clocks, cmd) {
             Ok(row) => {
                 write(&tx, &row, &clocks)?;
-                if let Op::TaskComplete { id } = &cmd.op {
-                    complete_descendants(&tx, *id, cmd)?;
+                if let Op::TaskComplete { id, .. } = &cmd.op {
+                    if let Some(Row::Task(old)) = existing {
+                        log_completion(&tx, old, cmd)?;
+                    }
+                    // A recurring Task only moves on; its subtasks stay as they are.
+                    if matches!(&row, Row::Task(t) if t.completed_at.is_some()) {
+                        complete_descendants(&tx, *id, cmd)?;
+                    }
                 }
                 Status::Ok
             }
@@ -352,12 +358,30 @@ fn complete_descendants(
         let row: Row = serde_json::from_str(&data).map_err(json_err)?;
         let mut clocks: Clocks = serde_json::from_str(&clocks).map_err(json_err)?;
         let done = Command {
-            op: Op::TaskComplete { id: row.id() },
+            op: Op::TaskComplete {
+                id: row.id(),
+                today: match &cmd.op {
+                    Op::TaskComplete { today, .. } => today.clone(),
+                    _ => None,
+                },
+            },
             ..cmd.clone()
         };
+        let old = row.clone();
         if let Ok(row) = apply_lww(Some(row), &mut clocks, &done) {
             write(conn, &row, &clocks)?;
+            if let Row::Task(old) = old {
+                log_completion(conn, old, &done)?;
+            }
         }
+    }
+    Ok(())
+}
+
+/// Stores the completion record that completing `old` under `cmd` produces, if any.
+fn log_completion(conn: &Connection, old: orbit_core::Task, cmd: &Command) -> rusqlite::Result<()> {
+    if let (_, Some(c)) = orbit_core::complete_effects(old, cmd) {
+        write(conn, &Row::Completion(c), &Clocks::new())?;
     }
     Ok(())
 }
