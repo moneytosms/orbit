@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 argon2 = "0.6.0"
 axum = "0.8.9"
+fs4 = "0.6.6"
 getrandom = "0.4.3"
 hex = "0.4.3"
 orbit-core = { version = "0.0.0", path = "../orbit-core" }
@@ -15,6 +16,7 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net"] }
 totp-rs = { version = "6.0.0", features = ["otpauth"] }
+zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 rusqlite = "0.43.0"
