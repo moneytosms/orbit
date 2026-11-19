@@ -6,7 +6,17 @@
   import { Button } from '$lib/components/ui/button'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import Composer from '$lib/Composer.svelte'
-  import { completeTask, labels, moveItem, orderBetween, type Due, type Task } from '$lib/sync'
+  import {
+    completeTask,
+    createPage,
+    labels,
+    moveItem,
+    orderBetween,
+    pagesOf,
+    type Due,
+    type Page,
+    type Task,
+  } from '$lib/sync'
   import { inbox_id } from '../../../wasm/orbit_wasm'
 
   type Entry = { task: Task; depth: number }
@@ -27,6 +37,18 @@
   } = $props()
   let openId = $state<string | null>(null)
   let names = $state(new Map<string, string>())
+  let pageList = $state<Page[]>([])
+
+  // Pages of an Area or Project; the Inbox has none.
+  $effect(() => {
+    void rows
+    if (parentId === inbox_id()) pageList = []
+    else pagesOf(parentId).then((p) => (pageList = p))
+  })
+  async function newPage() {
+    const id = await createPage(parentId, 'Untitled')
+    location.hash = `#/page/${id}`
+  }
 
   // Label names for the chips; reloaded whenever the rows change.
   $effect(() => {
@@ -124,7 +146,11 @@
 </div>
 
 {#if groups.length}
-  <ul use:dndzone={{ items, type: 'task', flipDurationMs: 150, delayTouchStart: 200, useCursorForDetection: true }} onconsider={consider} onfinalize={finalize}>
+  <ul
+    use:dndzone={{ items, type: 'task', flipDurationMs: 150, delayTouchStart: 200, useCursorForDetection: true }}
+    onconsider={consider}
+    onfinalize={finalize}
+  >
     {#each items as g (g.id)}
       <li>
         {@render line(g.task, 0)}
@@ -139,6 +165,20 @@
     <Inbox size={20} class="text-icon" />
     <p>Nothing here. Type a task above and press Enter.</p>
   </div>
+{/if}
+
+{#if parentId !== inbox_id()}
+  <section class="mt-6" aria-label="Pages">
+    <div class="mb-1 flex items-center gap-2">
+      <h2 class="panel-title flex-1">Pages</h2>
+      <Button variant="ghost" onclick={newPage}>New page</Button>
+    </div>
+    <ul>
+      {#each pageList as p (p.id)}
+        <li><a href="#/page/{p.id}" class="block rounded-[9px] px-2 py-2 hover:bg-hover">{p.title}</a></li>
+      {/each}
+    </ul>
+  </section>
 {/if}
 
 <TaskDrawer taskId={openId} onclose={closeDrawer} />

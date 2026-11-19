@@ -7,19 +7,22 @@
     completeGoal,
     createGoal,
     createMilestone,
+    createPage,
     goalProgress,
     goals,
     milestonesOf,
+    pagesOf,
     setMilestoneDone,
     type Goal,
     type Milestone,
+    type Page,
     type Progress,
     type tree,
   } from '$lib/sync'
 
   let { areas }: { areas: Awaited<ReturnType<typeof tree>> } = $props()
 
-  type View = { goal: Goal; pct: number; behind: boolean; milestones: Milestone[] }
+  type View = { goal: Goal; pct: number; behind: boolean; milestones: Milestone[]; pages: Page[] }
   let views = $state(new Map<string, View>())
   let list = $state<Goal[]>([])
 
@@ -34,7 +37,13 @@
     const next = new Map<string, View>()
     for (const goal of active) {
       const { progress, behind } = await goalProgress(goal.id)
-      next.set(goal.id, { goal, pct: Math.round(progress * 100), behind, milestones: await milestonesOf(goal.id) })
+      next.set(goal.id, {
+        goal,
+        pct: Math.round(progress * 100),
+        behind,
+        milestones: await milestonesOf(goal.id),
+        pages: await pagesOf(goal.id),
+      })
     }
     views = next
     list = active
@@ -83,6 +92,10 @@
     amounts[id] = 0
     await addEntry(id, n)
     await load()
+  }
+  async function newPage(goalId: string) {
+    const id = await createPage(goalId, 'Untitled')
+    location.hash = `#/page/${id}`
   }
   async function addMilestone(e: SubmitEvent, id: string) {
     e.preventDefault()
@@ -162,6 +175,15 @@
           aria-label="New milestone for {goal.name}"
         />
       </form>
+      <div class="mt-3 flex items-center gap-2">
+        <h4 class="flex-1 text-xs font-medium text-muted">Pages</h4>
+        <Button variant="ghost" size="sm" onclick={() => newPage(goal.id)}>New page</Button>
+      </div>
+      <ul class="grid gap-0.5">
+        {#each v.pages as p (p.id)}
+          <li><a href="#/page/{p.id}" class="text-sm underline">{p.title}</a></li>
+        {/each}
+      </ul>
     </article>
     {#each subsOf(goal.id) as s (s.id)}
       {@render card(s, true)}
@@ -186,7 +208,14 @@
         <option value="manual">Manual</option>
       </select>
       {#if kind === 'target'}
-        <input type="number" min="0" step="any" bind:value={target} aria-label="Target amount" class="{inputClass} w-full" />
+        <input
+          type="number"
+          min="0"
+          step="any"
+          bind:value={target}
+          aria-label="Target amount"
+          class="{inputClass} w-full"
+        />
       {/if}
       <label class="grid gap-1 text-xs text-muted">
         Start

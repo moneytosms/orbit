@@ -10,8 +10,11 @@ import {
   createGoal,
   createLabel,
   createMilestone,
+  createPage,
   createProject,
   createTask,
+  editPageBody,
+  getPage,
   getSettings,
   getTask,
   goalProgress,
@@ -21,7 +24,9 @@ import {
   onRejected,
   onSignedOut,
   orderBetween,
+  pagesOf,
   quickAdd,
+  renamePage,
   setMilestoneDone,
   sync,
   tasksIn,
@@ -280,13 +285,22 @@ test('updateSettings creates the settings row, then changes only the fields give
 
 const parseLine = (text: string, labelNames: string[] = [], goalNames: string[] = []) =>
   JSON.parse(
-    parse_quick_add(text, '2026-11-19T10:00', JSON.stringify({ areas: [], goals: goalNames, pages: [], labels: labelNames })),
+    parse_quick_add(
+      text,
+      '2026-11-19T10:00',
+      JSON.stringify({ areas: [], goals: goalNames, pages: [], labels: labelNames }),
+    ),
   )
 
 test('quickAdd applies priority, due and a known label in one update', async () => {
   const errand = await createLabel('qa-errand')
   const id = await quickAdd(parseLine('Pay rent p1 #qa-errand tomorrow', ['qa-errand']), INBOX)
-  expect(await getTask(id)).toMatchObject({ title: 'Pay rent', priority: 1, due: { date: '2026-11-20' }, label_ids: [errand] })
+  expect(await getTask(id)).toMatchObject({
+    title: 'Pay rent',
+    priority: 1,
+    due: { date: '2026-11-20' },
+    label_ids: [errand],
+  })
   await sync()
   const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'task.update' && c.args.id === id)
   expect(sent).toMatchObject([{ args: { id, priority: 1, label_ids: [errand] } }])
@@ -331,4 +345,21 @@ test('quickAdd creates an unknown #label on save', async () => {
   const label = (await labels()).find((l) => l.name === 'qa-new')
   expect(label).toBeDefined()
   expect((await getTask(id))!.label_ids).toEqual([label!.id])
+})
+
+test('a Page edit predicts the new body and bumps the rev; a stale base_rev keeps the body', async () => {
+  const a = (await tree()).find((t) => t.area.name === 'qa-goal-area')!.area.id
+  const id = await createPage(a, 'Notes')
+  expect(await getPage(id)).toMatchObject({ title: 'Notes', body: '', rev: 0 })
+  await renamePage(id, 'Meeting notes')
+  await editPageBody(id, '# Hi', 0)
+  expect(await getPage(id)).toMatchObject({ title: 'Meeting notes', body: '# Hi', rev: 1 })
+  await editPageBody(id, 'stale', 0)
+  expect(await getPage(id)).toMatchObject({ body: '# Hi', rev: 1 })
+  expect((await pagesOf(a)).map((p) => p.id)).toEqual([id])
+  await sync()
+  expect(requests.at(-1)!.commands.at(-1)).toMatchObject({
+    type: 'page.edit_body',
+    args: { id, body: 'stale', base_rev: 0 },
+  })
 })

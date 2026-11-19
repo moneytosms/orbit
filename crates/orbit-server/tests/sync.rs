@@ -609,3 +609,125 @@ async fn label_create_is_accepted_without_a_parent() {
     .await;
     assert_eq!(res["statuses"][c], json!({ "status": "ok" }));
 }
+
+fn cmd_from(device: &str, uuid: &str, r#type: &str, args: Value, wall: u64) -> Value {
+    json!({ "uuid": uuid, "type": r#type, "args": args,
+            "hlc": { "wall": wall, "counter": 0, "device": device } })
+}
+
+#[tokio::test]
+async fn two_offline_page_edits_keep_the_second_body_as_a_conflict_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let page = c(0x20);
+    let (dev_a, dev_b) = (
+        "a0000000-0000-7000-8000-0000000000d1",
+        "b0000000-0000-7000-8000-0000000000d2",
+    );
+    // 2026-03-04 UTC.
+    let day = 1_772_582_400_000u64;
+    let setup = vec![
+        cmd(
+            &c(0xd1),
+            "area.create",
+            json!({ "id": AREA, "name": "Home", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xd2),
+            "page.create",
+            json!({ "id": page, "parent_id": AREA, "title": "Notes", "body": "base", "order": "a" }),
+            1001,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": setup })).await;
+    assert_eq!(res["statuses"][c(0xd2)], json!({ "status": "ok" }));
+    let edits = vec![
+        cmd_from(
+            dev_a,
+            &c(0xd3),
+            "page.edit_body",
+            json!({ "id": page, "body": "from A", "base_rev": 0 }),
+            day,
+        ),
+        cmd_from(
+            dev_b,
+            &c(0xd4),
+            "page.edit_body",
+            json!({ "id": page, "body": "from B", "base_rev": 0 }),
+            day + 1,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": edits })).await;
+    assert_eq!(res["statuses"][c(0xd3)], json!({ "status": "ok" }));
+    assert_eq!(res["statuses"][c(0xd4)], json!({ "status": "ok" }));
+    let pages: Vec<&Value> = res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "page")
+        .collect();
+    assert_eq!(pages.len(), 2);
+    let original = pages.iter().find(|p| p["id"] == json!(page)).unwrap();
+    assert_eq!(original["body"], "from A");
+    assert_eq!(original["rev"], 1);
+    let copy = pages.iter().find(|p| p["id"] != json!(page)).unwrap();
+    assert_eq!(copy["title"], "Notes (conflict, b0000000, 2026-03-04)");
+    assert_eq!(copy["body"], "from B");
+    assert_eq!(copy["rev"], 0);
+    assert_eq!(copy["parent_id"], AREA);
+    assert!(copy["order"].as_str().unwrap() > "a");
+
+    // A replay of the losing command makes no second copy.
+    let (_, again) = sync(&app, json!({ "v": 1, "commands": [edits[1].clone()] })).await;
+    let n = again["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "page")
+        .count();
+    assert_eq!(n, 2);
+}
+
+#[tokio::test]
+async fn a_page_cannot_live_under_a_page_or_the_inbox() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (page, nested, in_inbox) = (c(0x30), c(0x31), c(0x32));
+    let cmds = vec![
+        cmd(
+            &c(0xe1),
+            "area.create",
+            json!({ "id": AREA, "name": "Home", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xe2),
+            "page.create",
+            json!({ "id": page, "parent_id": AREA, "title": "Notes" }),
+            1001,
+        ),
+        cmd(
+            &c(0xe3),
+            "page.create",
+            json!({ "id": nested, "parent_id": page, "title": "Nested" }),
+            1002,
+        ),
+        cmd(
+            &c(0xe4),
+            "page.create",
+            json!({ "id": in_inbox, "parent_id": INBOX, "title": "Loose" }),
+            1003,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
+    let st = &res["statuses"];
+    assert_eq!(st[c(0xe2)], json!({ "status": "ok" }));
+    for n in [0xe3, 0xe4] {
+        assert_eq!(
+            st[c(n)],
+            json!({ "status": "error", "code": "bad_parent" }),
+            "{n:x}"
+        );
+    }
+}

@@ -34,6 +34,18 @@ export default defineConfig({
     }),
   ],
   resolve: { alias: { $lib: path.resolve('./src/lib') } },
+  // svelte-tiptap ships .svelte files, so Vite must prebundle its ProseMirror deps together or dev serves two copies.
+  optimizeDeps: {
+    exclude: ['svelte-tiptap'],
+    include: [
+      '@tiptap/core',
+      '@tiptap/pm/state',
+      '@tiptap/pm/view',
+      '@tiptap/pm/model',
+      '@tiptap/starter-kit',
+      '@tiptap/markdown',
+    ],
+  },
   server: { proxy },
   preview: { proxy },
 })

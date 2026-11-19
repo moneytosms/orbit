@@ -2,7 +2,16 @@
   import { onMount, tick, untrack } from 'svelte'
   import Plus from '@lucide/svelte/icons/plus'
   import { Button } from '$lib/components/ui/button'
-  import { createArea, goals as listGoals, labels, quickAdd, quickTitle, tree, type Parsed } from '$lib/sync'
+  import {
+    createArea,
+    goals as listGoals,
+    labels,
+    pages as listPages,
+    quickAdd,
+    quickTitle,
+    tree,
+    type Parsed,
+  } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
 
   let {
@@ -16,14 +25,15 @@
   let draft = $state(untrack(() => prefill))
   let caret = $state(untrack(() => prefill.length))
   let inputEl: HTMLInputElement | undefined = $state()
-  let known = $state({ areas: [] as string[], goals: [] as string[], labels: [] as string[] })
+  let known = $state({ areas: [] as string[], goals: [] as string[], labels: [] as string[], pages: [] as string[] })
 
   async function loadKnown() {
-    const [t, all, gs] = await Promise.all([tree(), labels(), listGoals()])
+    const [t, all, gs, ps] = await Promise.all([tree(), labels(), listGoals(), listPages()])
     known = {
       areas: t.flatMap((x) => [x.area.name, ...x.projects.map((p) => p.name)]),
       goals: gs.map((g) => g.name),
       labels: all.map((l) => l.name),
+      pages: ps.map((x) => x.title),
     }
   }
   onMount(() => {
@@ -36,10 +46,14 @@
     const d = new Date()
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
-  // Pages have no list in the app yet, so they are never known here.
+  // Page titles are known from the local Pages, so `%Title` resolves.
   const parsed: Parsed = $derived(
     JSON.parse(
-      parse_quick_add(draft, localNow(), JSON.stringify({ areas: known.areas, goals: known.goals, pages: [], labels: known.labels })),
+      parse_quick_add(
+        draft,
+        localNow(),
+        JSON.stringify({ areas: known.areas, goals: known.goals, pages: known.pages, labels: known.labels }),
+      ),
     ),
   )
 
