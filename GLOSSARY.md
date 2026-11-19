@@ -67,8 +67,19 @@ An inline reference from a Page or Task description to a Page, Task, Goal, Proje
 A Link seen from the thing it points at.
 
 **Stardust**:
-The points a user earns by completing tasks and goals; subtle, never penalising.
+The points earned by completing Tasks, Milestones, Goals and Check-ins; shown only on the profile, never deducted.
 _Avoid_: Karma, XP, score
+
+**Level**:
+A named rank reached by total Stardust, from Dust to Universe.
+_Avoid_: Rank, tier
+
+**Daily target**:
+The number of Tasks to complete in a day (with a weekly counterpart); hitting it on consecutive working days builds a streak.
+_Avoid_: Goal (that is an outcome), quota
+
+**Day start**:
+The time of day when a new day begins for targets, Check-ins and streaks.
 
 **Quick capture**:
 Adding a task in one short step from any surface (widget, share sheet, hotkey, quick-add, CLI), organised later.
@@ -85,7 +96,7 @@ _Avoid_: Complete (that is for Tasks, Milestones and Goals)
 Where deleted things wait 30 days before they are gone for good.
 
 **Dashboard**:
-The default start view: what's next, Routines due, Goal progress, streaks and stats.
+The default start view: what's next, Routines due, Goal progress and Routine streaks.
 _Avoid_: Today, home
 
 **What's next**:
