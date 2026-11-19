@@ -231,3 +231,18 @@ pub fn backlinks(rows_json: &str, id: &str) -> Result<Vec<String>, JsError> {
         .map(|u| u.to_string())
         .collect())
 }
+
+/// The reminders to show at `now_local` (`YYYY-MM-DDTHH:MM`) over `rows_json` (a Row array),
+/// soonest first, as a JSON array of fires. `cfg_json` is `{ "default_reminder": bool }`.
+#[wasm_bindgen]
+pub fn reminder_schedule(
+    rows_json: &str,
+    now_local: &str,
+    cfg_json: &str,
+) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let cfg: orbit_core::reminder::Config = serde_json::from_str(cfg_json)?;
+    Ok(serde_json::to_string(&orbit_core::reminder::schedule(
+        &rows, now_local, &cfg,
+    ))?)
+}

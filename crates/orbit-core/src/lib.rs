@@ -6,6 +6,7 @@ pub mod order;
 pub mod page;
 pub mod parse;
 pub mod recur;
+pub mod reminder;
 pub mod routine;
 pub mod theme;
 pub mod trash;
@@ -162,6 +163,9 @@ pub struct Task {
     /// The `orbit:` targets in `description`, kept up to date by every write to it.
     #[serde(default)]
     pub links: Vec<Uuid>,
+    /// Offsets before due or deadline, or absolute times. One field for sync.
+    #[serde(default)]
+    pub reminders: Vec<reminder::Reminder>,
 }
 
 fn default_priority() -> u8 {
@@ -226,6 +230,9 @@ pub struct Settings {
     /// Whether undated P1 tasks show in What's next; `None` = true.
     #[serde(default)]
     pub next_undated_p1: Option<bool>,
+    /// A Task with a timed due gets an "at due time" reminder; `None` is on.
+    #[serde(default)]
+    pub default_reminder: Option<bool>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -537,6 +544,8 @@ pub enum Op {
         next_due_days: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         next_undated_p1: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_reminder: Option<bool>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -651,6 +660,13 @@ pub enum Op {
             skip_serializing_if = "Option::is_none"
         )]
         goal_id: Option<Option<Uuid>>,
+        /// `HH:MM` daily reminder; `null` clears it.
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reminder: Option<Option<String>>,
     },
     /// Stops misses from `date` on.
     #[serde(rename = "routine.pause")]
@@ -674,6 +690,18 @@ pub enum Op {
     /// Hides a Task or Milestone from What's next on `date` (null clears).
     #[serde(rename = "item.not_today")]
     ItemNotToday { id: Uuid, date: Option<String> },
+    #[serde(rename = "reminder.add")]
+    ReminderAdd {
+        task_id: Uuid,
+        reminder: reminder::Reminder,
+    },
+    #[serde(rename = "reminder.remove")]
+    ReminderRemove { task_id: Uuid, id: Uuid },
+    /// Adds a one-off absolute reminder at `at` (`YYYY-MM-DDTHH:MM`), its id the command's uuid.
+    #[serde(rename = "reminder.snooze")]
+    ReminderSnooze { task_id: Uuid, at: String },
+    #[serde(rename = "reminder.spend")]
+    ReminderSpend { task_id: Uuid, id: Uuid },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -752,6 +780,10 @@ impl Op {
             | Op::LabelCreate { id, .. }
             | Op::ItemPin { id, .. }
             | Op::ItemNotToday { id, .. } => *id,
+            Op::ReminderAdd { task_id, .. }
+            | Op::ReminderRemove { task_id, .. }
+            | Op::ReminderSnooze { task_id, .. }
+            | Op::ReminderSpend { task_id, .. } => *task_id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
     }
@@ -930,6 +962,7 @@ impl Op {
                 next_deadline_days,
                 next_due_days,
                 next_undated_p1,
+                default_reminder,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -939,6 +972,7 @@ impl Op {
                 ("next_deadline_days", next_deadline_days.is_some()),
                 ("next_due_days", next_due_days.is_some()),
                 ("next_undated_p1", next_undated_p1.is_some()),
+                ("default_reminder", default_reminder.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -951,6 +985,7 @@ impl Op {
                 length_days,
                 time,
                 goal_id,
+                reminder,
                 ..
             } => [
                 ("name", name.is_some()),
@@ -958,6 +993,7 @@ impl Op {
                 ("length_days", length_days.is_some()),
                 ("time", time.is_some()),
                 ("goal_id", goal_id.is_some()),
+                ("reminder", reminder.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -968,6 +1004,10 @@ impl Op {
             Op::CheckinClear { .. } => vec!["cleared"],
             Op::ItemPin { .. } => vec!["pinned_on", "not_today_on"],
             Op::ItemNotToday { .. } => vec!["not_today_on", "pinned_on"],
+            Op::ReminderAdd { .. }
+            | Op::ReminderRemove { .. }
+            | Op::ReminderSnooze { .. }
+            | Op::ReminderSpend { .. } => vec!["reminders"],
         }
     }
 }
@@ -1131,6 +1171,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     pinned_on: None,
                     not_today_on: None,
                     links: vec![],
+                    reminders: vec![],
                 }))
             }
         }
@@ -1272,6 +1313,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::RoutineResume { .. }
         | Op::CheckinSet { .. }
         | Op::CheckinClear { .. } => routine::apply(existing, cmd),
+        Op::ReminderAdd { .. }
+        | Op::ReminderRemove { .. }
+        | Op::ReminderSnooze { .. }
+        | Op::ReminderSpend { .. } => reminder::apply(existing, cmd),
         Op::GoalCreate {
             id,
             parent_id,
@@ -1522,6 +1567,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             next_deadline_days,
             next_due_days,
             next_undated_p1,
+            default_reminder,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1536,6 +1582,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     next_deadline_days: None,
                     next_due_days: None,
                     next_undated_p1: None,
+                    default_reminder: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1548,6 +1595,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 next_deadline_days: next_deadline_days.or(old.next_deadline_days),
                 next_due_days: next_due_days.or(old.next_due_days),
                 next_undated_p1: next_undated_p1.or(old.next_undated_p1),
+                default_reminder: default_reminder.or(old.default_reminder),
             }))
         }
     }
@@ -1833,7 +1881,7 @@ mod tests {
                 "description": "", "due": null, "deadline": null, "duration_min": null,
                 "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
                 "pinned_on": null, "not_today_on": null,
-                "links": [],
+                "links": [], "reminders": [],
             })
         );
     }
@@ -2088,6 +2136,7 @@ mod tests {
                 ("pinned_on", 1000),
                 ("priority", 1000),
                 ("recurrence", 1000),
+                ("reminders", 1000),
                 ("title", 1000),
                 ("trashed_at", 1000)
             ]
@@ -2157,6 +2206,7 @@ mod tests {
             pinned_on: None,
             not_today_on: None,
             links: vec![],
+            reminders: vec![],
         })
     }
 
@@ -2462,6 +2512,7 @@ mod tests {
                 next_deadline_days: None,
                 next_due_days: None,
                 next_undated_p1: None,
+                default_reminder: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

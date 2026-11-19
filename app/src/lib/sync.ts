@@ -18,12 +18,25 @@ import {
   local_day,
   routine_stats,
   whats_next,
+  reminder_schedule,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 import type { LinkItem, LinkTarget } from './Mention'
 
 export type Due = { date: string; time?: string | null }
 export type Recurrence = { rule: string; from_completion: boolean }
+/** An offset before the due (timed) or deadline, or an absolute local `YYYY-MM-DDTHH:MM`. */
+export type Trigger = { kind: 'before'; field: 'due' | 'deadline'; minutes: number } | { kind: 'at'; at: string }
+export type Reminder = Trigger & { id: string; spent: boolean }
+/** One reminder to show; `late` is true once its time has passed. */
+export type Fire = {
+  task_id: string | null
+  routine_id: string | null
+  reminder_id: string | null
+  at: string
+  late: boolean
+  title: string
+}
 export type Task = {
   kind: 'task'
   id: string
@@ -45,6 +58,7 @@ export type Task = {
   trashed_at: number | null
   pinned_on?: string | null
   not_today_on?: string | null
+  reminders: Reminder[]
 }
 export type Area = {
   kind: 'area'
@@ -85,6 +99,7 @@ export type Settings = {
   next_deadline_days?: number | null
   next_due_days?: number | null
   next_undated_p1?: boolean | null
+  default_reminder?: boolean | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -169,6 +184,7 @@ export type Routine = {
   length_days: number | null
   time: string | null
   goal_id: string | null
+  reminder?: string | null
   pauses: { from: string; to: string | null }[]
   order: string
   created_at: number | null
@@ -540,7 +556,7 @@ export async function reorderViews(id: string, beforeId: string | null) {
 export type Parsed = {
   title: string
   tokens: {
-    kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date'
+    kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date' | 'reminder'
     text: string
     value: string
     start: number
@@ -554,6 +570,7 @@ export type Parsed = {
   goal: string | null
   page: string | null
   labels: string[]
+  reminders?: Trigger[]
 }
 
 /** The title a quick-add line saves: the parsed title, then the text of unknown `@ $ %` names in input order. */
@@ -598,6 +615,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
   if (goalId) patch.goal_id = goalId
   if (ids.size) patch.label_ids = [...ids]
   if (Object.keys(patch).length) await updateTask(id, patch)
+  for (const t of p.reminders ?? []) await addReminder(id, t)
   return id
 }
 
@@ -605,7 +623,8 @@ const COMPLETES = ['task.complete', 'goal.complete', 'milestone.update']
 
 /** Applies a command to its row via core; throws the error code if core rejects it. */
 async function predict(rows: IDBObjectStore, cmd: Command) {
-  const existing = await req(rows.get((cmd.args.id as string) ?? SETTINGS))
+  const key = cmd.type.startsWith('reminder.') ? cmd.args.task_id : cmd.args.id
+  const existing = await req(rows.get((key as string) ?? SETTINGS))
   const from = existing ? JSON.stringify(existing) : undefined
   rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
   // A completion also logs a record, as the server does.
@@ -816,11 +835,13 @@ export type RoutineInput = {
   length_days: number | null
   time: string | null
   goal_id: string | null
+  /** `HH:MM` daily reminder on scheduled days. */
+  reminder?: string | null
 }
 /** Creates a Routine under an Area or Project, starting on the Day-start date; returns its id. */
 export async function createRoutine(parentId: string, input: RoutineInput): Promise<string> {
   const id = newId()
-  const { length_days, time, goal_id, ...rest } = input
+  const { length_days, time, goal_id, reminder, ...rest } = input
   await enqueue('routine.create', {
     id,
     parent_id: parentId,
@@ -831,6 +852,7 @@ export async function createRoutine(parentId: string, input: RoutineInput): Prom
     goal_id,
     order: await appendOrder(parentId),
   })
+  if (reminder) await enqueue('routine.update', { id, reminder })
   return id
 }
 export const updateRoutine = (id: string, patch: Partial<RoutineInput>) => enqueue('routine.update', { id, ...patch })
@@ -951,4 +973,31 @@ export async function timelineData(
   }
   for (const v of out.values()) v.milestones.sort(byOrder)
   return out
+}
+
+/** Adds a reminder to a Task. */
+export const addReminder = (taskId: string, trigger: Trigger) =>
+  enqueue('reminder.add', { task_id: taskId, reminder: { id: newId(), ...trigger, spent: false } })
+export const removeReminder = (taskId: string, id: string) => enqueue('reminder.remove', { task_id: taskId, id })
+/** Marks an absolute reminder as fired, so it never shows again. */
+export const spendReminder = (taskId: string, id: string) => enqueue('reminder.spend', { task_id: taskId, id })
+/** Adds a one-off absolute reminder at `at` (`YYYY-MM-DDTHH:MM`). */
+export const snoozeTask = (taskId: string, at: string) => enqueue('reminder.snooze', { task_id: taskId, at })
+/** Whether a Task with a timed due gets a reminder at its due time by default (on unless turned off). */
+export async function getDefaultReminder(): Promise<boolean> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return row?.default_reminder !== false
+}
+export const setDefaultReminder = (default_reminder: boolean) => enqueue('settings.update', { default_reminder })
+/** `YYYY-MM-DDTHH:MM` in the synced timezone at `now`. */
+export async function localMinute(now = Date.now()): Promise<string> {
+  const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return new Date(now + zoneOffset(settings?.timezone ?? '', now) * 60_000).toISOString().slice(0, 16)
+}
+/** The reminders due or coming up (under an hour late ones included), soonest first, from core. */
+export async function reminderSchedule(now = Date.now()): Promise<Fire[]> {
+  const default_reminder = await getDefaultReminder()
+  return JSON.parse(
+    reminder_schedule(JSON.stringify(await allRows()), await localMinute(now), JSON.stringify({ default_reminder })),
+  )
 }

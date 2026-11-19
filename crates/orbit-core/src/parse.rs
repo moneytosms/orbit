@@ -2,6 +2,7 @@
 //! wasm32, but it parses only whole strings (no phrase spans), rejects `in 3 days`, reads
 //! `may` and a bare `5` as dates, and never rolls past dates forward, so it was dropped.
 use crate::recur::{self, Recurrence};
+use crate::reminder::{Anchor, Trigger};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -26,6 +27,7 @@ pub enum Kind {
     Label,
     Priority,
     Date,
+    Reminder,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -59,6 +61,9 @@ pub struct Parsed {
     pub page: Option<String>,
     pub labels: Vec<String>,
     pub recurrence: Option<Recurrence>,
+    /// From `!` tokens; the app gives each an id.
+    #[serde(default)]
+    pub reminders: Vec<Trigger>,
 }
 
 struct Word<'a> {
@@ -305,6 +310,44 @@ pub(crate) fn priority_word(w: &str) -> Option<u8> {
     }
 }
 
+/// A `!` reminder at the start of `w`: the trigger, the token value (minutes, or
+/// `YYYY-MM-DDTHH:MM`) and the words used.
+fn reminder_token(w: &[String], now: &str, today: Option<i64>) -> Option<(Trigger, String, usize)> {
+    let rest = &w[0][1..];
+    if let Some(n) = rest
+        .strip_suffix(['m', 'h', 'd'])
+        .filter(|n| !n.is_empty() && n.len() <= 5 && n.bytes().all(|c| c.is_ascii_digit()))
+        .and_then(|n| n.parse::<u32>().ok())
+    {
+        let unit = match rest.as_bytes()[rest.len() - 1] {
+            b'm' => 1,
+            b'h' => 60,
+            _ => 1440,
+        };
+        let minutes = n * unit;
+        return Some((
+            Trigger::Before {
+                field: Anchor::Due,
+                minutes,
+            },
+            minutes.to_string(),
+            1,
+        ));
+    }
+    let today = today?;
+    let mut ph: Vec<String> = vec![rest.to_string()];
+    ph.extend(w[1..].iter().cloned());
+    if let Some((day, n)) = date_phrase(&ph, today) {
+        let time = ph.get(n).and_then(|t| time_word(t))?;
+        let at = format!("{}T{time}", fmt_date(day));
+        return Some((Trigger::At { at: at.clone() }, at, n + 1));
+    }
+    let time = time_word(rest)?;
+    let past = now.get(11..16).is_some_and(|n| time.as_str() <= n);
+    let at = format!("{}T{time}", fmt_date(today + i64::from(past)));
+    Some((Trigger::At { at: at.clone() }, at, 1))
+}
+
 pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     let ws = words(input);
     let lower: Vec<String> = ws.iter().map(|w| w.text.to_lowercase()).collect();
@@ -319,6 +362,7 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         page: None,
         labels: Vec::new(),
         recurrence: None,
+        reminders: Vec::new(),
     };
     let mut rec_time: Option<String> = None;
     let mut title: Vec<String> = Vec::new();
@@ -372,6 +416,23 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
                 }
             }
             i = last + 1;
+            continue;
+        }
+        if first == '!'
+            && w.text.len() > 1
+            && let Some((trigger, value, used)) = reminder_token(&lower[i..], now, today)
+        {
+            let end = ws[i + used - 1].end;
+            out.tokens.push(Token {
+                kind: Kind::Reminder,
+                text: input[w.start..end].to_string(),
+                value,
+                start: w.start,
+                end,
+                known: true,
+            });
+            out.reminders.push(trigger);
+            i += used;
             continue;
         }
         if let Some(p) = priority_word(w.text) {
@@ -488,6 +549,42 @@ mod tests {
 
     fn d(date: &str, time: Option<&str>) -> Option<(String, Option<String>)> {
         Some((date.into(), time.map(Into::into)))
+    }
+
+    #[test]
+    fn bang_tokens_parse_offsets_and_absolutes() {
+        let r = p("call mom !30m !1h !1d");
+        assert_eq!(r.title, "call mom");
+        let mins: Vec<_> = r
+            .reminders
+            .iter()
+            .map(|t| match t {
+                Trigger::Before { minutes, .. } => *minutes,
+                _ => 0,
+            })
+            .collect();
+        assert_eq!(mins, [30, 60, 1440]);
+        let at = |s: &str| match &p(s).reminders[..] {
+            [Trigger::At { at }] => at.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(at("x !14:00"), "2026-11-19T14:00");
+        assert_eq!(at("x !9am"), "2026-11-20T09:00");
+        assert_eq!(at("x !fri 9am"), "2026-11-20T09:00");
+        assert_eq!(at("x !tomorrow 9am"), "2026-11-20T09:00");
+        let r = p("x !fri 9am");
+        assert_eq!(
+            (r.title.as_str(), r.tokens[0].text.as_str()),
+            ("x", "!fri 9am")
+        );
+        assert_eq!(r.tokens[0].kind, Kind::Reminder);
+    }
+
+    #[test]
+    fn unresolved_bang_stays_in_the_title() {
+        let r = p("wow !nope !fri");
+        assert_eq!(r.title, "wow !nope !fri");
+        assert!(r.reminders.is_empty() && r.tokens.is_empty());
     }
 
     #[test]
@@ -675,10 +772,10 @@ mod tests {
     }
 
     #[test]
-    fn reminders_and_recurrence_stay_in_title() {
+    fn recurrence_with_a_reminder_token() {
         let r = p("water plants every day !9am");
-        assert_eq!(r.title, "water plants !9am");
-        assert!(r.tokens.is_empty());
+        assert_eq!(r.title, "water plants");
+        assert_eq!(r.reminders.len(), 1);
         assert_eq!(
             r.due,
             Some(Due {

@@ -4,6 +4,7 @@
   import Editor from '$lib/Editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import {
+    addReminder,
     createLabel,
     deleteItem,
     getTask,
@@ -11,6 +12,7 @@
     inheritedGoal,
     labels as listLabels,
     pageOwner,
+    removeReminder,
     updateTask,
     type Goal,
     type Label as TaskLabel,
@@ -29,6 +31,9 @@
   let ownerId = $state<string | null>(null)
   let linkVersion = $state(0)
   let newLabel = $state('')
+  let remKind = $state<'due' | 'deadline' | 'at'>('due')
+  let remMinutes = $state(30)
+  let remAt = $state('')
   const priorities = [1, 2, 3, 4] as const
 
   // A side drawer on desktop, a bottom sheet on phones; the viewport is read when a Task opens.
@@ -59,6 +64,32 @@
     inherited = await inheritedGoal(taskId)
     linkVersion++
   }
+
+  async function addRem() {
+    if (!taskId) return
+    if (remKind === 'at') {
+      if (!remAt) return
+      await addReminder(taskId, { kind: 'at', at: remAt })
+    } else {
+      await addReminder(taskId, {
+        kind: 'before',
+        field: remKind,
+        minutes: Math.max(0, Math.round(Number(remMinutes)) || 0),
+      })
+    }
+    task = await getTask(taskId)
+  }
+  async function removeRem(id: string) {
+    if (!taskId) return
+    await removeReminder(taskId, id)
+    task = await getTask(taskId)
+  }
+  const describe = (r: Task['reminders'][number]) =>
+    r.kind === 'at'
+      ? `At ${r.at.replace('T', ' ')}${r.spent ? ' (fired)' : ''}`
+      : r.minutes === 0
+        ? `At ${r.field === 'due' ? 'due time' : 'deadline'}`
+        : `${r.minutes} min before ${r.field === 'due' ? 'due' : 'deadline'}`
 
   function saveTitle(e: FocusEvent) {
     const input = e.currentTarget as HTMLInputElement
@@ -202,6 +233,52 @@
               onchange={saveDuration}
               class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
             />
+          </div>
+        </div>
+
+        <div class="grid gap-1.5">
+          <span class="text-xs font-medium text-muted">Reminders</span>
+          <ul>
+            {#each task.reminders as r (r.id)}
+              <li class="flex items-center justify-between gap-2 py-1 text-sm">
+                <span>{describe(r)}</span>
+                <button
+                  type="button"
+                  class="text-xs underline hover:text-text"
+                  aria-label="Remove reminder"
+                  onclick={() => removeRem(r.id)}>Remove</button
+                >
+              </li>
+            {/each}
+          </ul>
+          <div class="flex flex-wrap items-center gap-2">
+            <select
+              bind:value={remKind}
+              aria-label="Reminder type"
+              class="h-[34px] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+            >
+              <option value="due">Before due</option>
+              <option value="deadline">Before deadline</option>
+              <option value="at">At a time</option>
+            </select>
+            {#if remKind === 'at'}
+              <input
+                type="datetime-local"
+                bind:value={remAt}
+                aria-label="Reminder time"
+                class="h-[34px] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+              />
+            {:else}
+              <input
+                type="number"
+                min="0"
+                bind:value={remMinutes}
+                aria-label="Minutes before"
+                class="h-[34px] w-20 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+              />
+              <span class="text-sm text-muted">min</span>
+            {/if}
+            <Button size="sm" onclick={addRem}>Add reminder</Button>
           </div>
         </div>
 

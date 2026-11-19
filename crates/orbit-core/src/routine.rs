@@ -50,6 +50,9 @@ pub struct Routine {
     /// A Target Goal each done Check-in adds 1 to.
     #[serde(default)]
     pub goal_id: Option<Uuid>,
+    /// `HH:MM` daily reminder on scheduled days; `None` is none.
+    #[serde(default)]
+    pub reminder: Option<String>,
     #[serde(default)]
     pub pauses: Vec<Pause>,
     #[serde(default)]
@@ -152,6 +155,11 @@ fn paused_on(r: &Routine, day: i64) -> bool {
                 .as_deref()
                 .is_none_or(|to| parse_ymd(to).is_some_and(|to| day < to))
     })
+}
+
+/// Whether the Routine is due on `day` (a day number) and not paused.
+pub fn due_on(r: &Routine, day: i64) -> bool {
+    scheduled(r, day) && !paused_on(r, day)
 }
 
 /// Monday is 0.
@@ -323,6 +331,7 @@ fn check_fields(r: &Routine) -> Result<(), ErrorCode> {
         || parse_ymd(&r.start).is_none()
         || r.length_days == Some(0)
         || r.time.as_deref().is_some_and(|t| !is_time(t))
+        || r.reminder.as_deref().is_some_and(|t| !is_time(t))
     {
         return Err(ErrorCode::BadField);
     }
@@ -359,6 +368,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 length_days: *length_days,
                 time: time.clone(),
                 goal_id: *goal_id,
+                reminder: None,
                 pauses: vec![],
                 order: order.clone(),
                 created_at: Some(cmd.hlc.wall),
@@ -374,6 +384,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             length_days,
             time,
             goal_id,
+            reminder,
             ..
         } => {
             let Some(Row::Routine(old)) = existing else {
@@ -390,6 +401,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 length_days: length_days.unwrap_or(old.length_days),
                 time: time.clone().unwrap_or(old.time.clone()),
                 goal_id: goal_id.unwrap_or(old.goal_id),
+                reminder: reminder.clone().unwrap_or(old.reminder.clone()),
                 ..old
             };
             check_fields(&r)?;
@@ -477,6 +489,7 @@ mod tests {
             length_days: None,
             time: None,
             goal_id: None,
+            reminder: None,
             pauses: vec![],
             order: String::new(),
             created_at: None,
@@ -733,6 +746,7 @@ mod tests {
                 length_days: Some(Some(30)),
                 time: Some(Some("07:30".into())),
                 goal_id: Some(Some(uid(5))),
+                reminder: None,
             }),
         )
         .unwrap();
@@ -750,6 +764,7 @@ mod tests {
                 length_days: Some(None),
                 time: Some(None),
                 goal_id: Some(None),
+                reminder: None,
             }),
         )
         .unwrap();

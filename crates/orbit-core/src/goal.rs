@@ -216,6 +216,7 @@ mod tests {
             pinned_on: None,
             not_today_on: None,
             links: vec![],
+            reminders: vec![],
         })
     }
 
@@ -315,6 +316,7 @@ mod tests {
                 length_days: None,
                 time: None,
                 goal_id: link,
+                reminder: None,
                 pauses: vec![],
                 order: String::new(),
                 created_at: None,

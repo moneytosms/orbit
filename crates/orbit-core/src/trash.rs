@@ -363,6 +363,7 @@ mod tests {
             length_days: None,
             time: None,
             goal_id: None,
+            reminder: None,
             pauses: vec![],
             order: String::new(),
             created_at: None,

@@ -42,6 +42,7 @@ import {
   orderBetween,
   pagesOf,
   quickAdd,
+  reminderSchedule,
   renamePage,
   setMilestoneDone,
   sync,
@@ -359,6 +360,15 @@ test('quickAdd turns "every 3 days" into a recurrence with a first due', async (
     recurrence: { rule: '3 days', from_completion: false },
     due: { date: '2026-11-19' },
   })
+})
+
+test('quickAdd turns "!30m" into an offset reminder that fires before the due', async () => {
+  const id = await quickAdd(parseLine('call mom tomorrow 9am !30m'), INBOX)
+  const task = (await getTask(id))!
+  expect(task.title).toBe('call mom')
+  expect(task.reminders).toMatchObject([{ kind: 'before', field: 'due', minutes: 30, spent: false }])
+  const fires = await reminderSchedule(new Date(2026, 10, 20, 8, 20).getTime())
+  expect(fires.filter((f) => f.task_id === id)).toMatchObject([{ at: '2026-11-20T08:30', late: false }])
 })
 
 test('quickAdd keeps an unknown $goal name in the title', async () => {
