@@ -1,4 +1,4 @@
-import { apply, inbox_id, new_id, next_hlc, observe_hlc } from '../../wasm/orbit_wasm'
+import { apply, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
 export type Task = {
@@ -9,12 +9,20 @@ export type Task = {
   completed_at: number | null
   order: string
 }
-type Row = Task | { kind: 'area'; id: string; name: string }
+export type Area = { kind: 'area'; id: string; name: string; order: string }
+export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string }
+export type Section = { kind: 'section'; id: string; parent_id: string; name: string; order: string }
+type Row = Area | Project | Section | Task | { kind: 'label' | 'settings'; id: string }
+type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
-type Command = { uuid: string; type: string; args: { id: string; title?: string }; hlc: Hlc }
+type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
 
+// Matches core `SETTINGS`: the singleton settings row has a fixed id.
+const SETTINGS = '00000000-0000-7000-8000-000000000002'
 const newId = () => new_id(Date.now(), crypto.getRandomValues(new Uint8Array(10)))
 const byHlc = (a: Command, b: Command) => a.hlc.wall - b.hlc.wall || a.hlc.counter - b.hlc.counter
+const byOrder = (a: Ordered, b: Ordered) =>
+  a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : 1
 let changed = () => {}
 let rejected = (_code: string) => {}
 
@@ -29,20 +37,81 @@ export const onSignedOut = (fn: (pending: number) => void) => (signedOut = fn)
 const clock = async (meta: IDBObjectStore): Promise<Hlc> =>
   (await req(meta.get('hlc'))) ?? { wall: 0, counter: 0, device: newId() }
 
-export async function inboxTasks(): Promise<Task[]> {
-  const rows: Row[] = await tx(['rows'], (s) => req(s('rows').getAll()))
+const allRows = () => tx(['rows'], (s) => req<Row[]>(s('rows').getAll()))
+
+/** Areas except the Inbox, each with its Projects, both in display order. */
+export async function tree(): Promise<{ area: Area; projects: Project[] }[]> {
+  const rows = await allRows()
   const inbox = inbox_id()
-  // Ids are UUIDv7, so key order is creation order.
-  return rows.filter((r): r is Task => r.kind === 'task' && r.parent_id === inbox && r.completed_at === null)
+  const areas = rows.filter((r): r is Area => r.kind === 'area' && r.id !== inbox).sort(byOrder)
+  const projects = rows.filter((r): r is Project => r.kind === 'project')
+  return areas.map((area) => ({ area, projects: projects.filter((p) => p.parent_id === area.id).sort(byOrder) }))
 }
 
-export const createTask = (title: string) => enqueue('task.create', { id: newId(), title })
+/** Open Tasks under `parentId`, each followed depth-first by its open subtasks. Depth caps at 3. */
+export async function tasksIn(parentId: string): Promise<{ task: Task; depth: number }[]> {
+  const open = (await allRows()).filter((r): r is Task => r.kind === 'task' && r.completed_at === null)
+  const out: { task: Task; depth: number }[] = []
+  const seen = new Set<string>()
+  const walk = (parent: string, depth: number) => {
+    for (const task of open.filter((t) => t.parent_id === parent).sort(byOrder)) {
+      if (seen.has(task.id)) continue
+      seen.add(task.id)
+      out.push({ task, depth })
+      walk(task.id, Math.min(depth + 1, 3))
+    }
+  }
+  walk(parentId, 0)
+  return out
+}
+
+export const orderAfter = (last?: string) => order_between(last, undefined)
+export const orderBetween = (a?: string, b?: string) => order_between(a, b)
+
+/** Order after the last child of `parentId` (null: top level). Ids are UUIDv7 but orders decide. */
+const appendOrder = async (parentId: string | null) =>
+  orderAfter(
+    (await allRows())
+      .flatMap((r) => ('order' in r && ('parent_id' in r ? r.parent_id : null) === parentId ? [r.order] : []))
+      .sort()
+      .at(-1),
+  )
+
+export const createArea = async (name: string) =>
+  enqueue('area.create', { id: newId(), name, order: await appendOrder(null) })
+export const createProject = async (areaId: string, name: string) =>
+  enqueue('project.create', { id: newId(), parent_id: areaId, name, order: await appendOrder(areaId) })
+export const createSection = async (parentId: string, name: string) =>
+  enqueue('section.create', { id: newId(), parent_id: parentId, name, order: await appendOrder(parentId) })
+/** Without `parentId` the Task lands in the Inbox. */
+export const createTask = async (title: string, parentId?: string) =>
+  enqueue('task.create', {
+    id: newId(),
+    title,
+    parent_id: parentId,
+    order: await appendOrder(parentId ?? inbox_id()),
+  })
 export const completeTask = (id: string) => enqueue('task.complete', { id })
+export const moveItem = (id: string, parentId: string | null, order: string) =>
+  enqueue('item.move', { id, parent_id: parentId, order })
 
 /** Applies a command to its row via core; throws the error code if core rejects it. */
 async function predict(rows: IDBObjectStore, cmd: Command) {
-  const existing = await req(rows.get(cmd.args.id))
+  const existing = await req(rows.get((cmd.args.id as string) ?? SETTINGS))
   rows.put(JSON.parse(apply(existing ? JSON.stringify(existing) : undefined, JSON.stringify(cmd))))
+}
+
+/** Like the server: completing a Task completes its open descendants at the same moment. */
+async function cascade(rows: IDBObjectStore, id: string) {
+  const all = (await req<Row[]>(rows.getAll())).filter((r): r is Task => r.kind === 'task')
+  const at = all.find((t) => t.id === id)?.completed_at
+  if (at == null) return
+  let parents = [id]
+  while (parents.length) {
+    const kids = all.filter((t) => t.completed_at === null && parents.includes(t.parent_id))
+    for (const t of kids) rows.put({ ...t, completed_at: at })
+    parents = kids.map((t) => t.id)
+  }
 }
 
 async function enqueue(type: string, args: Command['args']) {
@@ -50,6 +119,7 @@ async function enqueue(type: string, args: Command['args']) {
     const hlc: Hlc = JSON.parse(next_hlc(JSON.stringify(await clock(s('meta'))), Date.now()))
     const cmd = { uuid: newId(), type, args, hlc }
     await predict(s('rows'), cmd)
+    if (type === 'task.complete') await cascade(s('rows'), args.id as string)
     s('meta').put(hlc, 'hlc')
     s('outbox').put(cmd)
   })
@@ -103,7 +173,7 @@ async function flush() {
         answered++
         if (status.status === 'error') {
           // Undo the guess; the delta brings back the server's row if it has one.
-          s('rows').delete(cmd.args.id)
+          s('rows').delete((cmd.args.id as string) ?? SETTINGS)
           codes.push(status.code)
         }
         s('outbox').delete(cmd.uuid)

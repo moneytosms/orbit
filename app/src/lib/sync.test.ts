@@ -3,9 +3,24 @@ import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { initSync } from '../../wasm/orbit_wasm'
 import { login } from './auth'
-import { completeTask, createTask, inboxTasks, onRejected, onSignedOut, sync } from './sync'
+import { req, tx } from './db'
+import {
+  completeTask,
+  createArea,
+  createProject,
+  createTask,
+  moveItem,
+  onRejected,
+  onSignedOut,
+  orderBetween,
+  sync,
+  tasksIn,
+  tree,
+  type Task,
+} from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
+const inboxTasks = () => tasksIn(INBOX).then((r) => r.map((x) => x.task))
 type Body = { v: number; token?: number; commands: { uuid: string; type: string; args: any }[] }
 
 let online: boolean
@@ -143,4 +158,40 @@ test('a 401 keeps the outbox and reports it; logging in replays it as the new De
   await createTask('After login')
   await sync()
   expect(requests.at(-1)!.commands).toMatchObject([{ hlc: { device: DEVICE } }])
+})
+
+test('tree() lists Areas and their Projects in display order', async () => {
+  await createArea('Home')
+  await createArea('Work')
+  const home = (await tree()).find((t) => t.area.name === 'Home')!.area
+  await createProject(home.id, 'Kitchen')
+  await createProject(home.id, 'Garage')
+  const shape = (await tree()).map((t) => [t.area.name, t.projects.map((p) => p.name)])
+  expect(shape).toEqual([
+    ['Home', ['Kitchen', 'Garage']],
+    ['Work', []],
+  ])
+  expect((await tree()).some((t) => t.area.id === INBOX)).toBe(false)
+})
+
+test('moveItem places a Task at the predicted order at once', async () => {
+  for (const title of ['X1', 'X2', 'X3']) await createTask(title)
+  const tasks = await inboxTasks()
+  const [x1, , x3] = ['X1', 'X2', 'X3'].map((title) => tasks.find((t) => t.title === title)!)
+  await moveItem(x3.id, INBOX, orderBetween(undefined, x1.order))
+  const titles = (await inboxTasks()).map((t) => t.title).filter((t) => t.startsWith('X'))
+  expect(titles).toEqual(['X3', 'X1', 'X2'])
+})
+
+test('completing a parent completes its open subtasks locally at the same moment', async () => {
+  await createTask('Parent')
+  const parent = (await inboxTasks()).find((t) => t.title === 'Parent')!
+  await createTask('Child', parent.id)
+  const child = (await tasksIn(parent.id))[0].task
+  await completeTask(parent.id)
+  const row = (id: string) => tx(['rows'], (s) => req<Task>(s('rows').get(id)))
+  const p = await row(parent.id)
+  const c = await row(child.id)
+  expect(p.completed_at).not.toBeNull()
+  expect(c.completed_at).toBe(p.completed_at)
 })

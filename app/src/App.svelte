@@ -6,13 +6,16 @@
   import Settings from './lib/screens/Settings.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
-  import { readRoute, routes } from './lib/routes'
-  import { inboxTasks, onRejected, onSignedOut, start, type Task } from './lib/sync'
+  import { readScreen, routes, type Screen } from './lib/routes'
+  import { onRejected, onSignedOut, start, tasksIn, tree } from './lib/sync'
+  import { inbox_id } from '../wasm/orbit_wasm'
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
   let pending = $state(0)
-  let tasks: Task[] = $state([])
-  let route = $state(readRoute())
+  let areas: Awaited<ReturnType<typeof tree>> = $state([])
+  let inboxCount = $state(0)
+  let rows: Awaited<ReturnType<typeof tasksIn>> = $state([])
+  let screen: Screen = $state(readScreen())
   let toast = $state('')
   let hide: ReturnType<typeof setTimeout>
 
@@ -25,7 +28,21 @@
     pending = n
     gate = 'login'
   })
-  const refresh = async () => (tasks = await inboxTasks())
+  /** The parent whose Tasks the list shows; undefined on screens without a list. */
+  const listParent = (s: Screen) => ('id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined)
+  const parent = $derived(listParent(screen))
+  const title = $derived.by(() => {
+    const s = screen
+    if (s.name === 'area') return areas.find((a) => a.area.id === s.id)?.area.name ?? 'Area'
+    if (s.name === 'project') return areas.flatMap((a) => a.projects).find((p) => p.id === s.id)?.name ?? 'Project'
+    return routes[s.name].label
+  })
+
+  const refresh = async () => {
+    areas = await tree()
+    rows = parent ? await tasksIn(parent) : []
+    inboxCount = (await tasksIn(inbox_id())).length
+  }
 
   let started = false
   function enter() {
@@ -52,18 +69,23 @@
   }
 </script>
 
-<svelte:window onhashchange={() => (route = readRoute())} />
+<svelte:window
+  onhashchange={() => {
+    screen = readScreen()
+    refresh()
+  }}
+/>
 
 {#if gate === 'setup' || gate === 'login'}
   <Auth mode={gate} {pending} done={enter} />
 {:else if gate === 'app'}
-  <Shell {route} inboxCount={tasks.length} onNew={newTask}>
-    {#if route === 'inbox'}
-      <Inbox {tasks} />
-    {:else if route === 'settings'}
+  <Shell {screen} {title} {areas} {inboxCount} onNew={newTask}>
+    {#if parent}
+      <Inbox parentId={parent} {title} {rows} />
+    {:else if screen.name === 'settings'}
       <Settings />
     {:else}
-      <Stub title={routes[route].label} />
+      <Stub {title} />
     {/if}
   </Shell>
 {/if}
