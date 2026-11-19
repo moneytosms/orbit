@@ -29,6 +29,33 @@ async fn offline_edits_to_different_fields_both_survive() {
 }
 
 #[tokio::test]
+async fn offline_edits_to_priority_and_due_both_survive() {
+    let s = server().await;
+    let (mut a, mut b) = (device(&s).await, device(&s).await);
+    let id = a.create_task("Buy milk", 1000).unwrap();
+    a.sync(1000).await.unwrap();
+    b.sync(1000).await.unwrap();
+
+    a.update_task(id, serde_json::json!({ "priority": 1 }), 2000)
+        .unwrap();
+    b.update_task(
+        id,
+        serde_json::json!({ "due": { "date": "2026-03-04" } }),
+        2100,
+    )
+    .unwrap();
+    a.sync(3000).await.unwrap();
+    b.sync(3000).await.unwrap();
+    a.sync(3000).await.unwrap();
+
+    for d in [&a, &b] {
+        let t = d.task(id).unwrap().unwrap();
+        assert_eq!(t.priority, 1);
+        assert_eq!(t.due.unwrap().date, "2026-03-04");
+    }
+}
+
+#[tokio::test]
 async fn a_late_offline_edit_never_overwrites_a_newer_one() {
     let s = server().await;
     let (mut a, mut b) = (device(&s).await, device(&s).await);

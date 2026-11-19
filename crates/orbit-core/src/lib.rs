@@ -50,6 +50,9 @@ impl Hlc {
 /// The built-in Area every new Task lands in.
 pub const INBOX: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0001);
 
+/// The synced Settings record: one row, same id everywhere.
+pub const SETTINGS: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0002);
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Area {
     pub id: Uuid,
@@ -90,6 +93,50 @@ pub struct Task {
     pub completed_at: Option<u64>,
     #[serde(default)]
     pub order: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub due: Option<Due>,
+    /// `YYYY-MM-DD`.
+    #[serde(default)]
+    pub deadline: Option<String>,
+    #[serde(default)]
+    pub duration_min: Option<u32>,
+    /// 1 (P1, most urgent) to 4 (P4, the default).
+    #[serde(default = "default_priority")]
+    pub priority: u8,
+    #[serde(default)]
+    pub label_ids: Vec<Uuid>,
+}
+
+fn default_priority() -> u8 {
+    4
+}
+
+/// A floating local date, with an optional time of day.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Due {
+    /// `YYYY-MM-DD`.
+    pub date: String,
+    /// `HH:MM`.
+    #[serde(default)]
+    pub time: Option<String>,
+}
+
+/// A flat, global tag.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Label {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Settings {
+    pub id: Uuid,
+    #[serde(default)]
+    pub theme: String,
+    #[serde(default)]
+    pub accent: String,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -100,6 +147,8 @@ pub enum Row {
     Project(Project),
     Section(Section),
     Task(Task),
+    Label(Label),
+    Settings(Settings),
 }
 
 impl Row {
@@ -109,13 +158,15 @@ impl Row {
             Row::Project(p) => p.id,
             Row::Section(s) => s.id,
             Row::Task(t) => t.id,
+            Row::Label(l) => l.id,
+            Row::Settings(s) => s.id,
         }
     }
 
-    /// The row this one lives under. Areas have none.
+    /// The row this one lives under. Areas, Labels and Settings have none.
     pub fn parent_id(&self) -> Option<Uuid> {
         match self {
-            Row::Area(_) => None,
+            Row::Area(_) | Row::Label(_) | Row::Settings(_) => None,
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
             Row::Task(t) => Some(t.parent_id),
@@ -183,10 +234,87 @@ pub enum Op {
         order: String,
     },
     /// Only the fields present change.
+    /// Absent = unchanged; `null` clears an optional field.
     #[serde(rename = "task.update")]
-    TaskUpdate { id: Uuid, title: Option<String> },
+    TaskUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        due: Option<Option<Due>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        deadline: Option<Option<String>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        duration_min: Option<Option<u32>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        priority: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ids: Option<Vec<Uuid>>,
+    },
     #[serde(rename = "task.complete")]
     TaskComplete { id: Uuid },
+    #[serde(rename = "label.create")]
+    LabelCreate { id: Uuid, name: String },
+    /// Creates the Settings row if missing; only the fields present change.
+    #[serde(rename = "settings.update")]
+    SettingsUpdate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        theme: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accent: Option<String>,
+    },
+}
+
+/// Deserializes a present value, `null` included, as `Some`, so that an absent field
+/// (via `default`) stays `None`.
+fn some<'de, T, D>(d: D) -> Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    T::deserialize(d).map(Some)
+}
+
+fn is_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 10
+        && b.iter().enumerate().all(|(i, c)| {
+            if i == 4 || i == 7 {
+                *c == b'-'
+            } else {
+                c.is_ascii_digit()
+            }
+        })
+        && matches!(s[5..7].parse::<u8>(), Ok(1..=12))
+        && matches!(s[8..10].parse::<u8>(), Ok(1..=31))
+}
+
+fn is_time(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 5
+        && b.iter().enumerate().all(|(i, c)| {
+            if i == 2 {
+                *c == b':'
+            } else {
+                c.is_ascii_digit()
+            }
+        })
+        && s[0..2].parse::<u8>().is_ok_and(|h| h < 24)
+        && s[3..5].parse::<u8>().is_ok_and(|m| m < 60)
 }
 
 impl Op {
@@ -199,7 +327,9 @@ impl Op {
             | Op::TaskCreate { id, .. }
             | Op::ItemMove { id, .. }
             | Op::TaskUpdate { id, .. }
-            | Op::TaskComplete { id } => *id,
+            | Op::TaskComplete { id }
+            | Op::LabelCreate { id, .. } => *id,
+            Op::SettingsUpdate { .. } => SETTINGS,
         }
     }
 
@@ -209,9 +339,38 @@ impl Op {
             Op::AreaCreate { .. }
             | Op::ProjectCreate { .. }
             | Op::SectionCreate { .. }
-            | Op::TaskCreate { .. } => vec![],
+            | Op::TaskCreate { .. }
+            | Op::LabelCreate { .. } => vec![],
             Op::ItemMove { .. } => vec!["parent_id", "order"],
-            Op::TaskUpdate { title, .. } => title.iter().map(|_| "title").collect(),
+            Op::TaskUpdate {
+                title,
+                description,
+                due,
+                deadline,
+                duration_min,
+                priority,
+                label_ids,
+                ..
+            } => [
+                ("title", title.is_some()),
+                ("description", description.is_some()),
+                ("due", due.is_some()),
+                ("deadline", deadline.is_some()),
+                ("duration_min", duration_min.is_some()),
+                ("priority", priority.is_some()),
+                ("label_ids", label_ids.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
+            Op::SettingsUpdate { theme, accent } => {
+                [("theme", theme.is_some()), ("accent", accent.is_some())]
+                    .into_iter()
+                    .filter(|(_, present)| *present)
+                    .map(|(f, _)| f)
+                    .collect()
+            }
             Op::TaskComplete { .. } => vec!["completed_at"],
         }
     }
@@ -228,6 +387,8 @@ pub enum ErrorCode {
     TitleRequired,
     /// The parent breaks the tree rules, is missing, or would make a cycle.
     BadParent,
+    /// A field value is out of range or the wrong shape.
+    BadField,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -349,6 +510,12 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     title: title.into(),
                     completed_at: None,
                     order: order.clone(),
+                    description: String::new(),
+                    due: None,
+                    deadline: None,
+                    duration_min: None,
+                    priority: default_priority(),
+                    label_ids: vec![],
                 }))
             }
         }
@@ -381,17 +548,49 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..t
                 })),
+                Some(Row::Label(_) | Row::Settings(_)) => Err(ErrorCode::BadParent),
                 None => Err(ErrorCode::NotFound),
             }
         }
-        Op::TaskUpdate { title, .. } => match existing {
+        Op::TaskUpdate {
+            title,
+            description,
+            due,
+            deadline,
+            duration_min,
+            priority,
+            label_ids,
+            ..
+        } => match existing {
             Some(Row::Task(t)) => {
                 let title = match title.as_deref().map(str::trim) {
                     Some("") => return Err(ErrorCode::TitleRequired),
                     Some(new) => new.into(),
                     None => t.title.clone(),
                 };
-                Ok(Row::Task(Task { title, ..t }))
+                if let Some(Some(d)) = due
+                    && (!is_date(&d.date) || d.time.as_deref().is_some_and(|t| !is_time(t)))
+                {
+                    return Err(ErrorCode::BadField);
+                }
+                if let Some(Some(d)) = deadline
+                    && !is_date(d)
+                {
+                    return Err(ErrorCode::BadField);
+                }
+                if priority.is_some_and(|p| !(1..=4).contains(&p)) {
+                    return Err(ErrorCode::BadField);
+                }
+                Ok(Row::Task(Task {
+                    title,
+                    description: description.clone().unwrap_or(t.description),
+                    due: due.clone().unwrap_or(t.due),
+                    deadline: deadline.clone().unwrap_or(t.deadline),
+                    duration_min: duration_min.unwrap_or(t.duration_min),
+                    priority: priority.unwrap_or(t.priority),
+                    label_ids: label_ids.clone().unwrap_or(t.label_ids),
+                    ..t
+                }))
             }
             _ => Err(ErrorCode::NotFound),
         },
@@ -402,6 +601,35 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             })),
             _ => Err(ErrorCode::NotFound),
         },
+        Op::LabelCreate { id, name } => {
+            let name = name.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if name.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else {
+                Ok(Row::Label(Label {
+                    id: *id,
+                    name: name.into(),
+                }))
+            }
+        }
+        Op::SettingsUpdate { theme, accent } => {
+            let old = match existing {
+                Some(Row::Settings(s)) => s,
+                Some(_) => return Err(ErrorCode::BadField),
+                None => Settings {
+                    id: SETTINGS,
+                    theme: String::new(),
+                    accent: String::new(),
+                },
+            };
+            Ok(Row::Settings(Settings {
+                id: SETTINGS,
+                theme: theme.clone().unwrap_or(old.theme),
+                accent: accent.clone().unwrap_or(old.accent),
+            }))
+        }
     }
 }
 
@@ -582,6 +810,8 @@ mod tests {
             serde_json::json!({
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
+                "description": "", "due": null, "deadline": null, "duration_min": null,
+                "priority": 4, "label_ids": [],
             })
         );
     }
@@ -720,8 +950,14 @@ mod tests {
             fields,
             [
                 ("completed_at", 1000),
+                ("deadline", 1000),
+                ("description", 1000),
+                ("due", 1000),
+                ("duration_min", 1000),
+                ("label_ids", 1000),
                 ("order", 1000),
                 ("parent_id", 1000),
+                ("priority", 1000),
                 ("title", 1000)
             ]
         );
@@ -770,6 +1006,12 @@ mod tests {
             title: "T".into(),
             completed_at: None,
             order: "a".into(),
+            description: String::new(),
+            due: None,
+            deadline: None,
+            duration_min: None,
+            priority: 4,
+            label_ids: vec![],
         })
     }
 
@@ -797,6 +1039,7 @@ mod tests {
                     parent_id: parent.id(),
                     ..x
                 }),
+                other => other,
             };
             check_parent(&child, Some(parent))
         };
@@ -904,5 +1147,181 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(task(&apply(None, &create).unwrap()).parent_id, INBOX);
+    }
+
+    fn update(args: serde_json::Value) -> Command {
+        let mut args = args;
+        args["id"] = serde_json::json!(TASK);
+        cmd(
+            "01900000-0000-7000-8000-0000000000d1",
+            "task.update",
+            args,
+            2000,
+        )
+    }
+
+    fn updated(args: serde_json::Value) -> Task {
+        let Row::Task(t) = apply(Some(created()), &update(args)).unwrap() else {
+            panic!()
+        };
+        t
+    }
+
+    #[test]
+    fn a_new_task_has_default_fields() {
+        let Row::Task(t) = created() else { panic!() };
+        assert_eq!(t.description, "");
+        assert_eq!((t.due, t.deadline, t.duration_min), (None, None, None));
+        assert_eq!(t.priority, 4);
+        assert!(t.label_ids.is_empty());
+    }
+
+    #[test]
+    fn an_old_task_row_without_the_new_fields_still_parses() {
+        let row: Row = serde_json::from_value(serde_json::json!({
+            "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Old", "completed_at": null,
+        }))
+        .unwrap();
+        let Row::Task(t) = row else { panic!() };
+        assert_eq!((t.priority, t.description.as_str()), (4, ""));
+    }
+
+    #[test]
+    fn task_update_sets_each_field() {
+        let label = uid(7);
+        let t = updated(serde_json::json!({
+            "description": "Two litres", "due": { "date": "2026-03-04", "time": "09:30" },
+            "deadline": "2026-03-10", "duration_min": 25, "priority": 1, "label_ids": [label],
+        }));
+        assert_eq!(t.description, "Two litres");
+        assert_eq!(
+            t.due,
+            Some(Due {
+                date: "2026-03-04".into(),
+                time: Some("09:30".into())
+            })
+        );
+        assert_eq!(t.deadline.as_deref(), Some("2026-03-10"));
+        assert_eq!((t.duration_min, t.priority), (Some(25), 1));
+        assert_eq!(t.label_ids, vec![label]);
+        let date_only = updated(serde_json::json!({ "due": { "date": "2026-03-04" } }));
+        assert_eq!(date_only.due.unwrap().time, None);
+    }
+
+    #[test]
+    fn task_update_null_clears_optional_fields_and_absent_leaves_them() {
+        let set = updated(serde_json::json!({
+            "due": { "date": "2026-03-04" }, "deadline": "2026-03-10", "duration_min": 25,
+            "priority": 2,
+        }));
+        let step = |args| {
+            let Row::Task(t) = apply(Some(Row::Task(set.clone())), &update(args)).unwrap() else {
+                panic!()
+            };
+            t
+        };
+        let cleared =
+            step(serde_json::json!({ "due": null, "deadline": null, "duration_min": null }));
+        assert_eq!(
+            (cleared.due, cleared.deadline, cleared.duration_min),
+            (None, None, None)
+        );
+        assert_eq!(cleared.priority, 2);
+        let untouched = step(serde_json::json!({ "title": "Renamed" }));
+        assert_eq!(
+            Task {
+                title: "Buy milk".into(),
+                ..untouched
+            },
+            set
+        );
+    }
+
+    #[test]
+    fn task_update_fields_lists_exactly_the_fields_present() {
+        let c = update(serde_json::json!({ "due": null, "priority": 3 }));
+        assert_eq!(c.op.fields(), vec!["due", "priority"]);
+        let round: Command = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(round.op.fields(), vec!["due", "priority"]);
+    }
+
+    #[test]
+    fn task_update_rejects_bad_values() {
+        for bad in [
+            serde_json::json!({ "priority": 0 }),
+            serde_json::json!({ "priority": 5 }),
+            serde_json::json!({ "due": { "date": "2026-3-4" } }),
+            serde_json::json!({ "due": { "date": "2026-13-04" } }),
+            serde_json::json!({ "due": { "date": "2026-03-04", "time": "9:30" } }),
+            serde_json::json!({ "due": { "date": "2026-03-04", "time": "24:00" } }),
+            serde_json::json!({ "deadline": "tomorrow" }),
+        ] {
+            assert_eq!(
+                apply(Some(created()), &update(bad.clone())),
+                Err(ErrorCode::BadField),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            apply(
+                Some(created()),
+                &update(serde_json::json!({ "title": " " }))
+            ),
+            Err(ErrorCode::TitleRequired)
+        );
+    }
+
+    #[test]
+    fn label_create_trims_the_name_and_rejects_blank_or_duplicate_ids() {
+        let create = |name: &str| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000e1",
+                "label.create",
+                serde_json::json!({ "id": uid(8), "name": name }),
+                1000,
+            )
+        };
+        let row = apply(None, &create("  errand ")).unwrap();
+        assert_eq!(
+            row,
+            Row::Label(Label {
+                id: uid(8),
+                name: "errand".into()
+            })
+        );
+        assert_eq!(check_parent(&row, None), Ok(()));
+        assert_eq!(apply(None, &create(" ")), Err(ErrorCode::TitleRequired));
+        assert_eq!(apply(Some(row), &create("x")), Err(ErrorCode::Exists));
+    }
+
+    #[test]
+    fn settings_update_creates_the_row_then_changes_only_the_fields_present() {
+        let up = |args| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000e2",
+                "settings.update",
+                args,
+                1000,
+            )
+        };
+        let first = apply(None, &up(serde_json::json!({ "theme": "dracula" }))).unwrap();
+        assert_eq!(
+            first,
+            Row::Settings(Settings {
+                id: SETTINGS,
+                theme: "dracula".into(),
+                accent: String::new()
+            })
+        );
+        let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();
+        let Row::Settings(s) = second else { panic!() };
+        assert_eq!(
+            (s.theme.as_str(), s.accent.as_str()),
+            ("dracula", "#ff0000")
+        );
+        assert_eq!(
+            up(serde_json::json!({ "theme": "x" })).op.target(),
+            SETTINGS
+        );
     }
 }
