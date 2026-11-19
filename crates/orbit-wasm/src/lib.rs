@@ -30,18 +30,31 @@ pub fn apply(existing: Option<String>, command: &str) -> Result<String, JsError>
     }
 }
 
-/// The completion record `command` (a `task.complete`) logs on `existing`, if any.
+/// The completion record `command` (a task, goal or milestone completion) logs on `existing`, if any.
 #[wasm_bindgen]
 pub fn completion_for(existing: Option<String>, command: &str) -> Result<Option<String>, JsError> {
     let existing: Option<Row> = existing.map(|s| serde_json::from_str(&s)).transpose()?;
     let cmd: Command = serde_json::from_str(command)?;
-    let Some(Row::Task(task)) = existing else {
+    let Some(old) = existing else {
         return Ok(None);
     };
-    match orbit_core::complete_effects(task, &cmd).1 {
+    match orbit_core::completion_for(&old, &cmd) {
         Some(c) => Ok(Some(serde_json::to_string(&Row::Completion(c))?)),
         None => Ok(None),
     }
+}
+
+/// `{progress, behind}` for goal `goal_id` over `rows_json` (a Row array); `today` is `YYYY-MM-DD`.
+#[wasm_bindgen]
+pub fn goal_progress(rows_json: &str, goal_id: &str, today: &str) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let id: orbit_core::Uuid = goal_id.parse().map_err(|_| JsError::new("bad goal id"))?;
+    let Some(Row::Goal(goal)) = rows.iter().find(|r| r.id() == id) else {
+        return Err(JsError::new("no such goal"));
+    };
+    let progress = orbit_core::goal::progress(goal, &rows);
+    let behind = orbit_core::goal::behind_pace(goal, progress, today);
+    Ok(serde_json::json!({ "progress": progress, "behind": behind }).to_string())
 }
 
 #[wasm_bindgen]

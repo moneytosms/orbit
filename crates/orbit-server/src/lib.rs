@@ -263,8 +263,16 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
         None => match apply_lww(existing.clone(), &mut clocks, cmd) {
             Ok(row) => {
                 write(&tx, &row, &clocks)?;
+                if let Some(old) = &existing
+                    && matches!(
+                        &cmd.op,
+                        Op::GoalComplete { .. } | Op::MilestoneUpdate { .. }
+                    )
+                {
+                    log_completion(&tx, old, cmd)?;
+                }
                 if let Op::TaskComplete { id, .. } = &cmd.op {
-                    if let Some(Row::Task(old)) = existing {
+                    if let Some(old) = &existing {
                         log_completion(&tx, old, cmd)?;
                     }
                     // A recurring Task only moves on; its subtasks stay as they are.
@@ -305,6 +313,8 @@ fn check_tree(
             | Op::ProjectCreate { .. }
             | Op::SectionCreate { .. }
             | Op::TaskCreate { .. }
+            | Op::GoalCreate { .. }
+            | Op::MilestoneCreate { .. }
             | Op::ItemMove { .. }
     ) {
         return Ok(None);
@@ -319,6 +329,16 @@ fn check_tree(
     };
     if let Err(code) = check_parent(&candidate, parent.as_ref()) {
         return Ok(Some(code));
+    }
+    // Sub-goals go one level deep, under a top-level Goal in an Area.
+    if let (Row::Goal(_), Some(p @ Row::Goal(_))) = (&candidate, parent.as_ref()) {
+        let grandparent = match p.parent_id() {
+            Some(gid) => load_row(conn, &gid.to_string())?,
+            None => None,
+        };
+        if let Err(code) = orbit_core::goal::check_nesting(p, grandparent.as_ref()) {
+            return Ok(Some(code));
+        }
     }
     // Walk up from the new parent; meeting the row itself would make a cycle.
     let mut next = candidate.parent_id();
@@ -370,17 +390,15 @@ fn complete_descendants(
         let old = row.clone();
         if let Ok(row) = apply_lww(Some(row), &mut clocks, &done) {
             write(conn, &row, &clocks)?;
-            if let Row::Task(old) = old {
-                log_completion(conn, old, &done)?;
-            }
+            log_completion(conn, &old, &done)?;
         }
     }
     Ok(())
 }
 
-/// Stores the completion record that completing `old` under `cmd` produces, if any.
-fn log_completion(conn: &Connection, old: orbit_core::Task, cmd: &Command) -> rusqlite::Result<()> {
-    if let (_, Some(c)) = orbit_core::complete_effects(old, cmd) {
+/// Stores the completion record that `cmd` produces on `old`, if any.
+fn log_completion(conn: &Connection, old: &Row, cmd: &Command) -> rusqlite::Result<()> {
+    if let Some(c) = orbit_core::completion_for(old, cmd) {
         write(conn, &Row::Completion(c), &Clocks::new())?;
     }
     Ok(())

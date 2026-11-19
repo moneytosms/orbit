@@ -7,11 +7,14 @@ import { req, tx } from './db'
 import {
   completeTask,
   createArea,
+  createGoal,
   createLabel,
+  createMilestone,
   createProject,
   createTask,
   getSettings,
   getTask,
+  goalProgress,
   labels,
   moveItem,
   moveTo,
@@ -19,6 +22,7 @@ import {
   onSignedOut,
   orderBetween,
   quickAdd,
+  setMilestoneDone,
   sync,
   tasksIn,
   tree,
@@ -274,9 +278,9 @@ test('updateSettings creates the settings row, then changes only the fields give
   expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }, { accent: '' }])
 })
 
-const parseLine = (text: string, labelNames: string[] = []) =>
+const parseLine = (text: string, labelNames: string[] = [], goalNames: string[] = []) =>
   JSON.parse(
-    parse_quick_add(text, '2026-11-19T10:00', JSON.stringify({ areas: [], goals: [], pages: [], labels: labelNames })),
+    parse_quick_add(text, '2026-11-19T10:00', JSON.stringify({ areas: [], goals: goalNames, pages: [], labels: labelNames })),
   )
 
 test('quickAdd applies priority, due and a known label in one update', async () => {
@@ -300,6 +304,26 @@ test('quickAdd turns "every 3 days" into a recurrence with a first due', async (
 test('quickAdd keeps an unknown $goal name in the title', async () => {
   const id = await quickAdd(parseLine('Read book $qa-goal'), INBOX)
   expect((await getTask(id))!.title).toBe('Read book $qa-goal')
+})
+
+test('quickAdd links a known $goal and strips the token', async () => {
+  await createArea('qa-goal-area')
+  const areaId = (await tree()).find((t) => t.area.name === 'qa-goal-area')!.area.id
+  const goal = await createGoal(areaId, 'Get Fit')
+  const id = await quickAdd(parseLine('run 5k $Get Fit', [], ['Get Fit']), INBOX)
+  expect(await getTask(id)).toMatchObject({ title: 'run 5k', goal_id: goal })
+})
+
+test('a goal counts a done milestone and reports behind pace against its dates', async () => {
+  const a = (await tree()).find((t) => t.area.name === 'qa-goal-area')!.area.id
+  const g = await createGoal(a, 'Pace', { start: '2026-01-01', target_date: '2099-12-31' })
+  const m = await createMilestone(g, 'Half way')
+  await createMilestone(g, 'Done')
+  expect((await goalProgress(g)).progress).toBe(0)
+  await setMilestoneDone(m, true)
+  const after = await goalProgress(g)
+  expect(after.progress).toBe(0.5)
+  expect(after.behind).toBe(false)
 })
 
 test('quickAdd creates an unknown #label on save', async () => {
