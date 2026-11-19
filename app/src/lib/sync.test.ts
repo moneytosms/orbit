@@ -13,6 +13,12 @@ import {
   createPage,
   createProject,
   createTask,
+  archived,
+  archiveItem,
+  deleteItem,
+  restoreItem,
+  trashed,
+  unarchiveItem,
   editPageBody,
   getPage,
   getSettings,
@@ -47,6 +53,7 @@ let token = 0
 let gate: Promise<void> | undefined
 let httpStatus = 200
 let rejectWith: string | undefined
+let full = false
 
 // Stand-in server: accepts every command and returns whatever delta the test sets.
 const DEVICE = '01900000-0000-7000-8000-0000000000d1'
@@ -66,8 +73,9 @@ vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
   if (httpStatus !== 200) return new Response('', { status: httpStatus })
   const status = rejectWith ? { status: 'error', code: rejectWith } : { status: 'ok' }
   const statuses = Object.fromEntries(body.commands.map((c) => [c.uuid, status]))
-  const res = { statuses, delta, token: ++token }
+  const res = { statuses, delta, token: ++token, full }
   delta = []
+  full = false
   return new Response(JSON.stringify(res))
 })
 
@@ -362,4 +370,61 @@ test('a Page edit predicts the new body and bumps the rev; a stale base_rev keep
     type: 'page.edit_body',
     args: { id, body: 'stale', base_rev: 0 },
   })
+})
+
+test('delete hides a Task and its subtasks, Trash lists it and restore brings it back', async () => {
+  await sync()
+  const parent = await createTask('Trash me')
+  const child = await createTask('Child', parent)
+  await sync()
+  await deleteItem(parent)
+  expect((await inboxTasks()).map((t) => t.title)).not.toContain('Trash me')
+  expect((await tasksIn(parent)).map((r) => r.task.id)).not.toContain(child)
+  expect((await trashed()).map((r) => r.id)).toEqual([parent])
+  await sync()
+  expect(requests.at(-1)!.commands).toMatchObject([{ type: 'item.delete', args: { id: parent } }])
+  await restoreItem(parent)
+  expect((await inboxTasks()).map((t) => t.title)).toContain('Trash me')
+  expect(await trashed()).toEqual([])
+  await sync()
+})
+
+test('archive hides an Area with its Projects; unarchive restores them', async () => {
+  await createArea('Shelf')
+  const area = (await tree()).find((t) => t.area.name === 'Shelf')!.area
+  await createProject(area.id, 'Inside')
+  await archiveItem(area.id)
+  expect((await tree()).map((t) => t.area.name)).not.toContain('Shelf')
+  expect((await archived()).map((r) => r.id)).toEqual([area.id])
+  await unarchiveItem(area.id)
+  expect((await tree()).map((t) => t.area.name)).toContain('Shelf')
+  expect(await archived()).toEqual([])
+  await sync()
+})
+
+test('a purged row in the delta deletes the local row', async () => {
+  const id = await createTask('Doomed')
+  await sync()
+  delta = [{ kind: 'purged', id, purged_at: 1 }]
+  await sync()
+  expect(await getTask(id)).toBeUndefined()
+})
+
+test('a full delta clears local rows but keeps the outbox', async () => {
+  const old = await createTask('Cleared')
+  await sync()
+  const other = '01900000-0000-7000-8000-0000000000bb'
+  full = true
+  delta = [{ kind: 'task', id: other, parent_id: INBOX, title: 'Server only', completed_at: null, order: '' }]
+  let release!: () => void
+  gate = new Promise((r) => (release = r))
+  const inFlight = sync()
+  await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0))
+  const kept = await createTask('Queued meanwhile')
+  gate = undefined
+  release()
+  await inFlight
+  expect(await getTask(other)).toBeDefined()
+  expect(await getTask(old)).toBeUndefined()
+  expect(await getTask(kept)).toBeDefined()
 })

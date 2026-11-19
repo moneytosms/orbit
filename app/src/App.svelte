@@ -5,6 +5,7 @@
   import Page from './lib/screens/Page.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
   import Settings from './lib/screens/Settings.svelte'
+  import Trash from './lib/screens/Trash.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, routes, type Screen } from './lib/routes'
@@ -91,6 +92,8 @@
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}
         <Goals {areas} />
+      {:else if screen.name === 'trash'}
+        <Trash onchange={refresh} />
       {:else if screen.name === 'settings'}
         <Settings />
       {:else}

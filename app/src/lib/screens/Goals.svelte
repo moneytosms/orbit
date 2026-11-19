@@ -4,10 +4,12 @@
   import { Input } from '$lib/components/ui/input'
   import {
     addEntry,
+    archiveItem,
     completeGoal,
     createGoal,
     createMilestone,
     createPage,
+    deleteItem,
     goalProgress,
     goals,
     milestonesOf,
@@ -120,6 +122,22 @@
           <span class="text-xs text-muted">by {dateText(goal.target_date)}</span>
         {/if}
         <Button variant="default" size="sm" onclick={() => completeGoal(goal.id).then(load)}>Complete</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Archive {goal.name}"
+          onclick={() => archiveItem(goal.id).then(load)}
+        >
+          Archive
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Delete {goal.name}"
+          onclick={() => deleteItem(goal.id).then(load)}
+        >
+          Delete
+        </Button>
       </div>
       {#if goal.done_condition}
         <p class="mt-1 text-sm text-muted">{goal.done_condition}</p>

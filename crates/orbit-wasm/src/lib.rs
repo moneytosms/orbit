@@ -57,6 +57,19 @@ pub fn goal_progress(rows_json: &str, goal_id: &str, today: &str) -> Result<Stri
     Ok(serde_json::json!({ "progress": progress, "behind": behind }).to_string())
 }
 
+/// The ids of the rows in `rows_json` (a Row array) that are trashed, archived or under such a row.
+#[wasm_bindgen]
+pub fn hidden_ids(rows_json: &str) -> Result<Vec<String>, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let by_id: std::collections::HashMap<_, _> = rows.iter().map(|r| (r.id(), r.clone())).collect();
+    let lookup = |id| by_id.get(&id).cloned();
+    Ok(rows
+        .iter()
+        .filter(|r| orbit_core::trash::hidden(r, &lookup))
+        .map(|r| r.id().to_string())
+        .collect())
+}
+
 #[wasm_bindgen]
 pub fn inbox_id() -> String {
     INBOX.to_string()

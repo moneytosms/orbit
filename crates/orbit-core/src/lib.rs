@@ -4,6 +4,7 @@ pub mod page;
 pub mod parse;
 pub mod recur;
 pub mod theme;
+pub mod trash;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -67,6 +68,12 @@ pub struct Area {
     /// Fractional index among siblings (see `order`).
     #[serde(default)]
     pub order: String,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
+    /// Unix ms when it was archived.
+    #[serde(default)]
+    pub archived_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -80,6 +87,12 @@ pub struct Project {
     /// The Goal its Tasks count towards unless they link another.
     #[serde(default)]
     pub goal_id: Option<Uuid>,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
+    /// Unix ms when it was archived.
+    #[serde(default)]
+    pub archived_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -90,6 +103,9 @@ pub struct Section {
     pub name: String,
     #[serde(default)]
     pub order: String,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -123,6 +139,9 @@ pub struct Task {
     /// The one Goal this Task counts towards.
     #[serde(default)]
     pub goal_id: Option<Uuid>,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
 }
 
 fn default_priority() -> u8 {
@@ -146,6 +165,14 @@ pub struct Completion {
     pub item_id: Uuid,
     /// Unix ms.
     pub at: u64,
+}
+
+/// Left behind when a trashed row is purged, so clients drop their copy.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Purged {
+    pub id: Uuid,
+    /// Unix ms of the purge.
+    pub purged_at: u64,
 }
 
 /// A flat, global tag.
@@ -178,6 +205,7 @@ pub enum Row {
     Goal(Goal),
     Milestone(Milestone),
     Page(Page),
+    Purged(Purged),
 }
 
 impl Row {
@@ -193,13 +221,18 @@ impl Row {
             Row::Goal(g) => g.id,
             Row::Milestone(m) => m.id,
             Row::Page(p) => p.id,
+            Row::Purged(p) => p.id,
         }
     }
 
     /// The row this one lives under. Areas, Labels and Settings have none.
     pub fn parent_id(&self) -> Option<Uuid> {
         match self {
-            Row::Area(_) | Row::Label(_) | Row::Settings(_) | Row::Completion(_) => None,
+            Row::Area(_)
+            | Row::Label(_)
+            | Row::Settings(_)
+            | Row::Completion(_)
+            | Row::Purged(_) => None,
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
             Row::Task(t) => Some(t.parent_id),
@@ -214,6 +247,8 @@ impl Row {
             id: INBOX,
             name: "Inbox".into(),
             order: String::new(),
+            trashed_at: None,
+            archived_at: None,
         })
     }
 }
@@ -417,6 +452,16 @@ pub enum Op {
         body: String,
         base_rev: u64,
     },
+    /// Sends any item to the Trash.
+    #[serde(rename = "item.delete")]
+    ItemDelete { id: Uuid },
+    #[serde(rename = "item.restore")]
+    ItemRestore { id: Uuid },
+    /// Areas, Projects and Goals only.
+    #[serde(rename = "item.archive")]
+    ItemArchive { id: Uuid },
+    #[serde(rename = "item.unarchive")]
+    ItemUnarchive { id: Uuid },
     #[serde(rename = "task.complete")]
     TaskComplete {
         id: Uuid,
@@ -484,6 +529,10 @@ impl Op {
             | Op::SectionCreate { id, .. }
             | Op::TaskCreate { id, .. }
             | Op::ItemMove { id, .. }
+            | Op::ItemDelete { id }
+            | Op::ItemRestore { id }
+            | Op::ItemArchive { id }
+            | Op::ItemUnarchive { id }
             | Op::TaskUpdate { id, .. }
             | Op::TaskComplete { id, .. }
             | Op::ProjectUpdate { id, .. }
@@ -501,6 +550,34 @@ impl Op {
         }
     }
 
+    /// Whether this command creates its row.
+    pub fn is_create(&self) -> bool {
+        matches!(
+            self,
+            Op::AreaCreate { .. }
+                | Op::ProjectCreate { .. }
+                | Op::SectionCreate { .. }
+                | Op::TaskCreate { .. }
+                | Op::GoalCreate { .. }
+                | Op::MilestoneCreate { .. }
+                | Op::PageCreate { .. }
+        )
+    }
+
+    /// The parent a create or move puts its row under.
+    pub fn new_parent(&self) -> Option<Uuid> {
+        match self {
+            Op::ProjectCreate { parent_id, .. }
+            | Op::SectionCreate { parent_id, .. }
+            | Op::GoalCreate { parent_id, .. }
+            | Op::PageCreate { parent_id, .. } => Some(*parent_id),
+            Op::TaskCreate { parent_id, .. } => Some(parent_id.unwrap_or(INBOX)),
+            Op::MilestoneCreate { goal_id, .. } => Some(*goal_id),
+            Op::ItemMove { parent_id, .. } => *parent_id,
+            _ => None,
+        }
+    }
+
     /// Row fields an edit writes, each guarded by its own clock. A create stamps all fields instead.
     fn fields(&self) -> Vec<&'static str> {
         match self {
@@ -512,6 +589,8 @@ impl Op {
             | Op::MilestoneCreate { .. }
             | Op::PageCreate { .. }
             | Op::LabelCreate { .. } => vec![],
+            Op::ItemDelete { .. } | Op::ItemRestore { .. } => vec!["trashed_at"],
+            Op::ItemArchive { .. } | Op::ItemUnarchive { .. } => vec!["archived_at"],
             Op::PageRename { .. } => vec!["title"],
             Op::PageEditBody { .. } => vec!["body", "rev"],
             Op::ProjectUpdate { goal_id, .. } => {
@@ -604,6 +683,8 @@ pub enum ErrorCode {
     BadParent,
     /// A field value is out of range or the wrong shape.
     BadField,
+    /// The item or an ancestor is archived, which makes it read-only.
+    Archived,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -648,6 +729,9 @@ pub struct SyncResponse {
     pub token: u64,
     /// Newest clock behind the delta rows; clients `observe` it so their next edits sort later.
     pub clock: Option<Hlc>,
+    /// The delta is the whole data set: clients drop their rows before applying it.
+    #[serde(default)]
+    pub full: bool,
 }
 
 /// Applies one command to the row it targets. Server and client prediction share this.
@@ -664,6 +748,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     id: *id,
                     name: name.into(),
                     order: order.clone(),
+                    trashed_at: None,
+                    archived_at: None,
                 }))
             }
         }
@@ -685,6 +771,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     name: name.into(),
                     order: order.clone(),
                     goal_id: None,
+                    trashed_at: None,
+                    archived_at: None,
                 }))
             }
         }
@@ -705,6 +793,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     parent_id: *parent_id,
                     name: name.into(),
                     order: order.clone(),
+                    trashed_at: None,
                 }))
             }
         }
@@ -734,6 +823,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     label_ids: vec![],
                     recurrence: None,
                     goal_id: None,
+                    trashed_at: None,
                 }))
             }
         }
@@ -782,7 +872,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..p
                 })),
-                Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_)) => {
+                Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_)) => {
                     Err(ErrorCode::BadParent)
                 }
                 None => Err(ErrorCode::NotFound),
@@ -834,6 +924,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             }
             _ => Err(ErrorCode::NotFound),
         },
+        Op::ItemDelete { .. }
+        | Op::ItemRestore { .. }
+        | Op::ItemArchive { .. }
+        | Op::ItemUnarchive { .. } => trash::apply_flag(existing, cmd),
         Op::TaskComplete { .. } => match existing {
             Some(Row::Task(t)) => Ok(Row::Task(complete_effects(t, cmd).0)),
             _ => Err(ErrorCode::NotFound),
@@ -875,6 +969,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 completed_at: None,
                 order: order.clone(),
                 touched_at: Some(cmd.hlc.wall),
+                trashed_at: None,
+                archived_at: None,
             }))
         }
         Op::GoalUpdate {
@@ -964,6 +1060,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     date: date.clone(),
                     done: false,
                     order: order.clone(),
+                    trashed_at: None,
                 }))
             }
         }
@@ -1010,6 +1107,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     body: body.clone(),
                     rev: 0,
                     order: order.clone(),
+                    trashed_at: None,
                 }))
             }
         }
@@ -1337,7 +1435,7 @@ mod tests {
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
-                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null,
+                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null,
             })
         );
     }
@@ -1588,7 +1686,8 @@ mod tests {
                 ("parent_id", 1000),
                 ("priority", 1000),
                 ("recurrence", 1000),
-                ("title", 1000)
+                ("title", 1000),
+                ("trashed_at", 1000)
             ]
         );
     }
@@ -1611,6 +1710,8 @@ mod tests {
             id: uid(n),
             name: "A".into(),
             order: "a".into(),
+            trashed_at: None,
+            archived_at: None,
         })
     }
     fn project(n: u128, parent: Uuid) -> Row {
@@ -1620,6 +1721,8 @@ mod tests {
             name: "P".into(),
             order: "a".into(),
             goal_id: None,
+            trashed_at: None,
+            archived_at: None,
         })
     }
     fn section(n: u128, parent: Uuid) -> Row {
@@ -1628,6 +1731,7 @@ mod tests {
             parent_id: parent,
             name: "S".into(),
             order: "a".into(),
+            trashed_at: None,
         })
     }
     fn task_row(n: u128, parent: Uuid) -> Row {
@@ -1645,6 +1749,7 @@ mod tests {
             label_ids: vec![],
             recurrence: None,
             goal_id: None,
+            trashed_at: None,
         })
     }
 

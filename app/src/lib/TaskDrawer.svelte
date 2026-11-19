@@ -1,8 +1,10 @@
 <script lang="ts">
   import * as Sheet from '$lib/components/ui/sheet'
   import Editor from '$lib/Editor.svelte'
+  import { Button } from '$lib/components/ui/button'
   import {
     createLabel,
+    deleteItem,
     getTask,
     goals as listGoals,
     inheritedGoal,
@@ -98,6 +100,12 @@
     newLabel = ''
     all = await listLabels()
     await save({ label_ids: [...task.label_ids, id] })
+  }
+  async function remove() {
+    if (!taskId) return
+    await deleteItem(taskId)
+    open = false
+    onclose()
   }
 </script>
 
@@ -252,6 +260,7 @@
             />
           </form>
         </div>
+        <Button variant="ghost" aria-label="Delete task" onclick={remove}>Delete task</Button>
       </div>
     {/if}
   </Sheet.Content>

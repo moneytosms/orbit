@@ -16,6 +16,9 @@ pub struct Page {
     pub rev: u64,
     #[serde(default)]
     pub order: String,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
 }
 
 /// Whether an edit made against `base_rev` clashes with the page as it is now.
@@ -50,6 +53,7 @@ mod tests {
             body: String::new(),
             rev,
             order: String::new(),
+            trashed_at: None,
         }
     }
 
