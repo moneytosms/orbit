@@ -82,6 +82,10 @@ _Avoid_: Rank, tier
 The number of Tasks to complete in a day (with a weekly counterpart); hitting it on consecutive working days builds a streak.
 _Avoid_: Goal (that is an outcome), quota
 
+**Device**:
+One signed-in app install, CLI or script that can sync; it can be revoked on its own.
+_Avoid_: Session, client (when the signed-in install is meant)
+
 **Day start**:
 The time of day when a new day begins for targets, Check-ins and streaks.
 
