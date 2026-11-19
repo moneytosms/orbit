@@ -3,15 +3,95 @@
   import { StarterKit } from '@tiptap/starter-kit'
   import { Markdown } from '@tiptap/markdown'
   import { createEditor, EditorContent } from 'svelte-tiptap'
+  import type { SuggestionProps } from '@tiptap/suggestion'
+  import { mount, unmount } from 'svelte'
+  import MentionList from './MentionList.svelte'
+  import { OrbitLink, type LinkItem } from './Mention'
+  import { createPage, linkTarget, restoreItem, searchLinks } from './sync'
 
-  let { value, onchange, label }: { value: string; onchange: (markdown: string) => void; label: string } = $props()
+  let {
+    value,
+    onchange,
+    label,
+    owner = null,
+    editable = true,
+  }: {
+    value: string
+    onchange: (markdown: string) => void
+    label: string
+    /** Where "Create Page" puts a new Page; none (Inbox Tasks) hides it. */
+    owner?: string | null
+    editable?: boolean
+  } = $props()
 
   // The editor owns the text once mounted: `value` is only the starting markdown.
   let saved = untrack(() => value)
   let timer: ReturnType<typeof setTimeout> | undefined
 
+  /** The suggestion popup: a MentionList mounted next to the caret. */
+  function popup() {
+    let el: HTMLElement | undefined
+    let list: ReturnType<typeof mount> | undefined
+    const props = $state<{ items: LinkItem[]; command: (item: LinkItem) => void }>({ items: [], command: () => {} })
+    const place = (p: SuggestionProps<LinkItem, LinkItem>) => {
+      const r = p.clientRect?.()
+      if (el && r) {
+        el.style.left = `${r.left}px`
+        el.style.top = `${r.bottom + 4}px`
+      }
+    }
+    return {
+      onStart: (p: SuggestionProps<LinkItem, LinkItem>) => {
+        el = document.createElement('div')
+        el.style.cssText = 'position:fixed;z-index:60'
+        document.body.append(el)
+        props.items = p.items
+        props.command = p.command
+        list = mount(MentionList, { target: el, props })
+        place(p)
+      },
+      onUpdate: (p: SuggestionProps<LinkItem, LinkItem>) => {
+        props.items = p.items
+        props.command = p.command
+        place(p)
+      },
+      onKeyDown: ({ event }: { event: KeyboardEvent }) => {
+        if (event.key === 'Escape') return false
+        return (list as unknown as { onKeyDown: (e: KeyboardEvent) => boolean } | undefined)?.onKeyDown(event) ?? false
+      },
+      onExit: () => {
+        if (list) unmount(list)
+        el?.remove()
+        list = el = undefined
+      },
+    }
+  }
+
   const editor = createEditor({
-    extensions: [StarterKit, Markdown],
+    editable: untrack(() => editable),
+    extensions: [
+      StarterKit,
+      Markdown,
+      OrbitLink.configure({
+        items: async (char, query) => {
+          const found = await searchLinks(char, query)
+          const parent = untrack(() => owner)
+          const title = query.trim()
+          return char === '[[' && parent && title && !found.some((i) => i.label === title)
+            ? [...found, { id: '', label: title, kind: 'page', create: true }]
+            : found
+        },
+        create: (title) =>
+          createPage(
+            untrack(() => owner)!,
+            title,
+          ),
+        resolve: linkTarget,
+        restore: restoreItem,
+        open: (href) => (location.hash = href),
+        render: popup,
+      }),
+    ],
     content: saved,
     contentType: 'markdown',
     editorProps: {
@@ -96,6 +176,27 @@
   }
   .editor :global(a) {
     text-decoration: underline;
+  }
+  .editor :global(.orbit-link) {
+    border-radius: 4px;
+    background: var(--color-sunk, rgb(0 0 0 / 0.06));
+    padding: 0 0.3rem;
+    cursor: pointer;
+  }
+  .editor :global(.orbit-link-purged) {
+    background: none;
+    padding: 0;
+    cursor: text;
+    opacity: 0.6;
+  }
+  .editor :global(.orbit-link-struck) {
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+  .editor :global(.orbit-link-restore) {
+    margin-left: 0.4rem;
+    text-decoration: underline;
+    font-size: 0.85em;
   }
   .editor :global(hr) {
     border-top: 1px solid var(--color-line, currentColor);

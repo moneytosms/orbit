@@ -19,6 +19,9 @@ pub struct Page {
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// The `orbit:` targets in `body`, kept up to date by every body write.
+    #[serde(default)]
+    pub links: Vec<Uuid>,
 }
 
 /// Whether an edit made against `base_rev` clashes with the page as it is now.
@@ -54,6 +57,7 @@ mod tests {
             rev,
             order: String::new(),
             trashed_at: None,
+            links: vec![],
         }
     }
 

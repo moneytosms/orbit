@@ -1,5 +1,6 @@
 import {
   apply,
+  backlinks,
   builtin_views,
   completion_for,
   completion_id,
@@ -19,6 +20,7 @@ import {
   whats_next,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
+import type { LinkItem, LinkTarget } from './Mention'
 
 export type Due = { date: string; time?: string | null }
 export type Recurrence = { rule: string; from_completion: boolean }
@@ -30,6 +32,8 @@ export type Task = {
   completed_at: number | null
   order: string
   description: string
+  /** Ids this body links to, kept by core on every write. */
+  links: string[]
   due: Due | null
   deadline: string | null
   duration_min: number | null
@@ -124,6 +128,7 @@ export type Page = {
   parent_id: string
   title: string
   body: string
+  links: string[]
   rev: number
   order: string
   trashed_at: number | null
@@ -844,4 +849,78 @@ export async function checkinsOf(id: string): Promise<Map<string, CheckState>> {
   const m = new Map<string, CheckState>()
   for (const r of await allRows()) if (r.kind === 'checkin' && r.routine_id === id && !r.cleared) m.set(r.date, r.state)
   return m
+}
+
+type Any = { kind: string; id: string; parent_id?: string; trashed_at?: number | null; archived_at?: number | null }
+const titleOf = (r: Any) => {
+  const x = r as unknown as { title?: string; name?: string }
+  return x.title ?? x.name ?? ''
+}
+/** The screen that shows `row`: its own, or its parent's for items without one. */
+function hrefFor(row: Any, byId: Map<string, Any>): string | null {
+  for (let r: Any | undefined = row, i = 0; r && i < 32; i++) {
+    if (r.kind === 'page') return `#/page/${r.id}`
+    if (r.kind === 'project') return `#/project/${r.id}`
+    if (r.kind === 'area') return r.id === inbox_id() ? '#/inbox' : `#/area/${r.id}`
+    if (r.kind === 'goal' || r.kind === 'milestone') return '#/goals'
+    if (r.kind === 'roadmap') return '#/roadmaps'
+    r = r.parent_id ? byId.get(r.parent_id) : undefined
+  }
+  return null
+}
+
+/** What a link points at now: its live title and whether it is trashed, archived or gone for good. */
+export async function linkTarget(id: string): Promise<LinkTarget | null> {
+  const rows = (await allRows()) as unknown as Any[]
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const row = byId.get(id)
+  if (!row || row.kind === 'purged') return { title: '', kind: row?.kind ?? 'purged', state: 'purged', href: null }
+  let state: LinkTarget['state'] = 'ok'
+  for (let r: Any | undefined = row, i = 0; r && i < 32; i++) {
+    if (r.trashed_at != null) {
+      state = 'trashed'
+      break
+    }
+    if (r.archived_at != null) state = 'archived'
+    r = r.parent_id ? byId.get(r.parent_id) : undefined
+  }
+  return { title: titleOf(row), kind: row.kind, state, href: hrefFor(row, byId) }
+}
+
+/** Live items matching `query` for the link menus: `[[` offers Pages, `@` everything else linkable. */
+export async function searchLinks(char: string, query: string, limit = 8): Promise<LinkItem[]> {
+  const q = query.trim().toLowerCase()
+  const other = new Set(['area', 'project', 'section', 'task', 'goal', 'milestone', 'routine', 'roadmap'])
+  const inbox = inbox_id()
+  const rows = (await visibleRows()) as unknown as Any[]
+  return rows
+    .filter((r) => (char === '[[' ? r.kind === 'page' : other.has(r.kind) && r.id !== inbox))
+    .map((r) => ({ id: r.id, label: titleOf(r), kind: r.kind }))
+    .filter((i) => i.label && i.label.toLowerCase().includes(q))
+    .slice(0, limit)
+}
+
+/** Pages and Tasks whose body links to `id`, never from the trash, ordered by kind then title. */
+export async function backlinksOf(
+  id: string,
+): Promise<{ id: string; title: string; kind: string; href: string | null }[]> {
+  const rows = await allRows()
+  const ids: string[] = backlinks(JSON.stringify(rows), id)
+  const byId = new Map((rows as unknown as Any[]).map((r) => [r.id, r]))
+  return ids
+    .flatMap((i) => {
+      const r = byId.get(i)
+      return r ? [{ id: i, title: titleOf(r), kind: r.kind, href: hrefFor(r, byId) }] : []
+    })
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title))
+}
+
+/** The Project or Area a Task sits in, where a Page made from its description would go; null in the Inbox. */
+export async function pageOwner(taskId: string): Promise<string | null> {
+  const byId = new Map((await allRows()).map((r) => [r.id, r as Any]))
+  for (let r = byId.get(taskId), i = 0; r && i < 32; i++) {
+    if (r.kind === 'project' || r.kind === 'area') return r.id === inbox_id() ? null : r.id
+    r = r.parent_id ? byId.get(r.parent_id) : undefined
+  }
+  return null
 }

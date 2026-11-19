@@ -280,6 +280,7 @@ mod tests {
             trashed_at: None,
             pinned_on: None,
             not_today_on: None,
+            links: vec![],
         }
     }
 

@@ -21,6 +21,7 @@
     "bits-ui": "^2.21.0",
     "cn": "^0.5.2",
     "fake-indexeddb": "^6.2.8",
+    "happy-dom": "^21.0.4",
     "prettier": "^3.10.1",
     "prettier-plugin-svelte": "^3.5.2",
     "svelte": "^5.57.3",
@@ -35,9 +36,11 @@
   },
   "dependencies": {
     "@tiptap/core": "^3.34.0",
+    "@tiptap/extension-mention": "^3.34.0",
     "@tiptap/markdown": "^3.34.0",
     "@tiptap/pm": "^3.34.0",
     "@tiptap/starter-kit": "^3.34.0",
+    "@tiptap/suggestion": "^3.34.0",
     "svelte-dnd-action": "^0.9.80",
     "svelte-tiptap": "^3.0.2"
   }

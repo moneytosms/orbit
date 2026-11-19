@@ -1,7 +1,8 @@
 <script lang="ts">
+  import Backlinks from '$lib/Backlinks.svelte'
   import Editor from '$lib/Editor.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { deleteItem, editPageBody, getPage, renamePage, type Page } from '$lib/sync'
+  import { deleteItem, editPageBody, getPage, linkTarget, renamePage, type Page } from '$lib/sync'
 
   let { id, onchange }: { id: string; onchange: () => void } = $props()
 
@@ -10,8 +11,12 @@
   // The rev the editor's text started from; it is the base_rev of the next edit.
   let baseRev = 0
 
+  let readonly = $state(false)
+  let linkVersion = $state(0)
+
   async function load() {
     page = await getPage(id)
+    readonly = (await linkTarget(id))?.state === 'archived'
     baseRev = page?.rev ?? 0
     loaded = true
   }
@@ -29,6 +34,7 @@
       baseRev = next.rev
       page = { ...page, rev: next.rev, title: next.title }
     }
+    linkVersion++
     onchange()
   }
 
@@ -61,7 +67,8 @@
       onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
       class="page-title mb-3 w-full bg-transparent outline-none"
     />
-    <Editor value={page.body} label="Page body" onchange={saveBody} />
+    <Editor value={page.body} label="Page body" owner={page.parent_id} editable={!readonly} onchange={saveBody} />
+    <Backlinks id={page.id} version={linkVersion} />
     <Button variant="ghost" aria-label="Delete page" class="mt-3" onclick={remove}>Delete page</Button>
   {/key}
 {:else if loaded}
