@@ -15,8 +15,18 @@ Personal task + notes app (Todoist-style). Rust axum server + SQLite is source o
 
 - `just check`: the gate. pnpm install, svelte-check, vitest, web build, cargo fmt/clippy (`-D warnings`)/test, wasm32 build. Must pass before done.
 - `just hooks`: once per clone; pre-push runs `just check`.
-- Toolchain in `~/.toolchain` (sourced by `~/.zshenv`); non-zsh shells: `source ~/.toolchain/env.sh`. `rust-toolchain.toml` pins stable + clippy/rustfmt + wasm32.
 - CI: `.github/workflows/check.yml` runs `just check` (bonus; local hook is the real gate).
+
+## Toolchain
+
+Everything is already installed under `~/.toolchain`; don't install Rust, JDK, Gradle or Android SDK again. `~/.zshenv` sources `~/.toolchain/env.sh` for every zsh (incl. headless agents); other shells: `source ~/.toolchain/env.sh`.
+
+- Rust: `RUSTUP_HOME`/`CARGO_HOME` in `~/.toolchain/{rustup,cargo}`. `rust-toolchain.toml` pins stable + clippy/rustfmt + wasm32.
+- sccache: `RUSTC_WRAPPER=sccache` (set in `~/.zshenv`), cache `~/.cache/sccache`, 10 GiB cap. Worktrees share it, so fresh builds are cheap.
+- JDK 21: `JAVA_HOME=~/.toolchain/jdk`.
+- Gradle: no system `gradle`; use the wrapper. `GRADLE_USER_HOME=~/.toolchain/gradle` already caches dist 9.6.1.
+- Android: `ANDROID_HOME=~/.toolchain/android` with platforms 36/37, build-tools 36.0.0, NDK 28.2 (`NDK_HOME`), `adb`, `emulator`, `sdkmanager` on PATH. AVD `orbit` in `~/.toolchain/android-user/avd`.
+- Disk: `target/` grows fast; `cargo clean` when space is low (sccache keeps rebuilds quick). `/tmp` is RAM-backed: put worktrees and big builds on disk.
 
 ## Agent skills
 
