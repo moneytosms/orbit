@@ -47,3 +47,12 @@ pub fn observe_hlc(mine: &str, seen: &str, now_ms: f64) -> Result<String, JsErro
 pub fn order_between(a: Option<String>, b: Option<String>) -> String {
     orbit_core::order::between(a.as_deref(), b.as_deref())
 }
+
+/// Quick-add parse of `input`; `now` is local `YYYY-MM-DDTHH:MM`, `known_json` a `Known`.
+#[wasm_bindgen]
+pub fn parse_quick_add(input: &str, now: &str, known_json: &str) -> Result<String, JsError> {
+    let known: orbit_core::parse::Known = serde_json::from_str(known_json)?;
+    Ok(serde_json::to_string(&orbit_core::parse::parse(
+        input, now, &known,
+    ))?)
+}
