@@ -130,6 +130,21 @@
           ></textarea>
         </div>
 
+        {#if task.recurrence}
+          <div class="flex items-center gap-2 text-sm text-muted">
+            <span>
+              Repeats every {task.recurrence.rule}{task.recurrence.from_completion ? ' from completion' : ''}
+            </span>
+            <button
+              type="button"
+              class="text-xs underline hover:text-text"
+              onclick={() => save({ recurrence: null })}
+            >
+              Clear repeat
+            </button>
+          </div>
+        {/if}
+
         <div class="grid grid-cols-2 gap-3">
           <div class="grid gap-1.5">
             <label for="task-due-date" class="text-xs font-medium text-muted">Due date</label>

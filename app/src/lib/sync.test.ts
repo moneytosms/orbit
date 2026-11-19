@@ -288,6 +288,15 @@ test('quickAdd applies priority, due and a known label in one update', async () 
   expect(sent).toMatchObject([{ args: { id, priority: 1, label_ids: [errand] } }])
 })
 
+test('quickAdd turns "every 3 days" into a recurrence with a first due', async () => {
+  const id = await quickAdd(parseLine('water plants every 3 days'), INBOX)
+  expect(await getTask(id)).toMatchObject({
+    title: 'water plants',
+    recurrence: { rule: '3 days', from_completion: false },
+    due: { date: '2026-11-19' },
+  })
+})
+
 test('quickAdd keeps an unknown $goal name in the title', async () => {
   const id = await quickAdd(parseLine('Read book $qa-goal'), INBOX)
   expect((await getTask(id))!.title).toBe('Read book $qa-goal')

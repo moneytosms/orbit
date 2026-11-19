@@ -140,7 +140,8 @@ impl Client {
     }
 
     pub fn complete_task(&mut self, id: Uuid, now_ms: u64) -> Result<()> {
-        self.enqueue(Op::TaskComplete { id }, now_ms).map(drop)
+        self.enqueue(Op::TaskComplete { id, today: None }, now_ms)
+            .map(drop)
     }
 
     /// Stamps, predicts and queues one command, atomically. Fails without queueing if core rejects it.

@@ -1,6 +1,7 @@
 //! Quick-add parser. Date crate: none, hand-rolled. `interim` (chrono) does build for
 //! wasm32, but it parses only whole strings (no phrase spans), rejects `in 3 days`, reads
 //! `may` and a bare `5` as dates, and never rolls past dates forward, so it was dropped.
+use crate::recur::{self, Recurrence};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -57,6 +58,7 @@ pub struct Parsed {
     pub goal: Option<String>,
     pub page: Option<String>,
     pub labels: Vec<String>,
+    pub recurrence: Option<Recurrence>,
 }
 
 struct Word<'a> {
@@ -92,7 +94,7 @@ fn words(input: &str) -> Vec<Word<'_>> {
 }
 
 // Civil date arithmetic (days since 1970-01-01).
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -101,7 +103,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146097 + doe - 719468
 }
 
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
+pub(crate) fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719468;
     let era = z.div_euclid(146097);
     let doe = z - era * 146097;
@@ -114,7 +116,7 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     (y, m, d)
 }
 
-fn days_in_month(y: i64, m: i64) -> i64 {
+pub(crate) fn days_in_month(y: i64, m: i64) -> i64 {
     days_from_civil(
         if m == 12 { y + 1 } else { y },
         if m == 12 { 1 } else { m + 1 },
@@ -122,7 +124,7 @@ fn days_in_month(y: i64, m: i64) -> i64 {
     ) - days_from_civil(y, m, 1)
 }
 
-fn fmt_date(days: i64) -> String {
+pub(crate) fn fmt_date(days: i64) -> String {
     let (y, m, d) = civil_from_days(days);
     format!("{y:04}-{m:02}-{d:02}")
 }
@@ -133,7 +135,7 @@ fn parse_now(now: &str) -> Option<i64> {
     parse_ymd(date)
 }
 
-fn parse_ymd(s: &str) -> Option<i64> {
+pub(crate) fn parse_ymd(s: &str) -> Option<i64> {
     let b = s.as_bytes();
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
         return None;
@@ -155,11 +157,11 @@ fn parse_ymd(s: &str) -> Option<i64> {
 }
 
 /// 0 = Monday.
-fn weekday(days: i64) -> i64 {
+pub(crate) fn weekday(days: i64) -> i64 {
     (days + 3).rem_euclid(7)
 }
 
-fn weekday_name(w: &str) -> Option<i64> {
+pub(crate) fn weekday_name(w: &str) -> Option<i64> {
     Some(match w {
         "mon" | "monday" => 0,
         "tue" | "tues" | "tuesday" => 1,
@@ -250,7 +252,7 @@ fn date_phrase(w: &[String], today: i64) -> Option<(i64, usize)> {
 }
 
 /// `6pm`, `6:30pm`, `18:00` as `HH:MM`.
-fn time_word(w: &str) -> Option<String> {
+pub(crate) fn time_word(w: &str) -> Option<String> {
     let (body, meridiem) = if let Some(b) = w.strip_suffix("am") {
         (b, Some(false))
     } else if let Some(b) = w.strip_suffix("pm") {
@@ -316,9 +318,11 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         goal: None,
         page: None,
         labels: Vec::new(),
+        recurrence: None,
     };
+    let mut rec_time: Option<String> = None;
     let mut title: Vec<String> = Vec::new();
-    // shortcut: words after `every`/`every!` stay title text, not a due date; #40 parses them as recurrence.
+    // Words after `every`/`every!` never become a due date.
     let mut recurring = false;
     let mut i = 0;
     while i < ws.len() {
@@ -385,6 +389,17 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         }
         if matches!(lower[i].as_str(), "every" | "every!") {
             recurring = true;
+            if out.recurrence.is_none()
+                && let Some((rule, time, used)) = recur::parse_rule(&lower[i + 1..])
+            {
+                out.recurrence = Some(Recurrence {
+                    rule,
+                    from_completion: lower[i] == "every!",
+                });
+                rec_time = time;
+                i += 1 + used;
+                continue;
+            }
         }
         if out.due.is_none()
             && !recurring
@@ -431,6 +446,19 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         i += 1;
     }
     out.title = title.join(" ");
+    if let (Some(rec), Some(today)) = (&out.recurrence, today) {
+        match &mut out.due {
+            Some(due) => due.time = due.time.take().or(rec_time),
+            None => {
+                if let Some(day) = recur::first_day(&rec.rule, today) {
+                    out.due = Some(Due {
+                        date: fmt_date(day),
+                        time: rec_time,
+                    });
+                }
+            }
+        }
+    }
     out
 }
 
@@ -649,15 +677,53 @@ mod tests {
     #[test]
     fn reminders_and_recurrence_stay_in_title() {
         let r = p("water plants every day !9am");
-        assert_eq!(r.title, "water plants every day !9am");
+        assert_eq!(r.title, "water plants !9am");
         assert!(r.tokens.is_empty());
+        assert_eq!(
+            r.due,
+            Some(Due {
+                date: "2026-11-19".into(),
+                time: None
+            })
+        );
+        let rec = |rule: &str, from_completion| {
+            Some(Recurrence {
+                rule: rule.into(),
+                from_completion,
+            })
+        };
+        assert_eq!(r.recurrence, rec("day", false));
         let r = p("x every! day");
-        assert_eq!(r.title, "x every! day");
+        assert_eq!(r.title, "x");
+        assert_eq!(r.recurrence, rec("day", true));
         let r = p("standup every monday 9am p2");
-        assert_eq!(r.title, "standup every monday 9am");
-        assert_eq!((r.due, r.priority), (None, Some(2)));
+        assert_eq!(r.title, "standup");
+        assert_eq!(r.recurrence, rec("mon", false));
+        assert_eq!(
+            (r.due, r.priority),
+            (
+                Some(Due {
+                    date: "2026-11-23".into(),
+                    time: Some("09:00".into())
+                }),
+                Some(2)
+            )
+        );
+        // Words after the rule are not a due date.
+        let r = p("x every week tomorrow");
+        assert_eq!(r.title, "x tomorrow");
         // A date before `every` still counts.
         assert_eq!(due("x tomorrow every week"), d("2026-11-20", None));
+        assert_eq!(
+            due("x tomorrow every day 9am"),
+            d("2026-11-20", Some("09:00"))
+        );
+        // Not a rule: stays in the title, and still no due date from what follows.
+        let r = p("go every which way tomorrow");
+        assert_eq!(
+            (r.title.as_str(), r.recurrence, r.due),
+            ("go every which way tomorrow", None, None)
+        );
     }
 
     #[test]

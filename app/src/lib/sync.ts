@@ -1,7 +1,8 @@
-import { apply, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
+import { apply, completion_for, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
 export type Due = { date: string; time?: string | null }
+export type Recurrence = { rule: string; from_completion: boolean }
 export type Task = {
   kind: 'task'
   id: string
@@ -15,6 +16,7 @@ export type Task = {
   duration_min: number | null
   priority: 1 | 2 | 3 | 4
   label_ids: string[]
+  recurrence: Recurrence | null
 }
 export type Area = { kind: 'area'; id: string; name: string; order: string }
 export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string }
@@ -22,8 +24,9 @@ export type Section = { kind: 'section'; id: string; parent_id: string; name: st
 export type Label = { kind: 'label'; id: string; name: string }
 export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
-export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids'>>
-type Row = Area | Project | Section | Task | Label | Settings
+export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids' | 'recurrence'>>
+type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
+type Row = Area | Project | Section | Task | Label | Settings | Completion
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -105,7 +108,13 @@ export const createTask = async (title: string, parentId?: string) => {
   })
   return id
 }
-export const completeTask = (id: string) => enqueue('task.complete', { id })
+const pad = (n: number) => String(n).padStart(2, '0')
+const localToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+/** Completes a Task; a recurring one moves to its next due instead, counted from this device's local date. */
+export const completeTask = (id: string) => enqueue('task.complete', { id, today: localToday() })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
 export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
 
@@ -144,6 +153,7 @@ export type Parsed = {
   }[]
   priority: number | null
   due: Due | null
+  recurrence?: Recurrence | null
   place: string | null
   goal: string | null
   page: string | null
@@ -186,6 +196,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
   const patch: TaskPatch = {}
   if (p.priority != null) patch.priority = p.priority as Task['priority']
   if (p.due) patch.due = p.due
+  if (p.recurrence) patch.recurrence = p.recurrence
   if (ids.size) patch.label_ids = [...ids]
   if (Object.keys(patch).length) await updateTask(id, patch)
   return id
@@ -194,7 +205,13 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
 /** Applies a command to its row via core; throws the error code if core rejects it. */
 async function predict(rows: IDBObjectStore, cmd: Command) {
   const existing = await req(rows.get((cmd.args.id as string) ?? SETTINGS))
-  rows.put(JSON.parse(apply(existing ? JSON.stringify(existing) : undefined, JSON.stringify(cmd))))
+  const from = existing ? JSON.stringify(existing) : undefined
+  rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
+  // A completion also logs a record, as the server does.
+  if (cmd.type === 'task.complete') {
+    const log = completion_for(from, JSON.stringify(cmd))
+    if (log) rows.put(JSON.parse(log))
+  }
 }
 
 /** Like the server: completing a Task completes its open descendants at the same moment. */

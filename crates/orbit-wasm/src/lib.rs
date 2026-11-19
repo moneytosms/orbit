@@ -30,6 +30,20 @@ pub fn apply(existing: Option<String>, command: &str) -> Result<String, JsError>
     }
 }
 
+/// The completion record `command` (a `task.complete`) logs on `existing`, if any.
+#[wasm_bindgen]
+pub fn completion_for(existing: Option<String>, command: &str) -> Result<Option<String>, JsError> {
+    let existing: Option<Row> = existing.map(|s| serde_json::from_str(&s)).transpose()?;
+    let cmd: Command = serde_json::from_str(command)?;
+    let Some(Row::Task(task)) = existing else {
+        return Ok(None);
+    };
+    match orbit_core::complete_effects(task, &cmd).1 {
+        Some(c) => Ok(Some(serde_json::to_string(&Row::Completion(c))?)),
+        None => Ok(None),
+    }
+}
+
 #[wasm_bindgen]
 pub fn inbox_id() -> String {
     INBOX.to_string()

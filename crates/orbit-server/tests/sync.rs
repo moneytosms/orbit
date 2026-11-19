@@ -85,12 +85,15 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [] }]);
-    assert_eq!(res["delta"], done);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null }]);
+    // The completion record ships after the task.
+    assert_eq!(res["delta"][0], done[0]);
+    assert_eq!(res["delta"][1]["kind"], "completion");
+    assert_eq!(res["delta"].as_array().unwrap().len(), 2);
 
     // Another Device that last synced at t0 sees the same change.
     let (_, other) = sync(&app, json!({ "v": 1, "token": t0, "commands": [] })).await;
-    assert_eq!(other["delta"], done);
+    assert_eq!(other["delta"], res["delta"]);
     assert_eq!(other["token"], res["token"]);
 
     // Nothing new since the latest token.
@@ -240,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [] }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null }])
     );
 }
 
@@ -449,6 +452,51 @@ async fn completing_a_parent_completes_open_descendants_and_ships_them_in_deltas
     // Already-completed descendants keep their own time and don't ship.
     assert_eq!(done_at(SUBSUB), None);
     assert_eq!(res["clock"]["wall"], 5000);
+}
+
+#[tokio::test]
+async fn completing_a_recurring_task_advances_its_due_and_logs_each_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let setup = vec![
+        cmd(
+            &c(0xc1),
+            "task.create",
+            json!({ "id": TASK, "title": "Water", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xc2),
+            "task.update",
+            json!({ "id": TASK, "due": { "date": "2026-11-19", "time": null },
+                    "recurrence": { "rule": "day", "from_completion": false } }),
+            1001,
+        ),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": setup })).await;
+    let mut token = res["token"].clone();
+    let mut dues = vec![];
+    let mut completions = vec![];
+    for (n, wall) in [(0xc3, 2000), (0xc4, 3000)] {
+        let done = cmd(
+            &c(n),
+            "task.complete",
+            json!({ "id": TASK, "today": "2026-11-19" }),
+            wall,
+        );
+        let (_, res) = sync(&app, json!({ "v": 1, "token": token, "commands": [done] })).await;
+        token = res["token"].clone();
+        let rows = res["delta"].as_array().unwrap();
+        let task = rows.iter().find(|r| r["id"] == TASK).unwrap();
+        assert_eq!(task["completed_at"], Value::Null);
+        dues.push(task["due"]["date"].clone());
+        completions.extend(rows.iter().filter(|r| r["kind"] == "completion").cloned());
+    }
+    // `every day` moves from the due date: it advances one day per completion.
+    assert_eq!(dues, vec![json!("2026-11-20"), json!("2026-11-21")]);
+    assert_eq!(completions.len(), 2);
+    assert_ne!(completions[0]["id"], completions[1]["id"]);
+    assert!(completions.iter().all(|r| r["item_id"] == TASK));
 }
 
 #[tokio::test]

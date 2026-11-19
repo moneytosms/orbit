@@ -1,10 +1,13 @@
 pub mod order;
 pub mod parse;
+pub mod recur;
 pub mod theme;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Builder;
+
+pub use recur::Recurrence;
 pub use uuid::Uuid;
 
 /// Hybrid logical clock. Field order is the comparison order.
@@ -107,6 +110,9 @@ pub struct Task {
     pub priority: u8,
     #[serde(default)]
     pub label_ids: Vec<Uuid>,
+    /// Completing a recurring Task moves its `due` on instead of finishing it.
+    #[serde(default)]
+    pub recurrence: Option<Recurrence>,
 }
 
 fn default_priority() -> u8 {
@@ -121,6 +127,15 @@ pub struct Due {
     /// `HH:MM`.
     #[serde(default)]
     pub time: Option<String>,
+}
+
+/// One time a Task was completed. A recurring Task logs one per occurrence.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Completion {
+    pub id: Uuid,
+    pub item_id: Uuid,
+    /// Unix ms.
+    pub at: u64,
 }
 
 /// A flat, global tag.
@@ -149,6 +164,7 @@ pub enum Row {
     Task(Task),
     Label(Label),
     Settings(Settings),
+    Completion(Completion),
 }
 
 impl Row {
@@ -160,13 +176,14 @@ impl Row {
             Row::Task(t) => t.id,
             Row::Label(l) => l.id,
             Row::Settings(s) => s.id,
+            Row::Completion(c) => c.id,
         }
     }
 
     /// The row this one lives under. Areas, Labels and Settings have none.
     pub fn parent_id(&self) -> Option<Uuid> {
         match self {
-            Row::Area(_) | Row::Label(_) | Row::Settings(_) => None,
+            Row::Area(_) | Row::Label(_) | Row::Settings(_) | Row::Completion(_) => None,
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
             Row::Task(t) => Some(t.parent_id),
@@ -264,9 +281,21 @@ pub enum Op {
         priority: Option<u8>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label_ids: Option<Vec<Uuid>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        recurrence: Option<Option<Recurrence>>,
     },
     #[serde(rename = "task.complete")]
-    TaskComplete { id: Uuid },
+    TaskComplete {
+        id: Uuid,
+        /// The completer's local `YYYY-MM-DD`, which `every!` counts from.
+        /// Without it the UTC date of the command's clock is used.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        today: Option<String>,
+    },
     #[serde(rename = "label.create")]
     LabelCreate { id: Uuid, name: String },
     /// Creates the Settings row if missing; only the fields present change.
@@ -327,7 +356,7 @@ impl Op {
             | Op::TaskCreate { id, .. }
             | Op::ItemMove { id, .. }
             | Op::TaskUpdate { id, .. }
-            | Op::TaskComplete { id }
+            | Op::TaskComplete { id, .. }
             | Op::LabelCreate { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
@@ -350,6 +379,7 @@ impl Op {
                 duration_min,
                 priority,
                 label_ids,
+                recurrence,
                 ..
             } => [
                 ("title", title.is_some()),
@@ -359,6 +389,7 @@ impl Op {
                 ("duration_min", duration_min.is_some()),
                 ("priority", priority.is_some()),
                 ("label_ids", label_ids.is_some()),
+                ("recurrence", recurrence.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -516,6 +547,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     duration_min: None,
                     priority: default_priority(),
                     label_ids: vec![],
+                    recurrence: None,
                 }))
             }
         }
@@ -548,7 +580,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..t
                 })),
-                Some(Row::Label(_) | Row::Settings(_)) => Err(ErrorCode::BadParent),
+                Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_)) => {
+                    Err(ErrorCode::BadParent)
+                }
                 None => Err(ErrorCode::NotFound),
             }
         }
@@ -560,6 +594,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             duration_min,
             priority,
             label_ids,
+            recurrence,
             ..
         } => match existing {
             Some(Row::Task(t)) => {
@@ -589,16 +624,14 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     duration_min: duration_min.unwrap_or(t.duration_min),
                     priority: priority.unwrap_or(t.priority),
                     label_ids: label_ids.clone().unwrap_or(t.label_ids),
+                    recurrence: recurrence.clone().unwrap_or(t.recurrence),
                     ..t
                 }))
             }
             _ => Err(ErrorCode::NotFound),
         },
         Op::TaskComplete { .. } => match existing {
-            Some(Row::Task(t)) => Ok(Row::Task(Task {
-                completed_at: t.completed_at.or(Some(cmd.hlc.wall)),
-                ..t
-            })),
+            Some(Row::Task(t)) => Ok(Row::Task(complete_effects(t, cmd).0)),
             _ => Err(ErrorCode::NotFound),
         },
         Op::LabelCreate { id, name } => {
@@ -685,7 +718,12 @@ pub fn apply_lww(
         return Ok(new);
     };
     let (mut merged, old) = (json(&new), json(&old));
-    for field in cmd.op.fields() {
+    let mut fields = cmd.op.fields();
+    // Completing a recurring Task moves its due on rather than setting `completed_at`.
+    if matches!(cmd.op, Op::TaskComplete { .. }) && old["due"] != merged["due"] {
+        fields.push("due");
+    }
+    for field in fields {
         // An Area has no `parent_id`: a move only changes its order.
         if old.get(field).is_none() {
             continue;
@@ -697,6 +735,49 @@ pub fn apply_lww(
         }
     }
     Ok(serde_json::from_value(merged).expect("a row round-trips through JSON"))
+}
+
+/// The completion side effect, shared by server and client prediction: the Task as it
+/// is afterwards, and the record to log. A recurring Task gets its next `due` and stays open;
+/// any other gets `completed_at`. Completing a finished Task again changes and logs nothing.
+pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
+    let at = cmd.hlc.wall;
+    let log = |t: &Task| Completion {
+        id: completion_id(t.id, cmd.uuid),
+        item_id: t.id,
+        at,
+    };
+    if let Some(rec) = &t.recurrence {
+        let today = match &cmd.op {
+            Op::TaskComplete { today: Some(d), .. } if is_date(d) => d.clone(),
+            // No local date was sent: the UTC one.
+            _ => parse::fmt_date((at / 86_400_000) as i64),
+        };
+        let from = t.due.clone().unwrap_or(Due {
+            date: today.clone(),
+            time: None,
+        });
+        let due = Some(recur::next(rec, &from, &today));
+        let c = log(&t);
+        return (Task { due, ..t }, Some(c));
+    }
+    if t.completed_at.is_some() {
+        return (t, None);
+    }
+    let c = log(&t);
+    (
+        Task {
+            completed_at: Some(at),
+            ..t
+        },
+        Some(c),
+    )
+}
+
+/// The same command always logs the same record, so a replay cannot log it twice.
+pub fn completion_id(task: Uuid, cmd: Uuid) -> Uuid {
+    let id = task.as_u128() ^ cmd.as_u128().rotate_left(64);
+    Builder::from_random_bytes(id.to_be_bytes()).into_uuid()
 }
 
 fn json(row: &Row) -> serde_json::Value {
@@ -811,7 +892,7 @@ mod tests {
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
-                "priority": 4, "label_ids": [],
+                "priority": 4, "label_ids": [], "recurrence": null,
             })
         );
     }
@@ -843,6 +924,108 @@ mod tests {
         let again = apply(Some(done), &complete(9000)).unwrap();
         let Row::Task(t) = again else { panic!() };
         assert_eq!(t.completed_at, Some(5000));
+    }
+
+    fn recurring(rule: &str, from_completion: bool, due: &str) -> Row {
+        let update = cmd(
+            "01900000-0000-7000-8000-0000000000d1",
+            "task.update",
+            serde_json::json!({
+                "id": TASK,
+                "due": { "date": due, "time": "09:00" },
+                "recurrence": { "rule": rule, "from_completion": from_completion },
+            }),
+            2000,
+        );
+        apply(Some(created()), &update).unwrap()
+    }
+
+    fn complete_on(today: Option<&str>, wall: u64) -> Command {
+        cmd(
+            "01900000-0000-7000-8000-0000000000c2",
+            "task.complete",
+            serde_json::json!({ "id": TASK, "today": today }),
+            wall,
+        )
+    }
+
+    #[test]
+    fn completing_a_recurring_task_moves_its_due_on_and_logs_it() {
+        let Row::Task(t) = recurring("week", false, "2026-11-19") else {
+            panic!()
+        };
+        let c = complete_on(Some("2026-11-19"), 5000);
+        let (after, log) = complete_effects(t.clone(), &c);
+        assert_eq!(after.completed_at, None);
+        assert_eq!(
+            after.due,
+            Some(Due {
+                date: "2026-11-26".into(),
+                time: Some("09:00".into())
+            })
+        );
+        let log = log.unwrap();
+        assert_eq!((log.item_id, log.at), (t.id, 5000));
+        // The same command logs the same record; a different one does not.
+        assert_eq!(complete_effects(t.clone(), &c).1.unwrap().id, log.id);
+        let other = cmd(
+            "01900000-0000-7000-8000-0000000000c9",
+            "task.complete",
+            serde_json::json!({ "id": TASK }),
+            5000,
+        );
+        assert_ne!(complete_effects(t, &other).1.unwrap().id, log.id);
+    }
+
+    #[test]
+    fn every_bang_counts_from_the_completers_today() {
+        let Row::Task(t) = recurring("week", true, "2026-11-01") else {
+            panic!()
+        };
+        let (after, _) = complete_effects(t.clone(), &complete_on(Some("2026-11-19"), 5000));
+        assert_eq!(after.due.unwrap().date, "2026-11-26");
+        // Without `today` the UTC date of the clock is used: 2026-11-19T12:00Z.
+        let (after, _) = complete_effects(t, &complete_on(None, 1_795_089_600_000));
+        assert_eq!(after.due.unwrap().date, "2026-11-26");
+    }
+
+    #[test]
+    fn a_missed_recurring_task_stays_due_until_it_is_completed() {
+        let row = recurring("day", false, "2026-11-18");
+        let Row::Task(t) = &row else { panic!() };
+        // Nothing runs on its own: the due date is still yesterday's.
+        assert_eq!(t.due.as_ref().unwrap().date, "2026-11-18");
+        assert_eq!(t.completed_at, None);
+        let done = apply(Some(row), &complete_on(Some("2026-11-19"), 5000)).unwrap();
+        let Row::Task(t) = done else { panic!() };
+        assert_eq!(t.due.unwrap().date, "2026-11-19");
+        assert_eq!(t.completed_at, None);
+    }
+
+    #[test]
+    fn a_plain_task_completes_once_and_logs_once() {
+        let Row::Task(t) = created() else { panic!() };
+        let (done, log) = complete_effects(t, &complete(5000));
+        assert_eq!(done.completed_at, Some(5000));
+        assert!(log.is_some());
+        let (_, again) = complete_effects(done, &complete(9000));
+        assert!(again.is_none());
+    }
+
+    #[test]
+    fn completing_a_recurring_task_wins_the_due_clock() {
+        let row = recurring("day", false, "2026-11-18");
+        let mut clocks = Clocks::new();
+        clocks.insert("due".into(), complete(1).hlc);
+        let done = apply_lww(
+            Some(row),
+            &mut clocks,
+            &complete_on(Some("2026-11-19"), 5000),
+        )
+        .unwrap();
+        let Row::Task(t) = done else { panic!() };
+        assert_eq!(t.due.unwrap().date, "2026-11-19");
+        assert_eq!(clocks["due"].wall, 5000);
     }
 
     #[test]
@@ -958,6 +1141,7 @@ mod tests {
                 ("order", 1000),
                 ("parent_id", 1000),
                 ("priority", 1000),
+                ("recurrence", 1000),
                 ("title", 1000)
             ]
         );
@@ -1012,6 +1196,7 @@ mod tests {
             duration_min: None,
             priority: 4,
             label_ids: vec![],
+            recurrence: None,
         })
     }
 
