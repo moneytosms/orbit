@@ -85,6 +85,8 @@
     await loadKnown()
   }
   function note(t: Parsed['tokens'][number]) {
+    if (t.known && t.kind === 'reminder')
+      return t.value.includes('T') ? `at ${t.value.replace('T', ' ')}` : `${t.value} min before`
     if (t.known) return t.kind === 'date' ? `→ ${t.value}` : ''
     if (t.kind === 'label') return 'new label'
     if (t.kind === 'place') return 'no such area'

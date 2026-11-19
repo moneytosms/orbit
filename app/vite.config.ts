@@ -28,6 +28,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['sw-notify.js'],
         // The wasm core and the self-hosted font must be cached for the app to open offline.
         globPatterns: ['**/*.{js,css,html,wasm,woff2,svg,png}'],
       },

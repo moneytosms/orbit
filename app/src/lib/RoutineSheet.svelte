@@ -34,6 +34,7 @@
   let ongoing = $state(true)
   let days = $state(30)
   let time = $state('')
+  let reminder = $state('')
   let goalId = $state('')
   let parentId = $state('')
   let targets = $state<Goal[]>([])
@@ -47,6 +48,7 @@
     ongoing = routine ? routine.length_days == null : true
     days = routine?.length_days ?? 30
     time = routine?.time ?? ''
+    reminder = routine?.reminder ?? ''
     goalId = routine?.goal_id ?? ''
     parentId = routine?.parent_id ?? areas[0]?.area.id ?? ''
     listGoals().then((g) => (targets = g.filter((x) => x.progress.kind === 'target')))
@@ -69,6 +71,7 @@
       length_days: ongoing ? null : Math.max(1, Math.round(Number(days)) || 1),
       time: time || null,
       goal_id: goalId || null,
+      reminder: reminder || null,
     }
     if (routine) await updateRoutine(routine.id, input)
     else await createRoutine(parentId, input)
@@ -133,6 +136,11 @@
         <label for="routine-time" class="text-xs font-medium text-muted">Time of day</label>
         <input id="routine-time" type="time" bind:value={time} class={inputClass} />
         <p class="text-xs text-muted">Leave empty for anytime.</p>
+      </div>
+      <div class="grid gap-1.5">
+        <label for="routine-reminder" class="text-xs font-medium text-muted">Daily reminder</label>
+        <input id="routine-reminder" type="time" bind:value={reminder} class={inputClass} />
+        <p class="text-xs text-muted">Leave empty for none. Skipped once you've checked in that day.</p>
       </div>
       <div class="grid gap-1.5">
         <label for="routine-goal" class="text-xs font-medium text-muted">Target goal</label>

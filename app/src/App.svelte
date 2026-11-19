@@ -24,6 +24,7 @@
   } from './lib/sync'
   import type { View as ViewRow } from './lib/sync'
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
+  import { refreshNotifier, startNotifier } from './lib/notify'
   import { inbox_id } from '../wasm/orbit_wasm'
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
@@ -64,6 +65,7 @@
     rows = parent ? await tasksIn(parent) : []
     inboxCount = (await tasksIn(inbox_id())).length
     allViews = await views()
+    void refreshNotifier()
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
     const remote = await getSettings()
     if (remote && ((remote.theme && remote.theme !== getTheme()) || (remote.accent || null) !== getAccent())) {
@@ -88,7 +90,7 @@
   async function enter() {
     gate = 'app'
     pending = 0
-    if (!started) start(refresh)
+    if (!started) (start(refresh), startNotifier())
     started = true
     await applyStartView()
     refresh()

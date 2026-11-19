@@ -4,6 +4,7 @@ pub mod order;
 pub mod page;
 pub mod parse;
 pub mod recur;
+pub mod reminder;
 pub mod routine;
 pub mod theme;
 pub mod trash;
@@ -151,6 +152,9 @@ pub struct Task {
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// Offsets before due or deadline, or absolute times. One field for sync.
+    #[serde(default)]
+    pub reminders: Vec<reminder::Reminder>,
 }
 
 fn default_priority() -> u8 {
@@ -206,6 +210,9 @@ pub struct Settings {
     /// `HH:MM`; empty is midnight.
     #[serde(default)]
     pub day_start: String,
+    /// A Task with a timed due gets an "at due time" reminder; `None` is on.
+    #[serde(default)]
+    pub default_reminder: Option<bool>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -511,6 +518,8 @@ pub enum Op {
         timezone: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         day_start: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_reminder: Option<bool>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -625,6 +634,13 @@ pub enum Op {
             skip_serializing_if = "Option::is_none"
         )]
         goal_id: Option<Option<Uuid>>,
+        /// `HH:MM` daily reminder; `null` clears it.
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reminder: Option<Option<String>>,
     },
     /// Stops misses from `date` on.
     #[serde(rename = "routine.pause")]
@@ -642,6 +658,18 @@ pub enum Op {
     },
     #[serde(rename = "checkin.clear")]
     CheckinClear { id: Uuid },
+    #[serde(rename = "reminder.add")]
+    ReminderAdd {
+        task_id: Uuid,
+        reminder: reminder::Reminder,
+    },
+    #[serde(rename = "reminder.remove")]
+    ReminderRemove { task_id: Uuid, id: Uuid },
+    /// Adds a one-off absolute reminder at `at` (`YYYY-MM-DDTHH:MM`), its id the command's uuid.
+    #[serde(rename = "reminder.snooze")]
+    ReminderSnooze { task_id: Uuid, at: String },
+    #[serde(rename = "reminder.spend")]
+    ReminderSpend { task_id: Uuid, id: Uuid },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -718,6 +746,10 @@ impl Op {
             | Op::CheckinSet { id, .. }
             | Op::CheckinClear { id }
             | Op::LabelCreate { id, .. } => *id,
+            Op::ReminderAdd { task_id, .. }
+            | Op::ReminderRemove { task_id, .. }
+            | Op::ReminderSnooze { task_id, .. }
+            | Op::ReminderSpend { task_id, .. } => *task_id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
     }
@@ -892,12 +924,14 @@ impl Op {
                 start_view,
                 timezone,
                 day_start,
+                default_reminder,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
                 ("start_view", start_view.is_some()),
                 ("timezone", timezone.is_some()),
                 ("day_start", day_start.is_some()),
+                ("default_reminder", default_reminder.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -910,6 +944,7 @@ impl Op {
                 length_days,
                 time,
                 goal_id,
+                reminder,
                 ..
             } => [
                 ("name", name.is_some()),
@@ -917,6 +952,7 @@ impl Op {
                 ("length_days", length_days.is_some()),
                 ("time", time.is_some()),
                 ("goal_id", goal_id.is_some()),
+                ("reminder", reminder.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -925,6 +961,10 @@ impl Op {
             Op::RoutinePause { .. } | Op::RoutineResume { .. } => vec!["pauses"],
             Op::CheckinSet { .. } => vec!["state", "cleared"],
             Op::CheckinClear { .. } => vec!["cleared"],
+            Op::ReminderAdd { .. }
+            | Op::ReminderRemove { .. }
+            | Op::ReminderSnooze { .. }
+            | Op::ReminderSpend { .. } => vec!["reminders"],
         }
     }
 }
@@ -1085,6 +1125,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     goal_id: None,
                     created_at: Some(cmd.hlc.wall),
                     trashed_at: None,
+                    reminders: vec![],
                 }))
             }
         }
@@ -1222,6 +1263,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::RoutineResume { .. }
         | Op::CheckinSet { .. }
         | Op::CheckinClear { .. } => routine::apply(existing, cmd),
+        Op::ReminderAdd { .. }
+        | Op::ReminderRemove { .. }
+        | Op::ReminderSnooze { .. }
+        | Op::ReminderSpend { .. } => reminder::apply(existing, cmd),
         Op::GoalCreate {
             id,
             parent_id,
@@ -1433,6 +1478,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             start_view,
             timezone,
             day_start,
+            default_reminder,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1444,6 +1490,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     start_view: String::new(),
                     timezone: String::new(),
                     day_start: String::new(),
+                    default_reminder: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1453,6 +1500,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 start_view: start_view.clone().unwrap_or(old.start_view),
                 timezone: timezone.clone().unwrap_or(old.timezone),
                 day_start: day_start.clone().unwrap_or(old.day_start),
+                default_reminder: default_reminder.or(old.default_reminder),
             }))
         }
     }
@@ -1736,7 +1784,7 @@ mod tests {
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
-                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
+                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "reminders": [],
             })
         );
     }
@@ -1988,6 +2036,7 @@ mod tests {
                 ("parent_id", 1000),
                 ("priority", 1000),
                 ("recurrence", 1000),
+                ("reminders", 1000),
                 ("title", 1000),
                 ("trashed_at", 1000)
             ]
@@ -2054,6 +2103,7 @@ mod tests {
             goal_id: None,
             created_at: None,
             trashed_at: None,
+            reminders: vec![],
         })
     }
 
@@ -2355,7 +2405,8 @@ mod tests {
                 accent: String::new(),
                 start_view: String::new(),
                 timezone: String::new(),
-                day_start: String::new()
+                day_start: String::new(),
+                default_reminder: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

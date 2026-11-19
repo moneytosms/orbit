@@ -8,8 +8,11 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as auth from '$lib/auth'
+  import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
   import {
     getDaySettings,
+    getDefaultReminder,
+    setDefaultReminder,
     getSettings,
     setDayStart,
     setStartView,
@@ -118,6 +121,9 @@
     timezone = s.timezone
     dayStart = s.day_start
   })
+  let notify = $state(notifyEnabled())
+  let defaultReminder = $state(true)
+  getDefaultReminder().then((v) => (defaultReminder = v))
   views().then((v) => (allViews = v))
   // Inbox and Upcoming are already plain routes; hidden views stay listed only if they are the current start.
   const startOptions = $derived(
@@ -330,6 +336,20 @@
         aria-label="Day start"
         class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
       />
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">Reminders</h2>
+    <div class="flex max-w-sm flex-col gap-3">
+      <Label class="font-normal">
+        <Checkbox bind:checked={notify} onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))} />
+        Notify on this device
+      </Label>
+      <Label class="font-normal">
+        <Checkbox bind:checked={defaultReminder} onCheckedChange={(v) => setDefaultReminder(v === true)} />
+        Remind at the due time of a Task with a time
+      </Label>
     </div>
   </section>
 

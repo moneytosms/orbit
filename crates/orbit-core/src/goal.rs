@@ -207,6 +207,7 @@ mod tests {
             goal_id,
             created_at: None,
             trashed_at: None,
+            reminders: vec![],
         })
     }
 
@@ -304,6 +305,7 @@ mod tests {
                 length_days: None,
                 time: None,
                 goal_id: link,
+                reminder: None,
                 pauses: vec![],
                 order: String::new(),
                 created_at: None,

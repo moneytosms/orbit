@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "reminders": [] }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "reminders": [] }])
     );
 }
 
@@ -1059,4 +1059,41 @@ async fn routines_converge_on_one_check_in_and_an_archived_one_is_read_only() {
     assert_eq!(row(&res, &checkin)["cleared"], false);
     assert_eq!(row(&res, &routine)["name"], "Meds");
     assert!(row(&res, &routine)["archived_at"].is_u64());
+}
+
+#[tokio::test]
+async fn reminders_add_snooze_spend_and_remove_on_a_task() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let rid = c(0xf1);
+    let (_, res) = sync(&app, json!({ "v": 1, "token": snap["token"], "commands": [
+        cmd(&c(0xf0), "task.create", json!({ "id": TASK, "title": "Call" }), 1000),
+        cmd(&c(0xf2), "reminder.add", json!({ "task_id": TASK, "reminder":
+            { "id": rid, "kind": "before", "field": "due", "minutes": 30 } }), 1001),
+        cmd(&c(0xf3), "reminder.snooze", json!({ "task_id": TASK, "at": "2026-03-02T09:10" }), 1002),
+        cmd(&c(0xf4), "reminder.snooze", json!({ "task_id": TASK, "at": "nope" }), 1003),
+        cmd(&c(0xf5), "reminder.spend", json!({ "task_id": TASK, "id": c(0xf3) }), 1004),
+    ]})).await;
+    for n in [0xf0, 0xf2, 0xf3, 0xf5] {
+        assert_eq!(res["statuses"][c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        res["statuses"][c(0xf4)],
+        json!({ "status": "error", "code": "bad_field" })
+    );
+    let reminders = row(&res, TASK)["reminders"].as_array().unwrap().clone();
+    assert_eq!(reminders.len(), 2);
+    assert_eq!(reminders[0]["minutes"], 30);
+    assert_eq!(reminders[1]["at"], "2026-03-02T09:10");
+    assert_eq!(reminders[1]["spent"], true);
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": res["token"], "commands": [
+            cmd(&c(0xf6), "reminder.remove", json!({ "task_id": TASK, "id": rid }), 1005),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xf6)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, TASK)["reminders"].as_array().unwrap().len(), 1);
 }
