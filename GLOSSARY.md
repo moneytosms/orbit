@@ -56,6 +56,10 @@ _Avoid_: Routine, repeat
 A markdown document, optionally with attachments, owned by one Area, Project, Goal or Roadmap; an owner can have many Pages.
 _Avoid_: Note, doc
 
+**Conflict copy**:
+A sibling Page saved when the same Page body was edited on two devices before syncing; the other edit is kept, nothing is merged.
+_Avoid_: Duplicate, merge
+
 **Link**:
 An inline reference from a Page or Task description to a Page, Task, Goal, Project or Area.
 
