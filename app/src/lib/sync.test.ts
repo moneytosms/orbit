@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { initSync } from '../../wasm/orbit_wasm'
-import { completeTask, createTask, inboxTasks, sync } from './sync'
+import { completeTask, createTask, inboxTasks, onRejected, sync } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
 type Body = { v: number; token?: number; commands: { uuid: string; type: string; args: any }[] }
@@ -12,6 +12,8 @@ let requests: Body[]
 let delta: object[]
 let token = 0
 let gate: Promise<void> | undefined
+let httpStatus = 200
+let rejectWith: string | undefined
 
 // Stand-in server: accepts every command and returns whatever delta the test sets.
 vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
@@ -19,7 +21,9 @@ vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
   const body: Body = JSON.parse(init.body as string)
   requests.push(body)
   await gate
-  const statuses = Object.fromEntries(body.commands.map((c) => [c.uuid, { status: 'ok' }]))
+  if (httpStatus !== 200) return new Response('', { status: httpStatus })
+  const status = rejectWith ? { status: 'error', code: rejectWith } : { status: 'ok' }
+  const statuses = Object.fromEntries(body.commands.map((c) => [c.uuid, status]))
   const res = { statuses, delta, token: ++token }
   delta = []
   return new Response(JSON.stringify(res))
@@ -33,6 +37,8 @@ beforeEach(() => {
   online = true
   requests = []
   delta = []
+  httpStatus = 200
+  rejectWith = undefined
 })
 
 test('a Task created offline shows at once and is sent once back online', async () => {
@@ -84,4 +90,28 @@ test('a write made while a sync is in flight is sent before that sync settles', 
   release()
   await inFlight
   expect(requests.at(-1)!.commands).toMatchObject([{ type: 'task.create', args: { title: 'Late' } }])
+})
+
+test('a rejected command is dropped, its guess undone and the rejection reported', async () => {
+  const codes: string[] = []
+  onRejected((code) => codes.push(code))
+  await sync()
+  const before = (await inboxTasks()).map((t) => t.title)
+  await createTask('Rejected')
+  rejectWith = 'exists'
+  await sync()
+  expect(codes).toEqual(['exists'])
+  expect((await inboxTasks()).map((t) => t.title)).toEqual(before)
+  rejectWith = undefined
+  await sync()
+  expect(requests.at(-1)!.commands).toEqual([])
+})
+
+test('an old protocol version (426) keeps the outbox for after an update', async () => {
+  await createTask('Kept')
+  httpStatus = 426
+  await sync()
+  httpStatus = 200
+  await sync()
+  expect(requests.at(-1)!.commands).toMatchObject([{ type: 'task.create', args: { title: 'Kept' } }])
 })

@@ -162,3 +162,90 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
     );
     assert_eq!(res["token"], 1);
 }
+
+#[tokio::test]
+async fn the_protocol_version_is_checked() {
+    // The 426 window itself is tested in orbit-core with a larger current version.
+    let dir = tempfile::tempdir().unwrap();
+    let app = orbit_server::app(dir.path()).unwrap();
+    let v = orbit_core::PROTOCOL_V;
+    let (status, _) = sync(&app, json!({ "v": v, "commands": [] })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = sync(&app, json!({ "v": v + 1, "commands": [] })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_data_dir_from_before_field_clocks_still_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    rusqlite::Connection::open(dir.path().join("orbit.db"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE rows (id TEXT PRIMARY KEY, data TEXT NOT NULL, seq INTEGER NOT NULL);
+             INSERT INTO rows VALUES ('00000000-0000-7000-8000-000000000001', '{\"kind\":\"area\",\"id\":\"00000000-0000-7000-8000-000000000001\",\"name\":\"Inbox\"}', 1);",
+        )
+        .unwrap();
+    let app = orbit_server::app(dir.path()).unwrap();
+    let (status, res) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(res["delta"][0]["name"], "Inbox");
+}
+
+#[tokio::test]
+async fn a_rejected_command_sends_back_its_rows_current_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = orbit_server::app(dir.path()).unwrap();
+    let create = cmd(
+        "01900000-0000-7000-8000-0000000000c1",
+        "task.create",
+        json!({ "id": TASK, "title": "Buy milk" }),
+        1000,
+    );
+    let (_, first) = sync(&app, json!({ "v": 1, "commands": [create] })).await;
+
+    // Up to date, then a rename the server rejects: the row comes back anyway so the client can undo its guess.
+    let blank = cmd(
+        "01900000-0000-7000-8000-0000000000c2",
+        "task.update",
+        json!({ "id": TASK, "title": " " }),
+        2000,
+    );
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": first["token"], "commands": [blank] }),
+    )
+    .await;
+    assert_eq!(
+        res["statuses"]["01900000-0000-7000-8000-0000000000c2"]["code"],
+        "title_required"
+    );
+    assert_eq!(
+        res["delta"],
+        json!([{ "kind": "task", "id": TASK, "area_id": INBOX, "title": "Buy milk", "completed_at": null }])
+    );
+}
+
+#[tokio::test]
+async fn the_response_clock_is_the_newest_edit_behind_the_delta() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = orbit_server::app(dir.path()).unwrap();
+    let create = cmd(
+        "01900000-0000-7000-8000-0000000000c1",
+        "task.create",
+        json!({ "id": TASK, "title": "Buy milk" }),
+        1000,
+    );
+    let rename = cmd(
+        "01900000-0000-7000-8000-0000000000c2",
+        "task.update",
+        json!({ "id": TASK, "title": "Oat milk" }),
+        7000,
+    );
+    sync(&app, json!({ "v": 1, "commands": [create, rename] })).await;
+    let (_, other) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    assert_eq!(
+        other["clock"],
+        json!({ "wall": 7000, "counter": 0, "device": DEVICE })
+    );
+    assert_eq!(other["delta"][1]["title"], "Oat milk");
+}

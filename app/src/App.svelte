@@ -1,8 +1,16 @@
 <script lang="ts">
-  import { completeTask, createTask, inboxTasks, start, type Task } from './lib/sync'
+  import { completeTask, createTask, inboxTasks, onRejected, start, type Task } from './lib/sync'
 
   let tasks: Task[] = $state([])
   let title = $state('')
+  let toast = $state('')
+  let hide: ReturnType<typeof setTimeout>
+  // shortcut: plain status line; the real toast comes with the app shell (#36).
+  onRejected((code) => {
+    toast = `A change was rejected (${code.replaceAll('_', ' ')}) and has been undone.`
+    clearTimeout(hide)
+    hide = setTimeout(() => (toast = ''), 5000)
+  })
   const refresh = async () => (tasks = await inboxTasks())
   start(refresh)
   refresh()
@@ -27,4 +35,5 @@
       </li>
     {/each}
   </ul>
+  <p role="status">{toast}</p>
 </main>

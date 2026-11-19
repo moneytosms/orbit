@@ -2,3 +2,16 @@
 name = "orbit-client"
 version.workspace = true
 edition.workspace = true
+
+[dependencies]
+getrandom = "0.4.3"
+orbit-core = { version = "0.0.0", path = "../orbit-core" }
+reqwest = { version = "0.13.5", features = ["json"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+axum = "0.8.9"
+orbit-server = { path = "../orbit-server" }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net"] }

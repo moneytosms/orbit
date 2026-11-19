@@ -34,3 +34,10 @@ pub fn apply(existing: Option<String>, command: &str) -> Result<String, JsError>
 pub fn inbox_id() -> String {
     INBOX.to_string()
 }
+
+/// The HLC receive step over a response's `clock`.
+#[wasm_bindgen]
+pub fn observe_hlc(mine: &str, seen: &str, now_ms: f64) -> Result<String, JsError> {
+    let (mine, seen): (Hlc, Hlc) = (serde_json::from_str(mine)?, serde_json::from_str(seen)?);
+    Ok(serde_json::to_string(&mine.observe(&seen, now_ms as u64))?)
+}

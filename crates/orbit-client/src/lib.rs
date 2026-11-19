@@ -1,1 +1,228 @@
+//! Sync client: a SQLite replica (rows, outbox, meta) and `POST /sync`. Shared by Tauri and the CLI.
+//! Every write takes `now` so callers (and tests) own the clock.
+use orbit_core::{
+    Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task, Uuid,
+    apply, new_id,
+};
+use rusqlite::{Connection, OptionalExtension};
 
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+pub struct Client {
+    db: Connection,
+    url: String,
+    http: reqwest::Client,
+}
+
+/// A command the server refused. It is gone from the outbox and its row is back to the server's.
+#[derive(Debug)]
+pub struct Rejection {
+    pub command: Command,
+    pub code: ErrorCode,
+}
+
+impl Client {
+    pub fn open(db: Connection, url: &str) -> Result<Client> {
+        // Outbox rowid order is enqueue order, which is this Device's HLC order.
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS rows (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS outbox (uuid TEXT PRIMARY KEY, command TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )?;
+        Ok(Client {
+            db,
+            url: url.trim_end_matches('/').into(),
+            http: reqwest::Client::new(),
+        })
+    }
+
+    pub fn create_task(&mut self, title: &str, now_ms: u64) -> Result<Uuid> {
+        let id = new_id(now_ms, &random()?);
+        self.enqueue(
+            Op::TaskCreate {
+                id,
+                title: title.into(),
+            },
+            now_ms,
+        )?;
+        Ok(id)
+    }
+
+    pub fn rename_task(&mut self, id: Uuid, title: &str, now_ms: u64) -> Result<()> {
+        self.enqueue(
+            Op::TaskUpdate {
+                id,
+                title: Some(title.into()),
+            },
+            now_ms,
+        )
+        .map(drop)
+    }
+
+    pub fn complete_task(&mut self, id: Uuid, now_ms: u64) -> Result<()> {
+        self.enqueue(Op::TaskComplete { id }, now_ms).map(drop)
+    }
+
+    /// Stamps, predicts and queues one command, atomically. Fails without queueing if core rejects it.
+    pub fn enqueue(&mut self, op: Op, now_ms: u64) -> Result<Command> {
+        let tx = self.db.transaction()?;
+        let cmd = Command {
+            uuid: new_id(now_ms, &random()?),
+            op,
+            hlc: clock(&tx, now_ms)?.next(now_ms),
+        };
+        predict(&tx, &cmd)?;
+        set_meta(&tx, "hlc", &serde_json::to_string(&cmd.hlc)?)?;
+        tx.execute(
+            "INSERT INTO outbox (uuid, command) VALUES (?1, ?2)",
+            [cmd.uuid.to_string(), serde_json::to_string(&cmd)?],
+        )?;
+        tx.commit()?;
+        Ok(cmd)
+    }
+
+    pub fn task(&self, id: Uuid) -> Result<Option<Task>> {
+        Ok(match row(&self.db, id)? {
+            Some(Row::Task(t)) => Some(t),
+            _ => None,
+        })
+    }
+
+    pub fn outbox_len(&self) -> Result<usize> {
+        let n: i64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?;
+        Ok(n as usize)
+    }
+
+    /// Sends the outbox in batches of 100 and merges each delta. On a network or HTTP error
+    /// (401, 426, ...) the outbox stays queued and the error is returned.
+    pub async fn sync(&mut self, now_ms: u64) -> Result<Vec<Rejection>> {
+        let mut rejected = Vec::new();
+        loop {
+            let commands = outbox(&self.db, 100)?;
+            let token = meta(&self.db, "token")?.map(|t| t.parse()).transpose()?;
+            let req = SyncRequest {
+                v: PROTOCOL_V,
+                token,
+                commands,
+            };
+            let res: SyncResponse = self
+                .http
+                .post(format!("{}/sync", self.url))
+                .json(&req)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+
+            let tx = self.db.transaction()?;
+            let mut answered = 0;
+            for cmd in req.commands.iter() {
+                match res.statuses.get(&cmd.uuid) {
+                    None => continue, // not answered: keep it queued
+                    Some(Status::Ok) => answered += 1,
+                    Some(Status::Error { code }) => {
+                        // Undo the guess; the delta brings back the server's row if it has one.
+                        tx.execute(
+                            "DELETE FROM rows WHERE id = ?",
+                            [cmd.op.target().to_string()],
+                        )?;
+                        rejected.push(Rejection {
+                            command: cmd.clone(),
+                            code: *code,
+                        });
+                    }
+                }
+                tx.execute("DELETE FROM outbox WHERE uuid = ?", [cmd.uuid.to_string()])?;
+            }
+            for r in &res.delta {
+                put(&tx, r)?;
+            }
+            set_meta(&tx, "token", &res.token.to_string())?;
+            if let Some(seen) = &res.clock {
+                let observed = clock(&tx, now_ms)?.observe(seen, now_ms);
+                set_meta(&tx, "hlc", &serde_json::to_string(&observed)?)?;
+            }
+            // Re-predict what is still queued on top of the server's rows.
+            // Plain `apply`, not per-field clocks: an older queued edit can show over a newer
+            // server value until it is sent, after which the server's row comes back.
+            for cmd in outbox(&tx, usize::MAX)? {
+                let _ = predict(&tx, &cmd);
+            }
+            tx.commit()?;
+            // A partly answered batch would be resent as-is: stop rather than loop.
+            if req.commands.len() < 100 || answered < req.commands.len() {
+                return Ok(rejected);
+            }
+        }
+    }
+}
+
+/// This Device's last clock reading; the first call mints the Device id.
+// shortcut: random Device id per replica until login (#34) issues one.
+fn clock(db: &Connection, now_ms: u64) -> Result<Hlc> {
+    match meta(db, "hlc")? {
+        Some(s) => Ok(serde_json::from_str(&s)?),
+        None => Ok(Hlc {
+            wall: 0,
+            counter: 0,
+            device: new_id(now_ms, &random()?),
+        }),
+    }
+}
+
+fn predict(db: &Connection, cmd: &Command) -> Result<()> {
+    let existing = row(db, cmd.op.target())?;
+    let new =
+        apply(existing, cmd).map_err(|code| format!("rejected: {}", serde_json::json!(code)))?;
+    put(db, &new)
+}
+
+fn outbox(db: &Connection, limit: usize) -> Result<Vec<Command>> {
+    let mut stmt = db.prepare("SELECT command FROM outbox ORDER BY rowid LIMIT ?")?;
+    let rows = stmt.query_map([limit.min(i64::MAX as usize) as i64], |r| {
+        r.get::<_, String>(0)
+    })?;
+    rows.map(|c| Ok(serde_json::from_str(&c?)?)).collect()
+}
+
+fn row(db: &Connection, id: Uuid) -> Result<Option<Row>> {
+    let data: Option<String> = db
+        .query_row(
+            "SELECT data FROM rows WHERE id = ?",
+            [id.to_string()],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(data.map(|d| serde_json::from_str(&d)).transpose()?)
+}
+
+fn put(db: &Connection, row: &Row) -> Result<()> {
+    db.execute(
+        "INSERT OR REPLACE INTO rows (id, data) VALUES (?1, ?2)",
+        [row.id().to_string(), serde_json::to_string(row)?],
+    )?;
+    Ok(())
+}
+
+fn meta(db: &Connection, key: &str) -> Result<Option<String>> {
+    Ok(db
+        .query_row("SELECT value FROM meta WHERE key = ?", [key], |r| r.get(0))
+        .optional()?)
+}
+
+fn set_meta(db: &Connection, key: &str, value: &str) -> Result<()> {
+    db.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+        [key, value],
+    )?;
+    Ok(())
+}
+
+fn random() -> Result<[u8; 10]> {
+    let mut b = [0; 10];
+    getrandom::fill(&mut b)?;
+    Ok(b)
+}
