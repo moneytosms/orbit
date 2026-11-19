@@ -10,10 +10,24 @@
   import DropTarget from './DropTarget.svelte'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
-  import { createArea, createProject, moveItem, orderBetween, type Area, type Project } from '$lib/sync'
+  import {
+    createArea,
+    createProject,
+    createView,
+    moveItem,
+    orderBetween,
+    pinnedViews,
+    reorderViews,
+    updateView,
+    views,
+    type Area,
+    type Project,
+    type View,
+  } from '$lib/sync'
   import { inbox_id } from '../../wasm/orbit_wasm'
 
   type AreaItem = { id: string; area: Area; projects: Project[] }
+  type ViewPin = { id: string; name: string }
 
   let {
     screen,
@@ -38,6 +52,30 @@
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
   let newProject = $state<Record<string, string>>({})
+  let pinned = $state<View[]>([])
+  let hiddenViews = $state<View[]>([])
+  let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name })))
+
+  // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
+  $effect(() => {
+    void areas
+    loadViews()
+  })
+  async function loadViews() {
+    pinned = await pinnedViews()
+    hiddenViews = (await views()).filter((v) => v.hidden)
+  }
+  async function newView() {
+    const id = await createView('New view', 'task')
+    await updateView(id, { pinned: true })
+    await loadViews()
+    drawer = false
+    location.hash = `#/view/${id}`
+  }
+  async function unhide(id: string) {
+    await updateView(id, { hidden: false })
+    await loadViews()
+  }
 
   // Desktop gets a centred Dialog, phones a bottom Sheet.
   function open(text = '') {
@@ -68,6 +106,18 @@
     if (trigger !== TRIGGERS.DROPPED_INTO_ZONE) return
     const i = areaOrder.findIndex((a) => a.id === id)
     moveItem(id, null, orderBetween(areaOrder[i - 1]?.area.order, areaOrder[i + 1]?.area.order))
+  }
+
+  function considerViews(e: CustomEvent<DndEvent<ViewPin>>) {
+    viewOrder = e.detail.items
+  }
+  async function finalizeViews(e: CustomEvent<DndEvent<ViewPin>>) {
+    viewOrder = e.detail.items
+    const { id, trigger } = e.detail.info
+    if (trigger !== TRIGGERS.DROPPED_INTO_ZONE) return
+    const i = viewOrder.findIndex((v) => v.id === id)
+    await reorderViews(id, viewOrder[i + 1]?.id ?? null)
+    await loadViews()
   }
 
   async function addArea(e: SubmitEvent) {
@@ -178,8 +228,54 @@
     </nav>
     {@render areaTree()}
     <section>
-      <h2 class="px-2.5 pb-1 text-[12.5px] font-semibold text-muted">Views</h2>
-      <p class="px-2.5 text-[12.5px] text-muted">Saved views show up here.</p>
+      <div class="flex items-center gap-1 px-2.5 pb-1">
+        <h2 class="flex-1 text-[12.5px] font-semibold text-muted">Views</h2>
+        <Button variant="ghost" size="icon-sm" aria-label="New view" onclick={newView}>
+          <Plus size={14} />
+        </Button>
+      </div>
+      <ul
+        use:dndzone={{ items: viewOrder, flipDurationMs: 150, delayTouchStart: 200 }}
+        onconsider={considerViews}
+        onfinalize={finalizeViews}
+        class="flex flex-col gap-0.5"
+      >
+        {#each viewOrder as v (v.id)}
+          <li>
+            <a
+              href="#/view/{v.id}"
+              onclick={() => (drawer = false)}
+              aria-current={screen.name === 'view' && screen.id === v.id ? 'page' : undefined}
+              class="flex h-8 items-center rounded-[7px] px-2.5 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+            >
+              {v.name}
+            </a>
+          </li>
+        {/each}
+      </ul>
+      {#if !viewOrder.length}
+        <p class="px-2.5 text-[12.5px] text-muted">Pin a view to show it here.</p>
+      {/if}
+      {#if hiddenViews.length}
+        <details class="mt-1 px-2.5">
+          <summary class="cursor-pointer text-[12.5px] text-muted">Hidden views</summary>
+          <ul class="mt-1 flex flex-col gap-0.5">
+            {#each hiddenViews as v (v.id)}
+              <li class="flex items-center gap-1">
+                <a
+                  href="#/view/{v.id}"
+                  onclick={() => (drawer = false)}
+                  class="min-w-0 flex-1 truncate text-[13px] text-muted hover:text-text"
+                >
+                  {v.name}
+                </a>
+                <Button variant="ghost" size="sm" aria-label="Unhide {v.name}" onclick={() => unhide(v.id)}>Show</Button
+                >
+              </li>
+            {/each}
+          </ul>
+        </details>
+      {/if}
     </section>
     <nav class="mt-auto flex flex-col gap-0.5" aria-label="Account">
       {@render row('profile')}

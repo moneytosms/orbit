@@ -330,6 +330,10 @@ export async function pages(): Promise<Page[]> {
 export async function goals(): Promise<Goal[]> {
   return (await visibleRows()).filter((r): r is Goal => r.kind === 'goal' && r.completed_at === null).sort(byOrder)
 }
+/** Every visible Goal, completed or not, in display order. */
+export async function allGoals(): Promise<Goal[]> {
+  return (await visibleRows()).filter((r): r is Goal => r.kind === 'goal').sort(byOrder)
+}
 export async function milestonesOf(goalId: string): Promise<Milestone[]> {
   return (await visibleRows())
     .filter((r): r is Milestone => r.kind === 'milestone' && r.goal_id === goalId)
@@ -350,6 +354,12 @@ export async function inheritedGoal(taskId: string): Promise<string | null> {
 export async function goalProgress(goalId: string): Promise<{ progress: number; behind: boolean }> {
   return JSON.parse(goal_progress(JSON.stringify(await allRows()), goalId, localToday()))
 }
+
+/** Built-in View ids, mirroring `VIEW_INBOX`..`VIEW_RECENT` in crates/orbit-core/src/view.rs. */
+export const VIEW_INBOX = '00000000-0000-7000-8000-000000000101'
+export const VIEW_UPCOMING = '00000000-0000-7000-8000-000000000102'
+export const VIEW_SLIPPING = '00000000-0000-7000-8000-000000000103'
+export const VIEW_RECENT = '00000000-0000-7000-8000-000000000104'
 
 /** Built-in Views merged with stored rows (a stored row replaces its built-in), not trashed, in order. */
 export async function views(): Promise<View[]> {

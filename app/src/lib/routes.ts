@@ -27,10 +27,12 @@ export const readRoute = (): Route => {
   return r in routes ? (r as Route) : 'inbox'
 }
 
-/** The screen on screen: a fixed route, or a Project or Area by id (`#/project/<id>`, `#/area/<id>`). */
-export type Screen = { name: Route } | { name: 'project' | 'area' | 'page'; id: string }
+/** The screen on screen: a fixed route, or a Project, Area, Page or View by id. */
+export type Screen = { name: Route } | { name: 'project' | 'area' | 'page' | 'view'; id: string }
 
 export const readScreen = (): Screen => {
-  const m = location.hash.match(/^#\/(project|area|page)\/([^/]+)$/)
-  return m ? { name: m[1] as 'project' | 'area' | 'page', id: decodeURIComponent(m[2]) } : { name: readRoute() }
+  const m = location.hash.match(/^#\/(project|area|page|view)\/([^/]+)$/)
+  return m
+    ? { name: m[1] as 'project' | 'area' | 'page' | 'view', id: decodeURIComponent(m[2]) }
+    : { name: readRoute() }
 }
