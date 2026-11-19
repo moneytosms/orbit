@@ -1,7 +1,8 @@
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
 use orbit_core::{
@@ -11,7 +12,8 @@ use orbit_core::{
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     collections::{BTreeMap, HashMap},
-    path::Path,
+    io::Write,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -25,6 +27,8 @@ pub use auth::reset_password;
 pub(crate) struct Shared {
     // shortcut: one connection behind a mutex, queries run on the async thread; move to spawn_blocking/pool when load matters.
     db: Mutex<Connection>,
+    /// The data dir, for free-space checks.
+    data: PathBuf,
     /// The one-time first-run code; `None` once the user exists.
     setup: Mutex<Option<String>>,
     limits: Mutex<HashMap<std::net::IpAddr, auth::Limit>>,
@@ -79,11 +83,14 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
     let setup = auth::setup_code(&conn)?;
     let shared = Shared {
         db: Mutex::new(conn),
+        data: data_dir.to_path_buf(),
         setup: Mutex::new(setup.clone()),
         limits: Mutex::default(),
     };
     let router = Router::new()
         .route("/sync", post(sync))
+        .route("/export", get(export))
+        .route("/disk", get(disk))
         .route("/auth", get(auth::state))
         .route("/auth/setup", post(auth::setup))
         .route("/auth/login", post(auth::login))
@@ -114,6 +121,64 @@ async fn sync(
         eprintln!("sync failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })
+}
+
+/// A zip of every row's data as `items.json`.
+async fn export(State(st): State<St>, _: auth::Device) -> Result<Response, StatusCode> {
+    // shortcut: no Pages/blobs yet, add with #54/#56
+    let items = {
+        let conn = lock(&st.db);
+        items_json(&conn).map_err(|e| {
+            eprintln!("export failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };
+    let zipped = zip_items(&items).map_err(|e| {
+        eprintln!("export failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/zip"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"orbit-export.zip\"",
+            ),
+        ],
+        zipped,
+    )
+        .into_response())
+}
+
+/// Every row's `data` as a JSON array, ordered by id.
+fn items_json(conn: &Connection) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut stmt = conn.prepare("SELECT data FROM rows ORDER BY id")?;
+    let mut items = Vec::new();
+    for data in stmt.query_map([], |r| r.get::<_, String>(0))? {
+        items.push(serde_json::from_str::<serde_json::Value>(&data?)?);
+    }
+    Ok(serde_json::to_vec(&items)?)
+}
+
+fn zip_items(items: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("items.json", options)?;
+    zip.write_all(items)?;
+    Ok(zip.finish()?.into_inner())
+}
+
+/// Free bytes on the disk holding the data dir.
+async fn disk(
+    State(st): State<St>,
+    _: auth::Device,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let free_bytes = fs4::available_space(&st.data).map_err(|e| {
+        eprintln!("disk failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(serde_json::json!({ "free_bytes": free_bytes })))
 }
 
 fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse> {
