@@ -1,5 +1,6 @@
 pub mod goal;
 pub mod order;
+pub mod page;
 pub mod parse;
 pub mod recur;
 pub mod theme;
@@ -9,6 +10,7 @@ use std::collections::BTreeMap;
 use uuid::Builder;
 
 pub use goal::{Goal, Milestone, Progress};
+pub use page::Page;
 pub use recur::Recurrence;
 pub use uuid::Uuid;
 
@@ -175,6 +177,7 @@ pub enum Row {
     Completion(Completion),
     Goal(Goal),
     Milestone(Milestone),
+    Page(Page),
 }
 
 impl Row {
@@ -189,6 +192,7 @@ impl Row {
             Row::Completion(c) => c.id,
             Row::Goal(g) => g.id,
             Row::Milestone(m) => m.id,
+            Row::Page(p) => p.id,
         }
     }
 
@@ -201,6 +205,7 @@ impl Row {
             Row::Task(t) => Some(t.parent_id),
             Row::Goal(g) => Some(g.parent_id),
             Row::Milestone(m) => Some(m.goal_id),
+            Row::Page(p) => Some(p.parent_id),
         }
     }
 
@@ -392,6 +397,26 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         done: Option<bool>,
     },
+    #[serde(rename = "page.create")]
+    PageCreate {
+        id: Uuid,
+        parent_id: Uuid,
+        title: String,
+        #[serde(default)]
+        body: String,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "page.rename")]
+    PageRename { id: Uuid, title: String },
+    /// Applies only if `base_rev` is the page's current `rev`; the server keeps a losing body
+    /// as a sibling Page.
+    #[serde(rename = "page.edit_body")]
+    PageEditBody {
+        id: Uuid,
+        body: String,
+        base_rev: u64,
+    },
     #[serde(rename = "task.complete")]
     TaskComplete {
         id: Uuid,
@@ -468,6 +493,9 @@ impl Op {
             | Op::GoalAddEntry { id, .. }
             | Op::MilestoneCreate { id, .. }
             | Op::MilestoneUpdate { id, .. }
+            | Op::PageCreate { id, .. }
+            | Op::PageRename { id, .. }
+            | Op::PageEditBody { id, .. }
             | Op::LabelCreate { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
@@ -482,7 +510,10 @@ impl Op {
             | Op::TaskCreate { .. }
             | Op::GoalCreate { .. }
             | Op::MilestoneCreate { .. }
+            | Op::PageCreate { .. }
             | Op::LabelCreate { .. } => vec![],
+            Op::PageRename { .. } => vec!["title"],
+            Op::PageEditBody { .. } => vec!["body", "rev"],
             Op::ProjectUpdate { goal_id, .. } => {
                 if goal_id.is_some() {
                     vec!["goal_id"]
@@ -746,6 +777,11 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..m
                 })),
+                Some(Row::Page(p)) => Ok(Row::Page(Page {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..p
+                })),
                 Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_)) => {
                     Err(ErrorCode::BadParent)
                 }
@@ -954,6 +990,49 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             }
             _ => Err(ErrorCode::NotFound),
         },
+        Op::PageCreate {
+            id,
+            parent_id,
+            title,
+            body,
+            order,
+        } => {
+            let title = title.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if title.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else {
+                Ok(Row::Page(Page {
+                    id: *id,
+                    parent_id: *parent_id,
+                    title: title.into(),
+                    body: body.clone(),
+                    rev: 0,
+                    order: order.clone(),
+                }))
+            }
+        }
+        Op::PageRename { title, .. } => match existing {
+            Some(Row::Page(p)) => match title.trim() {
+                "" => Err(ErrorCode::TitleRequired),
+                title => Ok(Row::Page(Page {
+                    title: title.into(),
+                    ..p
+                })),
+            },
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::PageEditBody { body, base_rev, .. } => match existing {
+            // A stale edit leaves the page alone; the server saves its body as a sibling.
+            Some(Row::Page(p)) if page::is_conflict(&p, *base_rev) => Ok(Row::Page(p)),
+            Some(Row::Page(p)) => Ok(Row::Page(Page {
+                body: body.clone(),
+                rev: p.rev + 1,
+                ..p
+            })),
+            _ => Err(ErrorCode::NotFound),
+        },
         Op::LabelCreate { id, name } => {
             let name = name.trim();
             if existing.is_some() {
@@ -1028,6 +1107,8 @@ pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> 
         (Row::Goal(_), Row::Area(a)) => a.id != INBOX,
         (Row::Goal(_), Row::Goal(_)) => true,
         (Row::Milestone(_), Row::Goal(_)) => true,
+        (Row::Page(_), Row::Area(a)) => a.id != INBOX,
+        (Row::Page(_), Row::Project(_) | Row::Goal(_)) => true,
         (Row::Task(_), Row::Area(_) | Row::Project(_) | Row::Section(_) | Row::Task(_)) => true,
         _ => false,
     };

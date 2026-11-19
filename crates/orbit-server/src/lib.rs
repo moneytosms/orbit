@@ -263,6 +263,12 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
         None => match apply_lww(existing.clone(), &mut clocks, cmd) {
             Ok(row) => {
                 write(&tx, &row, &clocks)?;
+                if let (Some(Row::Page(old)), Op::PageEditBody { body, base_rev, .. }) =
+                    (&existing, &cmd.op)
+                    && orbit_core::page::is_conflict(old, *base_rev)
+                {
+                    save_conflict(&tx, old, body, cmd)?;
+                }
                 if let Some(old) = &existing
                     && matches!(
                         &cmd.op,
@@ -315,6 +321,7 @@ fn check_tree(
             | Op::TaskCreate { .. }
             | Op::GoalCreate { .. }
             | Op::MilestoneCreate { .. }
+            | Op::PageCreate { .. }
             | Op::ItemMove { .. }
     ) {
         return Ok(None);
@@ -392,6 +399,50 @@ fn complete_descendants(
             write(conn, &row, &clocks)?;
             log_completion(conn, &old, &done)?;
         }
+    }
+    Ok(())
+}
+
+/// Keeps the body of a stale `page.edit_body` as a sibling of `page`, titled with the device
+/// that made it and the day.
+fn save_conflict(
+    conn: &Connection,
+    page: &orbit_core::Page,
+    body: &str,
+    cmd: &Command,
+) -> rusqlite::Result<()> {
+    let device = cmd.hlc.device.to_string();
+    let name: Option<String> = conn
+        .query_row("SELECT name FROM devices WHERE id = ?", [&device], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    let device = name.unwrap_or_else(|| device[..8].into());
+    let date = orbit_core::page::utc_date(cmd.hlc.wall);
+    // Right after the original, before whatever followed it.
+    let next: Option<String> = conn
+        .query_row(
+            "SELECT MIN(json_extract(data, '$.order')) FROM rows
+             WHERE json_extract(data, '$.kind') = 'page' AND json_extract(data, '$.parent_id') = ?1
+               AND json_extract(data, '$.order') > ?2",
+            (page.parent_id.to_string(), &page.order),
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let create = Command {
+        op: Op::PageCreate {
+            id: orbit_core::page::conflict_id(page.id, cmd.uuid),
+            parent_id: page.parent_id,
+            title: orbit_core::page::conflict_title(&page.title, &device, &date),
+            body: body.into(),
+            order: orbit_core::order::between(Some(&page.order), next.as_deref()),
+        },
+        ..cmd.clone()
+    };
+    let mut clocks = Clocks::new();
+    if let Ok(row) = apply_lww(None, &mut clocks, &create) {
+        write(conn, &row, &clocks)?;
     }
     Ok(())
 }

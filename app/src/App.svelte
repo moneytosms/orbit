@@ -2,6 +2,7 @@
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Goals from './lib/screens/Goals.svelte'
+  import Page from './lib/screens/Page.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
   import Settings from './lib/screens/Settings.svelte'
   import Stub from './lib/screens/Stub.svelte'
@@ -31,12 +32,14 @@
     gate = 'login'
   })
   /** The parent whose Tasks the list shows; undefined on screens without a list. */
-  const listParent = (s: Screen) => ('id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined)
+  const listParent = (s: Screen) =>
+    s.name === 'page' ? undefined : 'id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined
   const parent = $derived(listParent(screen))
   const title = $derived.by(() => {
     const s = screen
     if (s.name === 'area') return areas.find((a) => a.area.id === s.id)?.area.name ?? 'Area'
     if (s.name === 'project') return areas.flatMap((a) => a.projects).find((p) => p.id === s.id)?.name ?? 'Project'
+    if (s.name === 'page') return 'Page'
     return routes[s.name].label
   })
 
@@ -82,7 +85,9 @@
 {:else if gate === 'app'}
   <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()}>
     {#snippet children(add)}
-      {#if parent}
+      {#if screen.name === 'page'}
+        <Page id={screen.id} onchange={refresh} />
+      {:else if parent}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}
         <Goals {areas} />

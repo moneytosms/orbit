@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Sheet from '$lib/components/ui/sheet'
+  import Editor from '$lib/Editor.svelte'
   import {
     createLabel,
     getTask,
@@ -59,8 +60,7 @@
     else if (value !== task.title) save({ title: value })
   }
 
-  function saveDescription(e: FocusEvent) {
-    const value = (e.currentTarget as HTMLTextAreaElement).value
+  function saveDescription(value: string) {
     if (task && value !== task.description) save({ description: value })
   }
 
@@ -128,14 +128,10 @@
         </div>
 
         <div class="grid gap-1.5">
-          <label for="task-description" class="text-xs font-medium text-muted">Description</label>
-          <textarea
-            id="task-description"
-            value={task.description}
-            onblur={saveDescription}
-            rows="4"
-            class="w-full rounded-md border border-line bg-surface px-2.5 py-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
-          ></textarea>
+          <span class="text-xs font-medium text-muted">Description</span>
+          {#key task.id}
+            <Editor value={task.description} label="Description" onchange={saveDescription} />
+          {/key}
         </div>
 
         {#if task.recurrence}
@@ -143,11 +139,7 @@
             <span>
               Repeats every {task.recurrence.rule}{task.recurrence.from_completion ? ' from completion' : ''}
             </span>
-            <button
-              type="button"
-              class="text-xs underline hover:text-text"
-              onclick={() => save({ recurrence: null })}
-            >
+            <button type="button" class="text-xs underline hover:text-text" onclick={() => save({ recurrence: null })}>
               Clear repeat
             </button>
           </div>

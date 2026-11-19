@@ -1,4 +1,13 @@
-import { apply, completion_for, goal_progress, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
+import {
+  apply,
+  completion_for,
+  goal_progress,
+  inbox_id,
+  new_id,
+  next_hlc,
+  observe_hlc,
+  order_between,
+} from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
 export type Due = { date: string; time?: string | null }
@@ -20,12 +29,24 @@ export type Task = {
   goal_id: string | null
 }
 export type Area = { kind: 'area'; id: string; name: string; order: string }
-export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string; goal_id: string | null }
+export type Project = {
+  kind: 'project'
+  id: string
+  parent_id: string
+  name: string
+  order: string
+  goal_id: string | null
+}
 export type Section = { kind: 'section'; id: string; parent_id: string; name: string; order: string }
 export type Label = { kind: 'label'; id: string; name: string }
 export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
-export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids' | 'recurrence' | 'goal_id'>>
+export type TaskPatch = Partial<
+  Pick<
+    Task,
+    'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids' | 'recurrence' | 'goal_id'
+  >
+>
 export type Entry = { amount: number; date: string; note: string }
 export type Progress = { kind: 'count' } | { kind: 'target'; target: number; entries: Entry[] } | { kind: 'manual' }
 export type Goal = {
@@ -41,9 +62,26 @@ export type Goal = {
   completed_at: number | null
   order: string
 }
-export type Milestone = { kind: 'milestone'; id: string; goal_id: string; title: string; date: string | null; done: boolean; order: string }
+export type Milestone = {
+  kind: 'milestone'
+  id: string
+  goal_id: string
+  title: string
+  date: string | null
+  done: boolean
+  order: string
+}
+export type Page = {
+  kind: 'page'
+  id: string
+  parent_id: string
+  title: string
+  body: string
+  rev: number
+  order: string
+}
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
-type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone
+type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -52,8 +90,7 @@ type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc:
 const SETTINGS = '00000000-0000-7000-8000-000000000002'
 const newId = () => new_id(Date.now(), crypto.getRandomValues(new Uint8Array(10)))
 const byHlc = (a: Command, b: Command) => a.hlc.wall - b.hlc.wall || a.hlc.counter - b.hlc.counter
-const byOrder = (a: Ordered, b: Ordered) =>
-  a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : 1
+const byOrder = (a: Ordered, b: Ordered) => (a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : 1)
 let changed = () => {}
 let rejected = (_code: string) => {}
 
@@ -132,7 +169,8 @@ const localToday = () => {
 }
 /** Completes a Task; a recurring one moves to its next due instead, counted from this device's local date. */
 export const completeTask = (id: string) => enqueue('task.complete', { id, today: localToday() })
-export const updateProject = (id: string, patch: { goal_id: string | null }) => enqueue('project.update', { id, ...patch })
+export const updateProject = (id: string, patch: { goal_id: string | null }) =>
+  enqueue('project.update', { id, ...patch })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
 export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
 
@@ -170,17 +208,44 @@ export async function createGoal(
 }
 export const updateGoal = (
   id: string,
-  patch: { name?: string; done_condition?: string; progress?: Progress; start?: string | null; target_date?: string | null },
+  patch: {
+    name?: string
+    done_condition?: string
+    progress?: Progress
+    start?: string | null
+    target_date?: string | null
+  },
 ) => enqueue('goal.update', { id, ...patch })
 export const completeGoal = (id: string) => enqueue('goal.complete', { id })
 /** Adds a dated amount to a Target Goal. */
-export const addEntry = (id: string, amount: number, note = '') => enqueue('goal.add_entry', { id, amount, date: localToday(), note })
+export const addEntry = (id: string, amount: number, note = '') =>
+  enqueue('goal.add_entry', { id, amount, date: localToday(), note })
 export async function createMilestone(goalId: string, title: string, date?: string): Promise<string> {
   const id = newId()
   await enqueue('milestone.create', { id, goal_id: goalId, title, date, order: await appendOrder(goalId) })
   return id
 }
 export const setMilestoneDone = (id: string, done: boolean) => enqueue('milestone.update', { id, done })
+
+/** Creates a Page under an Area, Project or Goal and returns its id. */
+export async function createPage(parentId: string, title: string): Promise<string> {
+  const id = newId()
+  await enqueue('page.create', { id, parent_id: parentId, title, order: await appendOrder(parentId) })
+  return id
+}
+export const renamePage = (id: string, title: string) => enqueue('page.rename', { id, title })
+/** Saves a body edited from `baseRev`, the rev the editor loaded; a stale one comes back as a conflict copy. */
+export const editPageBody = (id: string, body: string, baseRev: number) =>
+  enqueue('page.edit_body', { id, body, base_rev: baseRev })
+export const getPage = (id: string) => tx(['rows'], (s) => req<Page | undefined>(s('rows').get(id)))
+/** Pages under an Area, Project or Goal, in display order. */
+export async function pagesOf(parentId: string): Promise<Page[]> {
+  return (await allRows()).filter((r): r is Page => r.kind === 'page' && r.parent_id === parentId).sort(byOrder)
+}
+/** All Pages, for quick-add `%page` matching. */
+export async function pages(): Promise<Page[]> {
+  return (await allRows()).filter((r): r is Page => r.kind === 'page').sort(byOrder)
+}
 
 /** Active (not completed) Goals, in display order. */
 export async function goals(): Promise<Goal[]> {
@@ -343,8 +408,7 @@ async function flush() {
     }
     if (!res.ok) throw new Error(`sync: HTTP ${res.status}`)
     type Status = { status: 'ok' } | { status: 'error'; code: string }
-    const body: { statuses: Record<string, Status>; delta: Row[]; token: number; clock: Hlc | null } =
-      await res.json()
+    const body: { statuses: Record<string, Status>; delta: Row[]; token: number; clock: Hlc | null } = await res.json()
     const codes: string[] = []
     let answered = 0
     await tx(['rows', 'outbox', 'meta'], async (s) => {
