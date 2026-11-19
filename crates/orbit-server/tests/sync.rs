@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "" }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [] }]);
     assert_eq!(res["delta"], done);
 
     // Another Device that last synced at t0 sees the same change.
@@ -240,7 +240,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "" }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [] }])
     );
 }
 
@@ -449,4 +449,51 @@ async fn completing_a_parent_completes_open_descendants_and_ships_them_in_deltas
     // Already-completed descendants keep their own time and don't ship.
     assert_eq!(done_at(SUBSUB), None);
     assert_eq!(res["clock"]["wall"], 5000);
+}
+
+#[tokio::test]
+async fn settings_update_creates_the_row_then_updates_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let (c1, c2) = (
+        "01900000-0000-7000-8000-0000000000e1",
+        "01900000-0000-7000-8000-0000000000e2",
+    );
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": snap["token"], "commands": [
+            cmd(c1, "settings.update", json!({ "theme": "dracula" }), 1000),
+            cmd(c2, "settings.update", json!({ "accent": "#ff0000" }), 1001),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c1], json!({ "status": "ok" }));
+    assert_eq!(res["statuses"][c2], json!({ "status": "ok" }));
+    let settings: Vec<_> = res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "settings")
+        .collect();
+    assert_eq!(settings.len(), 1);
+    assert_eq!(settings[0]["id"], "00000000-0000-7000-8000-000000000002");
+    assert_eq!(settings[0]["theme"], "dracula");
+    assert_eq!(settings[0]["accent"], "#ff0000");
+}
+
+#[tokio::test]
+async fn label_create_is_accepted_without_a_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let c = "01900000-0000-7000-8000-0000000000e3";
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": snap["token"], "commands": [
+            cmd(c, "label.create", json!({ "id": TASK, "name": "errand" }), 1000),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c], json!({ "status": "ok" }));
 }

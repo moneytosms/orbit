@@ -127,14 +127,16 @@ impl Client {
     }
 
     pub fn rename_task(&mut self, id: Uuid, title: &str, now_ms: u64) -> Result<()> {
-        self.enqueue(
-            Op::TaskUpdate {
-                id,
-                title: Some(title.into()),
-            },
-            now_ms,
-        )
-        .map(drop)
+        self.update_task(id, serde_json::json!({ "title": title }), now_ms)
+    }
+
+    /// Queues a `task.update`. `patch` holds the fields to change; `null` clears one.
+    pub fn update_task(&mut self, id: Uuid, patch: serde_json::Value, now_ms: u64) -> Result<()> {
+        let mut args = patch;
+        args["id"] = serde_json::json!(id);
+        let op =
+            serde_json::from_value(serde_json::json!({ "type": "task.update", "args": args }))?;
+        self.enqueue(op, now_ms).map(drop)
     }
 
     pub fn complete_task(&mut self, id: Uuid, now_ms: u64) -> Result<()> {
