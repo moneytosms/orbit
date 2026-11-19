@@ -7,8 +7,12 @@ import { req, tx } from './db'
 import {
   completeTask,
   createArea,
+  createLabel,
   createProject,
   createTask,
+  getSettings,
+  getTask,
+  labels,
   moveItem,
   onRejected,
   onSignedOut,
@@ -16,6 +20,8 @@ import {
   sync,
   tasksIn,
   tree,
+  updateSettings,
+  updateTask,
   type Task,
 } from './sync'
 
@@ -194,4 +200,52 @@ test('completing a parent completes its open subtasks locally at the same moment
   const c = await row(child.id)
   expect(p.completed_at).not.toBeNull()
   expect(c.completed_at).toBe(p.completed_at)
+})
+
+test('updateTask sends only the changed field and the row shows it at once', async () => {
+  await createTask('Pay rent')
+  const task = (await inboxTasks()).find((t) => t.title === 'Pay rent')!
+  await updateTask(task.id, { priority: 1 })
+  expect((await getTask(task.id))!.priority).toBe(1)
+  await sync()
+  const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'task.update' && c.args.id === task.id)
+  expect(sent.map((c) => c.args)).toEqual([{ id: task.id, priority: 1 }])
+})
+
+test('updateTask with null clears an optional field', async () => {
+  await createTask('Dentist')
+  const task = (await inboxTasks()).find((t) => t.title === 'Dentist')!
+  await updateTask(task.id, { due: { date: '2026-11-25', time: '09:00' }, duration_min: 30 })
+  expect(await getTask(task.id)).toMatchObject({ due: { date: '2026-11-25', time: '09:00' }, duration_min: 30 })
+  await updateTask(task.id, { due: null, duration_min: null })
+  expect(await getTask(task.id)).toMatchObject({ due: null, duration_min: null })
+  await sync()
+  const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'task.update' && c.args.id === task.id)
+  expect(sent.at(-1)!.args).toEqual({ id: task.id, due: null, duration_min: null })
+})
+
+test('createLabel adds a flat Label that a Task can carry, listed by name', async () => {
+  await createTask('Groceries')
+  const task = (await inboxTasks()).find((t) => t.title === 'Groceries')!
+  const zed = await createLabel('zz-errand')
+  const amy = await createLabel('aa-home')
+  expect((await labels()).map((l) => l.name).filter((n) => n.endsWith('errand') || n.endsWith('home'))).toEqual([
+    'aa-home',
+    'zz-errand',
+  ])
+  await updateTask(task.id, { label_ids: [zed, amy] })
+  expect((await getTask(task.id))!.label_ids).toEqual([zed, amy])
+  await updateTask(task.id, { label_ids: [amy] })
+  expect((await getTask(task.id))!.label_ids).toEqual([amy])
+})
+
+test('updateSettings creates the settings row, then changes only the fields given', async () => {
+  expect(await getSettings()).toEqual({ theme: '', accent: '' })
+  await updateSettings({ theme: 'dark', accent: '#c2552f' })
+  expect(await getSettings()).toEqual({ theme: 'dark', accent: '#c2552f' })
+  await updateSettings({ theme: 'light' })
+  expect(await getSettings()).toEqual({ theme: 'light', accent: '#c2552f' })
+  await sync()
+  const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'settings.update')
+  expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }])
 })

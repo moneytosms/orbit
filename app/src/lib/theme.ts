@@ -1,5 +1,6 @@
 // Appearance, painted on <html>: an Orbit theme or a Monkeytype palette (inline tokens), plus accent,
-// density and font size. Everything is kept per browser in localStorage; a later unit syncs theme and accent.
+// density and font size. Everything is kept per browser in localStorage. Theme and accent also sync
+// through the Settings row: local changes go to `onAppearanceChange`, remote ones come in via `applyRemote`.
 import init, { theme_list, theme_tokens } from '../../wasm/orbit_wasm'
 
 export type Theme = 'light' | 'dark' | 'system'
@@ -19,6 +20,12 @@ export type PaletteInfo = {
 }
 
 const FONT_PX: Record<FontSize, string> = { s: '14px', m: '15px', l: '16px' }
+
+/** The synced part of the appearance; an empty string means not set. */
+export type Appearance = { theme?: string; accent?: string }
+let onChange: (p: Appearance) => void = () => {}
+/** Called with the theme or accent whenever this Device changes it (not for `applyRemote`). */
+export const onAppearanceChange = (fn: (p: Appearance) => void) => (onChange = fn)
 
 function stored(key: string): string | null {
   try {
@@ -121,6 +128,7 @@ export function setTheme(t: Choice) {
   current = t
   save('theme', t)
   paint()
+  onChange({ theme: t })
 }
 
 export const getAccent = (): string | null => accent
@@ -128,6 +136,20 @@ export const getAccent = (): string | null => accent
 export function setAccent(hex: string | null) {
   accent = hex
   save('accent', hex)
+  paint()
+  onChange({ accent: hex ?? '' })
+}
+
+/** Applies a theme and accent that another Device synced. Empty values keep the local ones. Does not sync back. */
+export function applyRemote({ theme, accent: remoteAccent }: Appearance) {
+  if (theme) {
+    current = theme as Choice
+    save('theme', theme)
+  }
+  if (remoteAccent) {
+    accent = remoteAccent
+    save('accent', remoteAccent)
+  }
   paint()
 }
 

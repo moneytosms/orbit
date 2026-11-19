@@ -7,7 +7,8 @@
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, routes, type Screen } from './lib/routes'
-  import { onRejected, onSignedOut, start, tasksIn, tree } from './lib/sync'
+  import { getSettings, onRejected, onSignedOut, start, tasksIn, tree, updateSettings } from './lib/sync'
+  import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { inbox_id } from '../wasm/orbit_wasm'
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
@@ -24,6 +25,7 @@
     clearTimeout(hide)
     hide = setTimeout(() => (toast = ''), 5000)
   })
+  onAppearanceChange((p) => updateSettings(p))
   onSignedOut((n) => {
     pending = n
     gate = 'login'
@@ -42,6 +44,11 @@
     areas = await tree()
     rows = parent ? await tasksIn(parent) : []
     inboxCount = (await tasksIn(inbox_id())).length
+    // Theme and accent from another Device; empty means not set.
+    const remote = await getSettings()
+    if ((remote.theme && remote.theme !== getTheme()) || (remote.accent && remote.accent !== getAccent())) {
+      applyRemote(remote)
+    }
   }
 
   let started = false
@@ -81,7 +88,7 @@
 {:else if gate === 'app'}
   <Shell {screen} {title} {areas} {inboxCount} onNew={newTask}>
     {#if parent}
-      <Inbox parentId={parent} {title} {rows} />
+      <Inbox parentId={parent} {title} {rows} onchange={refresh} />
     {:else if screen.name === 'settings'}
       <Settings />
     {:else}
