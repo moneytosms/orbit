@@ -206,6 +206,7 @@ mod tests {
             goal_id,
             created_at: None,
             trashed_at: None,
+            links: vec![],
         })
     }
 

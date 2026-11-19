@@ -172,3 +172,14 @@ pub fn print_filter(node_json: &str, known_json: &str) -> Result<String, JsError
     let known: orbit_core::filter_text::Known = serde_json::from_str(known_json)?;
     Ok(orbit_core::filter_text::print(&node, &known))
 }
+
+/// The ids of the items whose bodies link to `id`, over `rows_json` (a Row array); trashed sources left out.
+#[wasm_bindgen]
+pub fn backlinks(rows_json: &str, id: &str) -> Result<Vec<String>, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let id: orbit_core::Uuid = id.parse().map_err(|_| JsError::new("bad id"))?;
+    Ok(orbit_core::link::backlinks(&rows, id)
+        .iter()
+        .map(|u| u.to_string())
+        .collect())
+}

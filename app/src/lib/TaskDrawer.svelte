@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Sheet from '$lib/components/ui/sheet'
+  import Backlinks from '$lib/Backlinks.svelte'
   import Editor from '$lib/Editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import {
@@ -9,6 +10,7 @@
     goals as listGoals,
     inheritedGoal,
     labels as listLabels,
+    pageOwner,
     updateTask,
     type Goal,
     type Label as TaskLabel,
@@ -24,6 +26,8 @@
   let all = $state<TaskLabel[]>([])
   let goalList = $state<Goal[]>([])
   let inherited = $state<string | null>(null)
+  let ownerId = $state<string | null>(null)
+  let linkVersion = $state(0)
   let newLabel = $state('')
   const priorities = [1, 2, 3, 4] as const
 
@@ -44,6 +48,7 @@
     all = await listLabels()
     goalList = await listGoals()
     inherited = await inheritedGoal(id)
+    ownerId = await pageOwner(id)
   }
 
   // Every write goes through the outbox, which predicts the row at once; re-read it to show the result.
@@ -52,6 +57,7 @@
     await updateTask(taskId, patch)
     task = await getTask(taskId)
     inherited = await inheritedGoal(taskId)
+    linkVersion++
   }
 
   function saveTitle(e: FocusEvent) {
@@ -138,8 +144,9 @@
         <div class="grid gap-1.5">
           <span class="text-xs font-medium text-muted">Description</span>
           {#key task.id}
-            <Editor value={task.description} label="Description" onchange={saveDescription} />
+            <Editor value={task.description} label="Description" owner={ownerId} onchange={saveDescription} />
           {/key}
+          <Backlinks id={task.id} version={linkVersion} />
         </div>
 
         {#if task.recurrence}

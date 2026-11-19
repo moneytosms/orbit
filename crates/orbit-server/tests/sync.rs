@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "links": [] }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "links": [] }])
     );
 }
 
@@ -1010,4 +1010,25 @@ async fn a_project_is_touched_when_a_task_under_it_is_created() {
     .await;
     assert_eq!(res["statuses"][c(0xf6)], json!({ "status": "ok" }));
     assert_eq!(row(&res, PROJECT)["touched_at"], now + 500);
+}
+
+#[tokio::test]
+async fn a_page_body_with_a_link_gets_the_link_in_its_index() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let target = "01900000-0000-7000-8000-0000000007a1";
+    let page = "01900000-0000-7000-8000-0000000007a2";
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let body = format!("see [Foo](orbit:{target}) and [Bar](orbit:nope)");
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": snap["token"], "commands": [
+            cmd(&c(0x7a1), "area.create", json!({ "id": AREA, "name": "Home", "order": "a" }), 1000),
+            cmd(&c(0x7a2), "page.create", json!({ "id": page, "parent_id": AREA, "title": "P", "body": "", "order": "a" }), 1001),
+            cmd(&c(0x7a3), "page.edit_body", json!({ "id": page, "body": body, "base_rev": 0 }), 1002),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0x7a3)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, page)["links"], json!([target]));
 }

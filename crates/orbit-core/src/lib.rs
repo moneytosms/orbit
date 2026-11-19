@@ -1,5 +1,6 @@
 pub mod filter_text;
 pub mod goal;
+pub mod link;
 pub mod order;
 pub mod page;
 pub mod parse;
@@ -150,6 +151,9 @@ pub struct Task {
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// The `orbit:` targets in `description`, kept up to date by every write to it.
+    #[serde(default)]
+    pub links: Vec<Uuid>,
 }
 
 fn default_priority() -> u8 {
@@ -734,7 +738,7 @@ impl Op {
             Op::ItemDelete { .. } | Op::ItemRestore { .. } => vec!["trashed_at"],
             Op::ItemArchive { .. } | Op::ItemUnarchive { .. } => vec!["archived_at"],
             Op::PageRename { .. } => vec!["title"],
-            Op::PageEditBody { .. } => vec!["body", "rev"],
+            Op::PageEditBody { .. } => vec!["body", "rev", "links"],
             Op::ProjectUpdate { goal_id, .. } => {
                 if goal_id.is_some() {
                     vec!["goal_id"]
@@ -799,6 +803,7 @@ impl Op {
             .into_iter()
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
+            .chain(description.is_some().then_some("links"))
             .collect(),
             Op::SettingsUpdate {
                 theme,
@@ -974,6 +979,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     goal_id: None,
                     created_at: Some(cmd.hlc.wall),
                     trashed_at: None,
+                    links: vec![],
                 }))
             }
         }
@@ -1066,6 +1072,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 }
                 Ok(Row::Task(Task {
                     title,
+                    links: match description {
+                        Some(d) => link::targets(d),
+                        None => t.links,
+                    },
                     description: description.clone().unwrap_or(t.description),
                     due: due.clone().unwrap_or(t.due),
                     deadline: deadline.clone().unwrap_or(t.deadline),
@@ -1268,6 +1278,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     rev: 0,
                     order: order.clone(),
                     trashed_at: None,
+                    links: link::targets(body),
                 }))
             }
         }
@@ -1287,6 +1298,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             Some(Row::Page(p)) => Ok(Row::Page(Page {
                 body: body.clone(),
                 rev: p.rev + 1,
+                links: link::targets(body),
                 ..p
             })),
             _ => Err(ErrorCode::NotFound),
@@ -1603,6 +1615,7 @@ mod tests {
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
                 "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
+                "links": [],
             })
         );
     }
@@ -1850,6 +1863,7 @@ mod tests {
                 ("duration_min", 1000),
                 ("goal_id", 1000),
                 ("label_ids", 1000),
+                ("links", 1000),
                 ("order", 1000),
                 ("parent_id", 1000),
                 ("priority", 1000),
@@ -1920,6 +1934,7 @@ mod tests {
             goal_id: None,
             created_at: None,
             trashed_at: None,
+            links: vec![],
         })
     }
 
@@ -2231,6 +2246,38 @@ mod tests {
         assert_eq!(
             up(serde_json::json!({ "theme": "x" })).op.target(),
             SETTINGS
+        );
+    }
+
+    #[test]
+    fn body_writes_set_the_link_index() {
+        const L: &str = "00000000-0000-7000-8000-00000000000a";
+        let body = format!("see [Foo](orbit:{L})");
+        let create = cmd(
+            "01900000-0000-7000-8000-0000000000c2",
+            "page.create",
+            serde_json::json!({ "id": TASK, "parent_id": INBOX, "title": "P", "body": body, "order": "a" }),
+            1000,
+        );
+        let Row::Page(p) = apply(None, &create).unwrap() else {
+            panic!("a page")
+        };
+        assert_eq!(p.links, vec![L.parse::<Uuid>().unwrap()]);
+        let edit = cmd(
+            "01900000-0000-7000-8000-0000000000c3",
+            "page.edit_body",
+            serde_json::json!({ "id": TASK, "body": "none", "base_rev": 0 }),
+            1001,
+        );
+        let Row::Page(p) = apply(Some(Row::Page(p)), &edit).unwrap() else {
+            panic!("a page")
+        };
+        assert!(p.links.is_empty());
+        let t = updated(serde_json::json!({ "description": &body }));
+        assert_eq!(t.links, vec![L.parse::<Uuid>().unwrap()]);
+        assert_eq!(
+            updated(serde_json::json!({ "title": "x" })).links,
+            Vec::<Uuid>::new()
         );
     }
 }

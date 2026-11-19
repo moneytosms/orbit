@@ -520,3 +520,39 @@ test('typed filters round-trip through the tree and point at bad tokens', async 
   expect(await printFilter(tree)).toBe(text)
   await expect(parseFilter('p1 & #Nope')).rejects.toMatchObject({ start: 5, end: 10 })
 })
+
+import { backlinksOf, linkTarget, searchLinks } from './sync'
+
+test('a Page body with an orbit link predicts the link index and a Backlink on the target', async () => {
+  await createArea('lk-area')
+  const area = (await tree()).find((t) => t.area.name === 'lk-area')!.area.id
+  const target = await createPage(area, 'Link target')
+  const source = await createPage(area, 'Link source')
+  await editPageBody(source, `see [Link target](orbit:${target}) and [x](orbit:nope)`, 0)
+  expect((await getPage(source))!.links).toEqual([target])
+  expect((await backlinksOf(target)).map((b) => b.id)).toEqual([source])
+  expect(await linkTarget(target)).toMatchObject({ title: 'Link target', kind: 'page', state: 'ok' })
+  expect((await searchLinks('[[', 'link tar')).map((i) => i.id)).toEqual([target])
+  expect((await searchLinks('@', 'link tar')).map((i) => i.id)).toEqual([])
+})
+
+test('a link target shows its live title and trashed or archived state; trashed sources drop out', async () => {
+  const area = (await tree()).find((t) => t.area.name === 'lk-area')!.area.id
+  const target = await createPage(area, 'Old name')
+  const source = await createPage(area, 'Src2')
+  await editPageBody(source, `[Old name](orbit:${target})`, 0)
+  await renamePage(target, 'New name')
+  expect((await linkTarget(target))!.title).toBe('New name')
+  await deleteItem(target)
+  expect((await linkTarget(target))!.state).toBe('trashed')
+  await restoreItem(target)
+  await deleteItem(source)
+  expect(await backlinksOf(target)).toEqual([])
+  await restoreItem(source)
+  await createProject(area, 'lk-proj')
+  const proj = (await tree()).flatMap((t) => t.projects).find((p) => p.name === 'lk-proj')!.id
+  const inProj = await createPage(proj, 'In project')
+  await archiveItem(proj)
+  expect((await linkTarget(inProj))!.state).toBe('archived')
+  expect(await linkTarget('00000000-0000-7000-8000-00000000dead')).toMatchObject({ state: 'purged' })
+})
