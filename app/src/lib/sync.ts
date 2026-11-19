@@ -1,6 +1,7 @@
 import { apply, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
+export type Due = { date: string; time?: string | null }
 export type Task = {
   kind: 'task'
   id: string
@@ -8,11 +9,21 @@ export type Task = {
   title: string
   completed_at: number | null
   order: string
+  description: string
+  due: Due | null
+  deadline: string | null
+  duration_min: number | null
+  priority: 1 | 2 | 3 | 4
+  label_ids: string[]
 }
 export type Area = { kind: 'area'; id: string; name: string; order: string }
 export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string }
 export type Section = { kind: 'section'; id: string; parent_id: string; name: string; order: string }
-type Row = Area | Project | Section | Task | { kind: 'label' | 'settings'; id: string }
+export type Label = { kind: 'label'; id: string; name: string }
+export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
+/** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
+export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids'>>
+type Row = Area | Project | Section | Task | Label | Settings
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -92,6 +103,26 @@ export const createTask = async (title: string, parentId?: string) =>
     order: await appendOrder(parentId ?? inbox_id()),
   })
 export const completeTask = (id: string) => enqueue('task.complete', { id })
+export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
+export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
+
+/** Creates a flat, global Label and returns its id. */
+export async function createLabel(name: string): Promise<string> {
+  const id = newId()
+  await enqueue('label.create', { id, name })
+  return id
+}
+/** All Labels, sorted by name. */
+export async function labels(): Promise<Label[]> {
+  return (await allRows()).filter((r): r is Label => r.kind === 'label').sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** The Settings row's appearance; empty strings when it isn't set yet. */
+export async function getSettings(): Promise<{ theme: string; accent: string }> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return { theme: row?.theme ?? '', accent: row?.accent ?? '' }
+}
+export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
 export const moveItem = (id: string, parentId: string | null, order: string) =>
   enqueue('item.move', { id, parent_id: parentId, order })
 
