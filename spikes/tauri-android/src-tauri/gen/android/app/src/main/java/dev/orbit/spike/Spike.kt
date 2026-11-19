@@ -169,3 +169,83 @@ class OrbitPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve(JSObject().put("alarms", arr))
     }
 }
+
+// ================= PROTOTYPE issue #29: list widget fed by Rust over JNI =================
+
+object Core {
+    init { val t = System.nanoTime(); System.loadLibrary("orbit_spike_lib"); Log.i(TAG, "rust lib loaded in ${(System.nanoTime() - t) / 1_000_000} ms") }
+    @JvmStatic external fun rows(dir: String, source: String): String
+    @JvmStatic external fun complete(dir: String, id: String): String
+    @JvmStatic external fun refresh(dir: String): String
+}
+
+class ListWidget : AppWidgetProvider() {
+    companion object {
+        const val REFRESH = "dev.orbit.spike.REFRESH"
+
+        fun renderAll(ctx: Context) {
+            val mgr = AppWidgetManager.getInstance(ctx)
+            val ids = mgr.getAppWidgetIds(ComponentName(ctx, ListWidget::class.java))
+            val t = System.nanoTime()
+            val rows = org.json.JSONArray(Core.rows(ctx.filesDir.path, "upcoming"))
+            val items = android.widget.RemoteViews.RemoteCollectionItems.Builder()
+            for (i in 0 until rows.length()) {
+                val r = rows.getJSONObject(i)
+                val row = android.widget.RemoteViews(ctx.packageName, R.layout.list_row).apply {
+                    setTextViewText(R.id.row_title, r.getString("title") + if (r.getBoolean("recurring")) "  ↻" else "")
+                    setTextViewText(R.id.row_due, r.optString("due") + "  " + r.getString("project"))
+                    setTextColor(R.id.row_due, if (r.getBoolean("overdue")) 0xFFD32F2F.toInt() else 0xFF777777.toInt())
+                    setOnClickFillInIntent(R.id.row_tick, Intent().putExtra("id", r.getString("id")))
+                }
+                items.addItem(i.toLong(), row)
+            }
+            val tick = PendingIntent.getBroadcast(ctx, 1, Intent(ctx, TickReceiver::class.java), PendingIntent.FLAG_MUTABLE)
+            val add = PendingIntent.getActivity(ctx, 2, Intent(ctx, CaptureActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            val views = android.widget.RemoteViews(ctx.packageName, R.layout.list_widget).apply {
+                setRemoteAdapter(R.id.list, items.setViewTypeCount(1).build())
+                setPendingIntentTemplate(R.id.list, tick)
+                setOnClickPendingIntent(R.id.list_add, add)
+                setTextViewText(R.id.list_title, "Upcoming (${rows.length()})")
+            }
+            ids.forEach { mgr.updateAppWidget(it, views) }
+            Log.i(TAG, "widget rendered ${rows.length()} rows in ${(System.nanoTime() - t) / 1_000_000} ms")
+        }
+
+        fun refreshLater(ctx: Context) {
+            val req = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
+            WorkManager.getInstance(ctx).enqueueUniqueWork("refresh", ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        }
+    }
+
+    override fun onReceive(ctx: Context, i: Intent) {
+        if (i.action == REFRESH) refreshLater(ctx) else super.onReceive(ctx, i)
+    }
+
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
+        renderAll(ctx); refreshLater(ctx)
+        WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("refresh-periodic", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<RefreshWorker>(15, java.util.concurrent.TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build())
+    }
+}
+
+class TickReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, i: Intent) {
+        val id = i.getStringExtra("id") ?: return
+        val pr = goAsync()
+        Thread {
+            Log.i(TAG, "tick $id -> ${Core.complete(ctx.filesDir.path, id)}")
+            ListWidget.renderAll(ctx); ListWidget.refreshLater(ctx); pr.finish()
+        }.start()
+    }
+}
+
+class RefreshWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
+    override fun doWork(): Result {
+        val r = JSONObject(Core.refresh(applicationContext.filesDir.path))
+        Log.i(TAG, "refresh $r")
+        ListWidget.renderAll(applicationContext)
+        return if (r.has("error")) Result.retry() else Result.success()
+    }
+}

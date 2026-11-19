@@ -34,3 +34,18 @@ adb shell pm grant dev.orbit.spike android.permission.POST_NOTIFICATIONS
 Notes: `am kill` does not kill a recently foreground app; use `adb root` + `kill -9`.
 Force-stop (not tested) halts alarms and WorkManager by design (issue #8).
 Flush order is by file name (uuid); real impl must order by HLC/created.
+
+## Issue #29: list widget data feed (option c, Rust over JNI)
+
+Code: `src-tauri/src/feed.rs` (replica, outbox, source eval, JNI exports), `ListWidget`/`TickReceiver`/`RefreshWorker` in `Spike.kt`.
+Server: `spike_server.py` now also serves `GET /tasks` and `POST /admin/add` (simulated other device).
+Refresh by hand: `adb shell am broadcast -a dev.orbit.spike.REFRESH -n dev.orbit.spike/.ListWidget -f 0x20`
+
+| Check | Result |
+|---|---|
+| Cold process, no activity: WorkManager -> JNI -> Rust pull into SQLite | PASS, lib load 17-18 ms, pull 241 ms, render 2 ms |
+| Real widget tick (user tapped) | PASS, row gone at once (local), flush + pull ~1 s |
+| Recurring tick | PASS, next occurrence computed in Rust, row stays with new date |
+| Offline tick from killed process | PASS, Rust outbox holds it, sent on reconnect |
+| Other-device edit picked up | PASS, pulled on the next refresh run |
+| App UI + widget in one process | PASS, same Rust static connection, no lock errors |

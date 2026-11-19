@@ -1,5 +1,6 @@
 // PROTOTYPE: Rust side of the spike. Schedules reminders through the Kotlin plugin and
 // reads the JSON outbox files Kotlin writes (Rust as importer, per issue #18).
+mod feed;
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 use tauri::{plugin::PluginHandle, Manager, Runtime, Wry};
@@ -23,7 +24,9 @@ fn read_dir(dir: PathBuf) -> Vec<Value> {
 fn state(app: tauri::AppHandle) -> Value {
     let base = outbox_dir(&app);
     let alarms = app.state::<Native>().0.run_mobile_plugin::<Value>("alarms", json!({})).unwrap_or(Value::Null);
-    json!({ "pending": read_dir(base.join("outbox")), "sent": read_dir(base.join("sent")), "alarms": alarms })
+    let dir = base.to_string_lossy().to_string();
+    json!({ "replica_upcoming": feed::rows(&dir, "upcoming"), "rust_outbox": feed::outbox_len(&dir),
+            "pending": read_dir(base.join("outbox")), "sent": read_dir(base.join("sent")), "alarms": alarms })
 }
 
 #[tauri::command]
