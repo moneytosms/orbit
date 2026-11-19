@@ -43,9 +43,9 @@
     areas = await tree()
     rows = parent ? await tasksIn(parent) : []
     inboxCount = (await tasksIn(inbox_id())).length
-    // Theme and accent from another Device; empty means not set.
+    // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
     const remote = await getSettings()
-    if ((remote.theme && remote.theme !== getTheme()) || (remote.accent && remote.accent !== getAccent())) {
+    if (remote && ((remote.theme && remote.theme !== getTheme()) || (remote.accent || null) !== getAccent())) {
       applyRemote(remote)
     }
   }

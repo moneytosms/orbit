@@ -121,7 +121,7 @@
 </div>
 
 {#if groups.length}
-  <ul use:dndzone={{ items, flipDurationMs: 150, delayTouchStart: 200 }} onconsider={consider} onfinalize={finalize}>
+  <ul use:dndzone={{ items, type: 'task', flipDurationMs: 150, delayTouchStart: 200, useCursorForDetection: true }} onconsider={consider} onfinalize={finalize}>
     {#each items as g (g.id)}
       <li>
         {@render line(g.task, 0)}

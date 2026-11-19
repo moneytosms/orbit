@@ -14,6 +14,7 @@ import {
   getTask,
   labels,
   moveItem,
+  moveTo,
   onRejected,
   onSignedOut,
   orderBetween,
@@ -190,6 +191,25 @@ test('moveItem places a Task at the predicted order at once', async () => {
   expect(titles).toEqual(['X3', 'X1', 'X2'])
 })
 
+test('moveTo reparents a Task to the end of another parent, subtasks following', async () => {
+  await createArea('Errands')
+  const area = (await tree()).find((t) => t.area.name === 'Errands')!.area
+  await createTask('Already there', area.id)
+  const id = await createTask('Y1')
+  await createTask('Y1 sub', id)
+  await moveTo(id, area.id)
+  expect((await inboxTasks()).some((t) => t.title === 'Y1')).toBe(false)
+  const rows = (await tasksIn(area.id)).map((r) => [r.task.title, r.depth])
+  expect(rows).toEqual([
+    ['Already there', 0],
+    ['Y1', 0],
+    ['Y1 sub', 1],
+  ])
+  await sync()
+  const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'item.move')
+  expect(sent.at(-1)?.args).toMatchObject({ id, parent_id: area.id })
+})
+
 test('completing a parent completes its open subtasks locally at the same moment', async () => {
   await createTask('Parent')
   const parent = (await inboxTasks()).find((t) => t.title === 'Parent')!
@@ -241,14 +261,17 @@ test('createLabel adds a flat Label that a Task can carry, listed by name', asyn
 })
 
 test('updateSettings creates the settings row, then changes only the fields given', async () => {
-  expect(await getSettings()).toEqual({ theme: '', accent: '' })
+  expect(await getSettings()).toBeNull()
   await updateSettings({ theme: 'dark', accent: '#c2552f' })
   expect(await getSettings()).toEqual({ theme: 'dark', accent: '#c2552f' })
   await updateSettings({ theme: 'light' })
   expect(await getSettings()).toEqual({ theme: 'light', accent: '#c2552f' })
+  // Accent reset syncs as '' and reads back as cleared, not missing.
+  await updateSettings({ accent: '' })
+  expect(await getSettings()).toEqual({ theme: 'light', accent: '' })
   await sync()
   const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'settings.update')
-  expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }])
+  expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }, { accent: '' }])
 })
 
 const parseLine = (text: string, labelNames: string[] = []) =>

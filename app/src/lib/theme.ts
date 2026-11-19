@@ -21,7 +21,7 @@ export type PaletteInfo = {
 
 const FONT_PX: Record<FontSize, string> = { s: '14px', m: '15px', l: '16px' }
 
-/** The synced part of the appearance; an empty string means not set. */
+/** The synced part of the appearance. Empty theme: not set; empty accent: the theme's own. */
 export type Appearance = { theme?: string; accent?: string }
 let onChange: (p: Appearance) => void = () => {}
 /** Called with the theme or accent whenever this Device changes it (not for `applyRemote`). */
@@ -140,15 +140,15 @@ export function setAccent(hex: string | null) {
   onChange({ accent: hex ?? '' })
 }
 
-/** Applies a theme and accent that another Device synced. Empty values keep the local ones. Does not sync back. */
+/** Applies a theme and accent that another Device synced. An empty theme keeps the local one; an empty accent clears it. Does not sync back. */
 export function applyRemote({ theme, accent: remoteAccent }: Appearance) {
   if (theme) {
     current = theme as Choice
     save('theme', theme)
   }
-  if (remoteAccent) {
-    accent = remoteAccent
-    save('accent', remoteAccent)
+  if (remoteAccent !== undefined) {
+    accent = remoteAccent || null
+    save('accent', accent)
   }
   paint()
 }

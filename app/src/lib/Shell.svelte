@@ -7,9 +7,11 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import * as Dialog from '$lib/components/ui/dialog'
   import Composer from './Composer.svelte'
+  import DropTarget from './DropTarget.svelte'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
   import { createArea, createProject, moveItem, orderBetween, type Area, type Project } from '$lib/sync'
+  import { inbox_id } from '../../wasm/orbit_wasm'
 
   type AreaItem = { id: string; area: Area; projects: Project[] }
 
@@ -110,21 +112,25 @@
     >
       {#each areaOrder as a (a.id)}
         <li class="flex flex-col gap-0.5">
-          <a
-            href="#/area/{a.id}"
-            aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
-            class="flex h-8 items-center rounded-[7px] px-2.5 font-medium hover:bg-hover aria-[current=page]:bg-press"
-          >
-            {a.area.name}
-          </a>
-          {#each a.projects.slice(0, 4) as p (p.id)}
+          <DropTarget parentId={a.id}>
             <a
-              href="#/project/{p.id}"
-              aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
-              class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+              href="#/area/{a.id}"
+              aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
+              class="flex h-8 items-center rounded-[7px] px-2.5 font-medium hover:bg-hover aria-[current=page]:bg-press"
             >
-              {p.name}
+              {a.area.name}
             </a>
+          </DropTarget>
+          {#each a.projects.slice(0, 4) as p (p.id)}
+            <DropTarget parentId={p.id}>
+              <a
+                href="#/project/{p.id}"
+                aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
+                class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+              >
+                {p.name}
+              </a>
+            </DropTarget>
           {/each}
           {#if a.projects.length > 4}
             <span class="pl-6 text-[12.5px] text-muted">+{a.projects.length - 4} more</span>
@@ -162,7 +168,7 @@
     </div>
     <nav class="flex flex-col gap-0.5" aria-label="Main">
       {@render row('home')}
-      {@render row('inbox', inboxCount)}
+      <DropTarget parentId={inbox_id()}>{@render row('inbox', inboxCount)}</DropTarget>
       {@render row('upcoming')}
     </nav>
     <nav class="flex flex-col gap-0.5" aria-label="Plans">

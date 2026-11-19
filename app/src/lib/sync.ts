@@ -120,14 +120,16 @@ export async function labels(): Promise<Label[]> {
   return (await allRows()).filter((r): r is Label => r.kind === 'label').sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** The Settings row's appearance; empty strings when it isn't set yet. */
-export async function getSettings(): Promise<{ theme: string; accent: string }> {
+/** The Settings row's appearance, or null before any Device set one. An empty field is unset. */
+export async function getSettings(): Promise<{ theme: string; accent: string } | null> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
-  return { theme: row?.theme ?? '', accent: row?.accent ?? '' }
+  return row ? { theme: row.theme, accent: row.accent } : null
 }
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
 export const moveItem = (id: string, parentId: string | null, order: string) =>
   enqueue('item.move', { id, parent_id: parentId, order })
+/** Reparents `id` to the end of `parentId`'s children. */
+export const moveTo = async (id: string, parentId: string) => moveItem(id, parentId, await appendOrder(parentId))
 
 /** A quick-add line as parsed by core `parse::parse` (`parse_quick_add`). */
 export type Parsed = {
