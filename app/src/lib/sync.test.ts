@@ -79,7 +79,7 @@ test('completing a Task hides it at once and queues task.complete', async () => 
 
 test("another Device's create and complete arrive in the delta", async () => {
   const id = '01900000-0000-7000-8000-0000000000aa'
-  const row = { kind: 'task', id, area_id: INBOX, title: 'From phone', completed_at: null }
+  const row = { kind: 'task', id, parent_id: INBOX, title: 'From phone', completed_at: null, order: '' }
   delta = [row]
   await sync()
   expect((await inboxTasks()).map((t) => t.title)).toEqual(['From phone'])

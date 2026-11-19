@@ -78,6 +78,8 @@ async fn a_rejected_command_is_dropped_reported_and_its_row_restored() {
         Op::TaskCreate {
             id,
             title: "From B".into(),
+            parent_id: None,
+            order: String::new(),
         },
         1000,
     )
@@ -86,6 +88,8 @@ async fn a_rejected_command_is_dropped_reported_and_its_row_restored() {
         Op::TaskCreate {
             id,
             title: "From A".into(),
+            parent_id: None,
+            order: String::new(),
         },
         1000,
     )
@@ -123,6 +127,8 @@ async fn login_makes_the_device_id_the_hlc_device() {
             Op::TaskCreate {
                 id: orbit_core::new_id(1000, &[1; 10]),
                 title: "Buy milk".into(),
+                parent_id: None,
+                order: String::new(),
             },
             1000,
         )
@@ -159,4 +165,25 @@ async fn a_signed_out_device_keeps_its_outbox_and_replays_it_after_login() {
         a.task(id).unwrap().unwrap().title,
         "Written while signed out"
     );
+}
+
+#[tokio::test]
+async fn two_devices_reordering_the_same_task_converge_on_the_later_move() {
+    let s = server().await;
+    let (mut a, mut b) = (device(&s).await, device(&s).await);
+    let area = a.create_area("Home", "a", 1000).unwrap();
+    let id = a.create_task("Buy milk", 1000).unwrap();
+    a.sync(1000).await.unwrap();
+    b.sync(1000).await.unwrap();
+
+    a.move_item(id, Some(area), "b", 2000).unwrap();
+    b.move_item(id, Some(area), "c", 3000).unwrap();
+    b.sync(3000).await.unwrap();
+    a.sync(4000).await.unwrap();
+    b.sync(4000).await.unwrap();
+
+    for d in [&a, &b] {
+        let t = d.task(id).unwrap().unwrap();
+        assert_eq!((t.parent_id, t.order.as_str()), (area, "c"));
+    }
 }

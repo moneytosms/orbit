@@ -87,10 +87,43 @@ impl Client {
             Op::TaskCreate {
                 id,
                 title: title.into(),
+                parent_id: None,
+                order: String::new(),
             },
             now_ms,
         )?;
         Ok(id)
+    }
+
+    pub fn create_area(&mut self, name: &str, order: &str, now_ms: u64) -> Result<Uuid> {
+        let id = new_id(now_ms, &random()?);
+        self.enqueue(
+            Op::AreaCreate {
+                id,
+                name: name.into(),
+                order: order.into(),
+            },
+            now_ms,
+        )?;
+        Ok(id)
+    }
+
+    pub fn move_item(
+        &mut self,
+        id: Uuid,
+        parent_id: Option<Uuid>,
+        order: &str,
+        now_ms: u64,
+    ) -> Result<()> {
+        self.enqueue(
+            Op::ItemMove {
+                id,
+                parent_id,
+                order: order.into(),
+            },
+            now_ms,
+        )
+        .map(drop)
     }
 
     pub fn rename_task(&mut self, id: Uuid, title: &str, now_ms: u64) -> Result<()> {

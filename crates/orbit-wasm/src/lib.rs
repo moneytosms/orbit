@@ -41,3 +41,9 @@ pub fn observe_hlc(mine: &str, seen: &str, now_ms: f64) -> Result<String, JsErro
     let (mine, seen): (Hlc, Hlc) = (serde_json::from_str(mine)?, serde_json::from_str(seen)?);
     Ok(serde_json::to_string(&mine.observe(&seen, now_ms as u64))?)
 }
+
+/// A fractional-index key strictly between `a` and `b` (`None` is an open end).
+#[wasm_bindgen]
+pub fn order_between(a: Option<String>, b: Option<String>) -> String {
+    orbit_core::order::between(a.as_deref(), b.as_deref())
+}

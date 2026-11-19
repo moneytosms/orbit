@@ -5,8 +5,8 @@ use axum::{
     routing::{delete, get, post},
 };
 use orbit_core::{
-    Clocks, Command, Hlc, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, VersionError,
-    apply_lww, check_version,
+    Clocks, Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse,
+    VersionError, apply, apply_lww, check_parent, check_version,
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::{
@@ -193,12 +193,18 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
         ),
         None => (None, Clocks::new()),
     };
-    let status = match apply_lww(existing, &mut clocks, cmd) {
-        Ok(row) => {
-            write(&tx, &row, &clocks)?;
-            Status::Ok
-        }
-        Err(code) => Status::Error { code },
+    let status = match check_tree(&tx, existing.as_ref(), cmd)? {
+        Some(code) => Status::Error { code },
+        None => match apply_lww(existing, &mut clocks, cmd) {
+            Ok(row) => {
+                write(&tx, &row, &clocks)?;
+                if let Op::TaskComplete { id } = &cmd.op {
+                    complete_descendants(&tx, *id, cmd)?;
+                }
+                Status::Ok
+            }
+            Err(code) => Status::Error { code },
+        },
     };
     let stored = serde_json::to_string(&status).map_err(json_err)?;
     tx.execute(
@@ -207,6 +213,88 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
     )?;
     tx.commit()?;
     Ok(status)
+}
+
+fn load_row(conn: &Connection, id: &str) -> rusqlite::Result<Option<Row>> {
+    load(conn, id)?
+        .map(|(data, _)| serde_json::from_str(&data).map_err(json_err))
+        .transpose()
+}
+
+/// Tree rules for creates and moves: the new parent must exist, fit `check_parent`, and not be
+/// the row itself or one of its descendants. `None` means the command may go on to `apply_lww`.
+fn check_tree(
+    conn: &Connection,
+    existing: Option<&Row>,
+    cmd: &Command,
+) -> rusqlite::Result<Option<ErrorCode>> {
+    if !matches!(
+        cmd.op,
+        Op::AreaCreate { .. }
+            | Op::ProjectCreate { .. }
+            | Op::SectionCreate { .. }
+            | Op::TaskCreate { .. }
+            | Op::ItemMove { .. }
+    ) {
+        return Ok(None);
+    }
+    // Other errors (exists, not found, blank title) come from `apply_lww` itself.
+    let Ok(candidate) = apply(existing.cloned(), cmd) else {
+        return Ok(None);
+    };
+    let parent = match candidate.parent_id() {
+        Some(pid) => load_row(conn, &pid.to_string())?,
+        None => None,
+    };
+    if let Err(code) = check_parent(&candidate, parent.as_ref()) {
+        return Ok(Some(code));
+    }
+    // Walk up from the new parent; meeting the row itself would make a cycle.
+    let mut next = candidate.parent_id();
+    while let Some(pid) = next {
+        if pid == candidate.id() {
+            return Ok(Some(ErrorCode::BadParent));
+        }
+        next = load_row(conn, &pid.to_string())?.and_then(|r| r.parent_id());
+    }
+    Ok(None)
+}
+
+/// Completes every open Task under `id`, at any depth, as the same command.
+fn complete_descendants(
+    conn: &Connection,
+    id: orbit_core::Uuid,
+    cmd: &Command,
+) -> rusqlite::Result<()> {
+    let ids: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE d(id) AS (
+                 SELECT id FROM rows WHERE json_extract(data, '$.parent_id') = ?1
+                 UNION
+                 SELECT r.id FROM rows r JOIN d ON json_extract(r.data, '$.parent_id') = d.id
+             )
+             SELECT id FROM rows WHERE id IN (SELECT id FROM d)
+               AND json_extract(data, '$.kind') = 'task'
+               AND json_extract(data, '$.completed_at') IS NULL",
+        )?;
+        stmt.query_map([id.to_string()], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    for child in ids {
+        let Some((data, clocks)) = load(conn, &child)? else {
+            continue;
+        };
+        let row: Row = serde_json::from_str(&data).map_err(json_err)?;
+        let mut clocks: Clocks = serde_json::from_str(&clocks).map_err(json_err)?;
+        let done = Command {
+            op: Op::TaskComplete { id: row.id() },
+            ..cmd.clone()
+        };
+        if let Ok(row) = apply_lww(Some(row), &mut clocks, &done) {
+            write(conn, &row, &clocks)?;
+        }
+    }
+    Ok(())
 }
 
 /// A row's `(data, clocks)` JSON.

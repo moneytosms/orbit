@@ -1,3 +1,7 @@
+pub mod order;
+pub mod parse;
+pub mod theme;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Builder;
@@ -50,15 +54,42 @@ pub const INBOX: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_000
 pub struct Area {
     pub id: Uuid,
     pub name: String,
+    /// Fractional index among siblings (see `order`).
+    #[serde(default)]
+    pub order: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Project {
+    pub id: Uuid,
+    /// The Area it lives in.
+    pub parent_id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub order: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Section {
+    pub id: Uuid,
+    /// The Area or Project it lives in.
+    pub parent_id: Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub order: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Task {
     pub id: Uuid,
-    pub area_id: Uuid,
+    /// An Area, Project, Section or another Task (subtask).
+    #[serde(alias = "area_id")]
+    pub parent_id: Uuid,
     pub title: String,
     /// Unix ms.
     pub completed_at: Option<u64>,
+    #[serde(default)]
+    pub order: String,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -66,6 +97,8 @@ pub struct Task {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Row {
     Area(Area),
+    Project(Project),
+    Section(Section),
     Task(Task),
 }
 
@@ -73,7 +106,19 @@ impl Row {
     pub fn id(&self) -> Uuid {
         match self {
             Row::Area(a) => a.id,
+            Row::Project(p) => p.id,
+            Row::Section(s) => s.id,
             Row::Task(t) => t.id,
+        }
+    }
+
+    /// The row this one lives under. Areas have none.
+    pub fn parent_id(&self) -> Option<Uuid> {
+        match self {
+            Row::Area(_) => None,
+            Row::Project(p) => Some(p.parent_id),
+            Row::Section(s) => Some(s.parent_id),
+            Row::Task(t) => Some(t.parent_id),
         }
     }
 
@@ -81,6 +126,7 @@ impl Row {
         Row::Area(Area {
             id: INBOX,
             name: "Inbox".into(),
+            order: String::new(),
         })
     }
 }
@@ -96,8 +142,46 @@ pub struct Command {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", content = "args")]
 pub enum Op {
+    #[serde(rename = "area.create")]
+    AreaCreate {
+        id: Uuid,
+        name: String,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "project.create")]
+    ProjectCreate {
+        id: Uuid,
+        parent_id: Uuid,
+        name: String,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "section.create")]
+    SectionCreate {
+        id: Uuid,
+        parent_id: Uuid,
+        name: String,
+        #[serde(default)]
+        order: String,
+    },
+    /// No `parent_id` means the Inbox.
     #[serde(rename = "task.create")]
-    TaskCreate { id: Uuid, title: String },
+    TaskCreate {
+        id: Uuid,
+        title: String,
+        #[serde(default)]
+        parent_id: Option<Uuid>,
+        #[serde(default)]
+        order: String,
+    },
+    /// Reparents and reorders any kind. Areas have no parent: only their order changes.
+    #[serde(rename = "item.move")]
+    ItemMove {
+        id: Uuid,
+        parent_id: Option<Uuid>,
+        order: String,
+    },
     /// Only the fields present change.
     #[serde(rename = "task.update")]
     TaskUpdate { id: Uuid, title: Option<String> },
@@ -109,14 +193,24 @@ impl Op {
     /// The row this command writes.
     pub fn target(&self) -> Uuid {
         match self {
-            Op::TaskCreate { id, .. } | Op::TaskUpdate { id, .. } | Op::TaskComplete { id } => *id,
+            Op::AreaCreate { id, .. }
+            | Op::ProjectCreate { id, .. }
+            | Op::SectionCreate { id, .. }
+            | Op::TaskCreate { id, .. }
+            | Op::ItemMove { id, .. }
+            | Op::TaskUpdate { id, .. }
+            | Op::TaskComplete { id } => *id,
         }
     }
 
     /// Row fields an edit writes, each guarded by its own clock. A create stamps all fields instead.
     fn fields(&self) -> Vec<&'static str> {
         match self {
-            Op::TaskCreate { .. } => vec![],
+            Op::AreaCreate { .. }
+            | Op::ProjectCreate { .. }
+            | Op::SectionCreate { .. }
+            | Op::TaskCreate { .. } => vec![],
+            Op::ItemMove { .. } => vec!["parent_id", "order"],
             Op::TaskUpdate { title, .. } => title.iter().map(|_| "title").collect(),
             Op::TaskComplete { .. } => vec!["completed_at"],
         }
@@ -132,6 +226,8 @@ pub enum ErrorCode {
     Exists,
     NotFound,
     TitleRequired,
+    /// The parent breaks the tree rules, is missing, or would make a cycle.
+    BadParent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -181,7 +277,66 @@ pub struct SyncResponse {
 /// Applies one command to the row it targets. Server and client prediction share this.
 pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
     match &cmd.op {
-        Op::TaskCreate { id, title } => {
+        Op::AreaCreate { id, name, order } => {
+            let name = name.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if name.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else {
+                Ok(Row::Area(Area {
+                    id: *id,
+                    name: name.into(),
+                    order: order.clone(),
+                }))
+            }
+        }
+        Op::ProjectCreate {
+            id,
+            parent_id,
+            name,
+            order,
+        } => {
+            let name = name.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if name.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else {
+                Ok(Row::Project(Project {
+                    id: *id,
+                    parent_id: *parent_id,
+                    name: name.into(),
+                    order: order.clone(),
+                }))
+            }
+        }
+        Op::SectionCreate {
+            id,
+            parent_id,
+            name,
+            order,
+        } => {
+            let name = name.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if name.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else {
+                Ok(Row::Section(Section {
+                    id: *id,
+                    parent_id: *parent_id,
+                    name: name.into(),
+                    order: order.clone(),
+                }))
+            }
+        }
+        Op::TaskCreate {
+            id,
+            title,
+            parent_id,
+            order,
+        } => {
             let title = title.trim();
             if existing.is_some() {
                 Err(ErrorCode::Exists)
@@ -190,10 +345,43 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             } else {
                 Ok(Row::Task(Task {
                     id: *id,
-                    area_id: INBOX,
+                    parent_id: parent_id.unwrap_or(INBOX),
                     title: title.into(),
                     completed_at: None,
+                    order: order.clone(),
                 }))
+            }
+        }
+        Op::ItemMove {
+            id,
+            parent_id,
+            order,
+        } => {
+            if *id == INBOX {
+                return Err(ErrorCode::BadParent);
+            }
+            match existing {
+                Some(Row::Area(a)) if parent_id.is_none() => Ok(Row::Area(Area {
+                    order: order.clone(),
+                    ..a
+                })),
+                Some(Row::Area(_)) => Err(ErrorCode::BadParent),
+                Some(Row::Project(p)) => Ok(Row::Project(Project {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..p
+                })),
+                Some(Row::Section(s)) => Ok(Row::Section(Section {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..s
+                })),
+                Some(Row::Task(t)) => Ok(Row::Task(Task {
+                    parent_id: parent_id.unwrap_or(INBOX),
+                    order: order.clone(),
+                    ..t
+                })),
+                None => Err(ErrorCode::NotFound),
             }
         }
         Op::TaskUpdate { title, .. } => match existing {
@@ -214,6 +402,35 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             })),
             _ => Err(ErrorCode::NotFound),
         },
+    }
+}
+
+/// The tree rules for `child` (its `parent_id` already set) under `parent`, the row that id
+/// points at. Callers load the parent and call this before applying a create or move; a missing
+/// parent is `None`. Cycles need the whole chain, so callers walk it themselves.
+pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> {
+    let Some(want) = child.parent_id() else {
+        return if parent.is_none() {
+            Ok(())
+        } else {
+            Err(ErrorCode::BadParent)
+        };
+    };
+    let Some(parent) = parent.filter(|p| p.id() == want) else {
+        return Err(ErrorCode::BadParent);
+    };
+    let ok = match (child, parent) {
+        (Row::Area(_), _) => false,
+        // Inbox holds only Tasks.
+        (Row::Project(_), Row::Area(a)) | (Row::Section(_), Row::Area(a)) => a.id != INBOX,
+        (Row::Section(_), Row::Project(_)) => true,
+        (Row::Task(_), Row::Area(_) | Row::Project(_) | Row::Section(_) | Row::Task(_)) => true,
+        _ => false,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(ErrorCode::BadParent)
     }
 }
 
@@ -241,6 +458,10 @@ pub fn apply_lww(
     };
     let (mut merged, old) = (json(&new), json(&old));
     for field in cmd.op.fields() {
+        // An Area has no `parent_id`: a move only changes its order.
+        if old.get(field).is_none() {
+            continue;
+        }
         if clocks.get(field).is_some_and(|c| *c > cmd.hlc) {
             merged[field] = old[field].clone();
         } else {
@@ -359,8 +580,8 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&row).unwrap(),
             serde_json::json!({
-                "kind": "task", "id": TASK, "area_id": "00000000-0000-7000-8000-000000000001",
-                "title": "Buy milk", "completed_at": null,
+                "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
+                "title": "Buy milk", "completed_at": null, "order": "",
             })
         );
     }
@@ -497,7 +718,12 @@ mod tests {
         let fields: Vec<_> = clocks.iter().map(|(f, c)| (f.as_str(), c.wall)).collect();
         assert_eq!(
             fields,
-            [("area_id", 1000), ("completed_at", 1000), ("title", 1000)]
+            [
+                ("completed_at", 1000),
+                ("order", 1000),
+                ("parent_id", 1000),
+                ("title", 1000)
+            ]
         );
     }
 
@@ -508,5 +734,175 @@ mod tests {
         assert_eq!(check_version(5, 3), Err(VersionError::TooOld));
         assert_eq!(check_version(5, 0), Err(VersionError::TooOld));
         assert_eq!(check_version(5, 6), Err(VersionError::TooNew));
+    }
+
+    fn uid(n: u128) -> Uuid {
+        Uuid::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0000 + n)
+    }
+
+    fn area(n: u128) -> Row {
+        Row::Area(Area {
+            id: uid(n),
+            name: "A".into(),
+            order: "a".into(),
+        })
+    }
+    fn project(n: u128, parent: Uuid) -> Row {
+        Row::Project(Project {
+            id: uid(n),
+            parent_id: parent,
+            name: "P".into(),
+            order: "a".into(),
+        })
+    }
+    fn section(n: u128, parent: Uuid) -> Row {
+        Row::Section(Section {
+            id: uid(n),
+            parent_id: parent,
+            name: "S".into(),
+            order: "a".into(),
+        })
+    }
+    fn task_row(n: u128, parent: Uuid) -> Row {
+        Row::Task(Task {
+            id: uid(n),
+            parent_id: parent,
+            title: "T".into(),
+            completed_at: None,
+            order: "a".into(),
+        })
+    }
+
+    #[test]
+    fn check_parent_allows_exactly_the_tree_shapes() {
+        let (a, p, s, t) = (
+            area(1),
+            project(2, uid(1)),
+            section(3, uid(1)),
+            task_row(4, uid(1)),
+        );
+        let inbox = Row::inbox();
+        let ok = |child: Row, parent: &Row| {
+            let child = match child {
+                Row::Area(x) => Row::Area(x),
+                Row::Project(x) => Row::Project(Project {
+                    parent_id: parent.id(),
+                    ..x
+                }),
+                Row::Section(x) => Row::Section(Section {
+                    parent_id: parent.id(),
+                    ..x
+                }),
+                Row::Task(x) => Row::Task(Task {
+                    parent_id: parent.id(),
+                    ..x
+                }),
+            };
+            check_parent(&child, Some(parent))
+        };
+        let bad = Err(ErrorCode::BadParent);
+        // Areas are flat.
+        assert_eq!(check_parent(&a, None), Ok(()));
+        assert_eq!(check_parent(&a, Some(&a)), bad);
+        // Projects live in Areas only (not the Inbox).
+        assert_eq!(ok(p.clone(), &a), Ok(()));
+        assert_eq!(ok(p.clone(), &p), bad);
+        assert_eq!(ok(p.clone(), &s), bad);
+        assert_eq!(ok(p.clone(), &t), bad);
+        assert_eq!(ok(p.clone(), &inbox), bad);
+        // Sections live in an Area or Project.
+        assert_eq!(ok(s.clone(), &a), Ok(()));
+        assert_eq!(ok(s.clone(), &p), Ok(()));
+        assert_eq!(ok(s.clone(), &s), bad);
+        assert_eq!(ok(s.clone(), &t), bad);
+        assert_eq!(ok(s.clone(), &inbox), bad);
+        // Tasks live anywhere but under nothing, including subtasks and the Inbox.
+        for parent in [&a, &p, &s, &t, &inbox] {
+            assert_eq!(ok(t.clone(), parent), Ok(()));
+        }
+        // Missing or mismatched parents.
+        assert_eq!(check_parent(&t, None), bad);
+        assert_eq!(check_parent(&task_row(5, uid(99)), Some(&a)), bad);
+    }
+
+    fn mv(id: Uuid, parent: Option<Uuid>, order: &str, wall: u64) -> Command {
+        cmd(
+            "01900000-0000-7000-8000-0000000000c9",
+            "item.move",
+            serde_json::json!({ "id": id, "parent_id": parent, "order": order }),
+            wall,
+        )
+    }
+
+    #[test]
+    fn item_move_reparents_and_reorders_but_never_moves_an_area_or_the_inbox() {
+        let moved = apply(Some(task_row(4, uid(1))), &mv(uid(4), Some(uid(2)), "b", 5)).unwrap();
+        assert_eq!(moved, task_row(4, uid(2)).with_order("b"));
+        let p = apply(Some(project(2, uid(1))), &mv(uid(2), Some(uid(7)), "c", 5)).unwrap();
+        assert_eq!(p.parent_id(), Some(uid(7)));
+        assert_eq!(
+            apply(Some(project(2, uid(1))), &mv(uid(2), None, "c", 5)),
+            Err(ErrorCode::BadParent)
+        );
+        // An Area only changes order.
+        let a = apply(Some(area(1)), &mv(uid(1), None, "z", 5)).unwrap();
+        assert!(matches!(&a, Row::Area(x) if x.order == "z"));
+        assert_eq!(
+            apply(Some(area(1)), &mv(uid(1), Some(uid(2)), "z", 5)),
+            Err(ErrorCode::BadParent)
+        );
+        assert_eq!(
+            apply(Some(Row::inbox()), &mv(INBOX, None, "z", 5)),
+            Err(ErrorCode::BadParent)
+        );
+        assert_eq!(
+            apply(None, &mv(uid(4), None, "z", 5)),
+            Err(ErrorCode::NotFound)
+        );
+    }
+
+    impl Row {
+        fn with_order(mut self, order: &str) -> Row {
+            if let Row::Task(t) = &mut self {
+                t.order = order.into();
+            }
+            self
+        }
+    }
+
+    #[test]
+    fn order_is_last_writer_wins_and_an_area_move_stamps_no_parent_clock() {
+        let mut clocks = Clocks::new();
+        let row = apply_lww(
+            None,
+            &mut clocks,
+            &cmd(
+                "01900000-0000-7000-8000-0000000000c1",
+                "area.create",
+                serde_json::json!({ "id": uid(1), "name": "Home", "order": "a" }),
+                1000,
+            ),
+        )
+        .unwrap();
+        let row = apply_lww(Some(row), &mut clocks, &mv(uid(1), None, "n", 3000)).unwrap();
+        let row = apply_lww(Some(row), &mut clocks, &mv(uid(1), None, "o", 2000)).unwrap();
+        assert!(matches!(&row, Row::Area(a) if a.order == "n"));
+        assert!(!clocks.contains_key("parent_id"));
+    }
+
+    #[test]
+    fn old_rows_with_area_id_and_no_order_still_deserialize() {
+        let row: Row = serde_json::from_value(serde_json::json!({
+            "kind": "task", "id": TASK, "area_id": INBOX, "title": "Old", "completed_at": null,
+        }))
+        .unwrap();
+        assert_eq!(task(&row).parent_id, INBOX);
+        assert_eq!(task(&row).order, "");
+        let create: Command = serde_json::from_value(serde_json::json!({
+            "uuid": TASK, "type": "task.create", "args": { "id": TASK, "title": "Old" },
+            "hlc": { "wall": 1, "counter": 0, "device": DEVICE },
+        }))
+        .unwrap();
+        assert_eq!(task(&apply(None, &create).unwrap()).parent_id, INBOX);
     }
 }
