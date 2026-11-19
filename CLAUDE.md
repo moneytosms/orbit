@@ -14,6 +14,7 @@ Personal task + notes app (Todoist-style). Rust axum server + SQLite is source o
 ## Commands
 
 - `just check`: the gate. pnpm install, svelte-check, vitest, web build, cargo fmt/clippy (`-D warnings`)/test, wasm32 build. Must pass before done.
+- `just fmt <app files>`: cargo fmt + prettier on the named app files (paths relative to `app/`, e.g. `just fmt src/lib/sync.ts`). Prettier config `app/.prettierrc` (single quotes, no semis, width 120). Format only files you touched; never run prettier over all of `src/` or without the config.
 - `just hooks`: once per clone; pre-push runs `just check`.
 - CI: `.github/workflows/check.yml` runs `just check` (bonus; local hook is the real gate).
 

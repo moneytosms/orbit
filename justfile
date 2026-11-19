@@ -8,6 +8,11 @@ check: wasm
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
 
+# Format the given app files (paths relative to app/), e.g. `just fmt src/lib/sync.ts`; plus cargo fmt
+fmt *files:
+    cargo fmt --all
+    {{ if files != "" { "pnpm -C app format " + files } else { "" } }}
+
 # Build orbit-core for the browser into app/wasm
 wasm:
     wasm-pack build crates/orbit-wasm --target web --out-dir ../../app/wasm --no-pack
