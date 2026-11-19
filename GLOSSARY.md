@@ -48,6 +48,10 @@ _Avoid_: Habit (in UI copy is fine, not in code), recurring task, streak
 One day's record of a Routine: done or skipped. A scheduled day that passes with no Check-in is missed.
 _Avoid_: Completion, log entry
 
+**Reminder**:
+A notification for a Task at a set time, either an offset before its due or deadline or a fixed moment; a Routine can have a daily one.
+_Avoid_: Alert, alarm (that is the Android mechanism)
+
 **Recurring task**:
 A Task that comes back on its recurrence after completion and stays overdue until done.
 _Avoid_: Routine, repeat
