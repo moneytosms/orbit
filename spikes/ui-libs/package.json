@@ -1,0 +1,25 @@
+{
+  "name": "orbit-ui-libs-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build && vite preview --host --port 5199 --strictPort",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "^5.57.3",
+    "vite": "^7.3.8"
+  },
+  "dependencies": {
+    "@thisux/sveltednd": "^0.8.0",
+    "@tiptap/core": "^3.34.0",
+    "@tiptap/extension-mention": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
+    "@tiptap/suggestion": "^3.34.0",
+    "fullcalendar": "^7.1.5",
+    "svelte-dnd-action": "^0.9.80",
+    "svelte-tiptap": "^3.0.2"
+  }
+}

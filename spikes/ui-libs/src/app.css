@@ -1,0 +1,17 @@
+/* PROTOTYPE: Orbit tokens from DESIGN.md, light + dark */
+:root { --bg:#fbfaf8; --surface:#fff; --sunk:#f2efea; --text:#2a2723; --muted:#6b665e; --border:#ebe7e0; --border-strong:#dcd5ca;
+  --accent:#c2552f; --accent-ink:#fff; --accent-soft:#f8ebe4; --accent-text:#a3441f; --college:#3b6cb0; --learning:#468253; color-scheme: light; }
+[data-color-scheme=dark] { --bg:#1b1a18; --surface:#252321; --sunk:#1e1d1b; --text:#ede8e0; --muted:#a8a197; --border:#33302c; --border-strong:#45413b;
+  --accent:#e2835e; --accent-ink:#1b1a18; --accent-soft:#3a281f; --accent-text:#e2835e; --college:#79a2e0; --learning:#82bb8d; color-scheme: dark; }
+/* FullCalendar classic theme mapped onto Orbit tokens: is this enough? */
+html[data-color-scheme] { /* beats palette.css :root */
+  --fc-classic-primary: var(--accent); --fc-classic-primary-foreground: var(--accent-ink);
+  --fc-classic-button: var(--surface); --fc-classic-button-border: var(--border-strong); --fc-classic-button-foreground: var(--text);
+  --fc-classic-button-strong: var(--accent); --fc-classic-button-strong-border: var(--accent);
+  --fc-classic-background: var(--surface); --fc-classic-foreground: var(--text); --fc-classic-muted-foreground: var(--muted);
+  --fc-classic-border: var(--border); --fc-classic-today: var(--accent-soft); --fc-classic-now: var(--accent);
+}
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+button { font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--border-strong); border-radius:6px; padding:4px 10px; }
+button.on { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.log { font:12px/1.4 ui-monospace, monospace; background:var(--sunk); padding:8px; border-radius:6px; white-space:pre-wrap; max-height:180px; overflow:auto; }
