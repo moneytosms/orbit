@@ -24,7 +24,7 @@ adb shell pm grant dev.orbit.spike android.permission.POST_NOTIFICATIONS
 | Rust -> Kotlin bridge | `run_mobile_plugin("schedule"/"alarms")` from an app command | PASS |
 | Share target | `am start -a SEND` text, airplane mode on | PASS, JSON file written, no UI |
 | Capture screen (widget target) | typed into `CaptureActivity`, tapped Add | PASS |
-| Widget registered | `dumpsys appwidget` lists `CaptureWidget` | PASS |
+| Home-screen widget | placed by hand on Pixel launcher, tapped, typed, Add | PASS, POSTed 0.9 s later |
 | Outbox flush, app dead | 2 files offline, `kill -9`, airplane off | PASS, new process, both POSTed within ~1 s |
 | Reminder offline, app dead | +60 s, airplane on, `kill -9` | PASS, fired on time in fresh process |
 | Reminder across reboot | +180 s, offline, `adb reboot` | PASS, BootReceiver re-armed, fired on time |
