@@ -25,6 +25,9 @@ import {
   getSettings,
   getTask,
   runView,
+  setPriority,
+  setDue,
+  localDay,
   pinnedViews,
   reorderViews,
   resetView,
@@ -482,4 +485,19 @@ test('reorderViews moves a view before another, then last', async () => {
   await reorderViews(second, null)
   ids = (await views()).map((v) => v.id)
   expect(ids.at(-1)).toBe(second)
+})
+
+test('a cross-column priority drop updates the Task and the view regroups', async () => {
+  const id = await createTask('Drag me')
+  const view = await createView('By priority', 'task')
+  await updateView(view, { group_by: 'priority' })
+  const keyOf = async () => (await runView(view)).groups.find((g) => g.rows.some((r) => r.id === id))?.key
+  expect(await keyOf()).toBe('4')
+  await setPriority(id, 1)
+  expect((await getTask(id))?.priority).toBe(1)
+  expect(await keyOf()).toBe('1')
+  await setDue(id, localDay(1))
+  expect((await getTask(id))?.due?.date).toBe(localDay(1))
+  await setDue(id, null)
+  expect((await getTask(id))?.due).toBeNull()
 })

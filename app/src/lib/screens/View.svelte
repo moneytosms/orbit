@@ -8,7 +8,10 @@
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
+  import Board, { fieldChoices, fieldTitle } from '$lib/Board.svelte'
   import FilterEditor from '$lib/FilterEditor.svelte'
+  import Table from '$lib/Table.svelte'
+  import TaskDrawer from '$lib/TaskDrawer.svelte'
   import {
     allGoals,
     completeTask,
@@ -49,6 +52,8 @@
   let lastId = ''
   let filterOpen = $state(false)
   let sortOpen = $state(false)
+  let fieldsOpen = $state(false)
+  let openId = $state<string | null>(null)
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
   $effect(() => {
@@ -59,6 +64,8 @@
       loaded = false
       filterOpen = false
       sortOpen = false
+      fieldsOpen = false
+      openId = null
     }
     void areas
     load()
@@ -107,6 +114,38 @@
     ['priority', 'Priority'],
     ['goal', 'Goal'],
   ]
+
+  // `timeline` and `calendar` join this list with their own tickets.
+  const layouts: [string, string][] = [
+    ['list', 'List'],
+    ['board', 'Board'],
+    ['table', 'Table'],
+  ]
+  const layout = $derived(view?.layout === 'board' || view?.layout === 'table' ? view.layout : 'list')
+  // Core groups by the fields above; Label is regrouped by the Board.
+  const groupChoices = $derived(
+    layout === 'board' ? [...groupFields, ['label', 'Label'] as [string, string]] : groupFields,
+  )
+  async function toggleField(f: string) {
+    if (!view) return
+    await save({ fields: view.fields.includes(f) ? view.fields.filter((x) => x !== f) : [...view.fields, f] })
+  }
+  const allRows = $derived(groups.flatMap((g) => g.rows))
+  const extra = $derived.by(() => {
+    if (view?.group_by === 'project') return areas.flatMap((a) => a.projects).map((p) => ({ key: p.id, title: p.name }))
+    if (view?.group_by === 'area') return areas.map((a) => ({ key: a.area.id, title: a.area.name }))
+    if (view?.group_by === 'goal') return [...goalNames].map(([key, title]) => ({ key, title }))
+    return []
+  })
+  function open(r: Row) {
+    if (r.kind === 'task') openId = r.id
+    else if (href(r)) location.hash = href(r)!
+  }
+  function closeDrawer() {
+    openId = null
+    load()
+    onchange()
+  }
 
   async function addSort() {
     if (!view) return
@@ -222,6 +261,7 @@
         aria-expanded={filterOpen}
         onclick={() => {
           sortOpen = false
+          fieldsOpen = false
           filterOpen = !filterOpen
         }}
       >
@@ -232,6 +272,7 @@
         aria-expanded={sortOpen}
         onclick={() => {
           filterOpen = false
+          fieldsOpen = false
           sortOpen = !sortOpen
         }}
       >
@@ -243,10 +284,31 @@
         onchange={(e) => save({ group_by: e.currentTarget.value || null })}
         class="h-8 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
       >
-        {#each groupFields as [value, text] (value)}
+        {#each groupChoices as [value, text] (value)}
           <option {value}>{text}</option>
         {/each}
       </select>
+      <div role="group" aria-label="Layout" class="flex gap-1">
+        {#each layouts as [value, text] (value)}
+          <Button
+            size="sm"
+            variant={layout === value ? 'on' : 'default'}
+            aria-pressed={layout === value}
+            onclick={() => save({ layout: value })}>{text}</Button
+          >
+        {/each}
+      </div>
+      <Button
+        variant={fieldsOpen || view.fields.length ? 'on' : 'default'}
+        aria-expanded={fieldsOpen}
+        onclick={() => {
+          filterOpen = false
+          sortOpen = false
+          fieldsOpen = !fieldsOpen
+        }}
+      >
+        Fields
+      </Button>
       <label class="flex items-center gap-1.5 text-sm text-muted">
         <Checkbox
           checked={view.show_completed}
@@ -307,6 +369,25 @@
         <Button size="sm" onclick={addSort}>Add sort</Button>
       </div>
     {/if}
+
+    {#if fieldsOpen}
+      <div
+        role="group"
+        aria-label="Fields"
+        class="absolute top-full right-0 z-30 mt-1 w-[min(280px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-3 shadow-2"
+      >
+        {#each fieldChoices as f (f)}
+          <label class="flex items-center gap-2 py-1 text-sm capitalize">
+            <Checkbox
+              checked={view.fields.includes(f)}
+              aria-label="Show {fieldTitle(f)}"
+              onCheckedChange={() => toggleField(f)}
+            />
+            {fieldTitle(f)}
+          </label>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -314,6 +395,29 @@
   <p class="px-2 py-6 text-center text-muted">Loading view…</p>
 {:else if empty}
   <p class="px-2 py-6 text-center text-muted">Nothing matches this view.</p>
+{:else if layout === 'board'}
+  <Board
+    groupBy={view?.group_by ?? null}
+    {groups}
+    fields={view?.fields ?? []}
+    entity={view?.entity}
+    titleOf={label}
+    {extra}
+    onchange={async () => {
+      await load()
+      onchange()
+    }}
+    onopen={open}
+  />
+{:else if layout === 'table'}
+  <Table
+    rows={allRows}
+    fields={view?.fields ?? []}
+    sorts={view?.sorts ?? []}
+    entity={view?.entity}
+    onsort={(sorts) => save({ sorts })}
+    onopen={open}
+  />
 {:else}
   {#each groups as g (g.key)}
     {#if g.key}<h3 class="mt-4 mb-1 px-2 text-[12.5px] font-semibold text-muted">{label(g.key)}</h3>{/if}
@@ -357,3 +461,5 @@
     </ul>
   {/each}
 {/if}
+
+<TaskDrawer taskId={openId} onclose={closeDrawer} />
