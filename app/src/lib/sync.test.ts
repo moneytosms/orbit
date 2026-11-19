@@ -2,7 +2,8 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { initSync } from '../../wasm/orbit_wasm'
-import { completeTask, createTask, inboxTasks, onRejected, sync } from './sync'
+import { login } from './auth'
+import { completeTask, createTask, inboxTasks, onRejected, onSignedOut, sync } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
 type Body = { v: number; token?: number; commands: { uuid: string; type: string; args: any }[] }
@@ -16,8 +17,17 @@ let httpStatus = 200
 let rejectWith: string | undefined
 
 // Stand-in server: accepts every command and returns whatever delta the test sets.
-vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+const DEVICE = '01900000-0000-7000-8000-0000000000d1'
+let logins: object[] = []
+
+vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
   if (!online) throw new TypeError('Failed to fetch')
+  if (url === '/auth/login') {
+    const body = JSON.parse(init.body as string)
+    logins.push(body)
+    if (body.password !== 'right') return new Response(JSON.stringify({ error: 'credentials' }), { status: 401 })
+    return new Response(JSON.stringify({ device: DEVICE }))
+  }
   const body: Body = JSON.parse(init.body as string)
   requests.push(body)
   await gate
@@ -114,4 +124,23 @@ test('an old protocol version (426) keeps the outbox for after an update', async
   httpStatus = 200
   await sync()
   expect(requests.at(-1)!.commands).toMatchObject([{ type: 'task.create', args: { title: 'Kept' } }])
+})
+
+test('a 401 keeps the outbox and reports it; logging in replays it as the new Device', async () => {
+  const pending: number[] = []
+  onSignedOut((n) => pending.push(n))
+  await createTask('While signed out')
+  httpStatus = 401
+  await sync()
+  expect(pending).toEqual([1])
+
+  httpStatus = 200
+  await expect(login('wrong')).rejects.toThrow('credentials')
+  await login('right')
+  expect(logins.at(-1)).toMatchObject({ platform: 'web' })
+  expect(requests.at(-1)!.commands).toMatchObject([{ type: 'task.create', args: { title: 'While signed out' } }])
+
+  await createTask('After login')
+  await sync()
+  expect(requests.at(-1)!.commands).toMatchObject([{ hlc: { device: DEVICE } }])
 })

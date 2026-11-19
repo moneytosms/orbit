@@ -11,10 +11,14 @@ const byHlc = (a: Command, b: Command) => a.hlc.wall - b.hlc.wall || a.hlc.count
 let changed = () => {}
 let rejected = (_code: string) => {}
 
+let signedOut = (_pending: number) => {}
+
 /** Called with the error code of each command the server refused. */
 export const onRejected = (fn: (code: string) => void) => (rejected = fn)
+/** Called with the outbox size when the server says this Device is signed out (401). */
+export const onSignedOut = (fn: (pending: number) => void) => (signedOut = fn)
 
-// shortcut: random per-browser Device id until login (#34) issues one.
+/** This Device's last clock reading. Before the first login the Device id is a random placeholder. */
 const clock = async (meta: IDBObjectStore): Promise<Hlc> =>
   (await req(meta.get('hlc'))) ?? { wall: 0, counter: 0, device: newId() }
 
@@ -75,6 +79,10 @@ async function flush() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ v: 1, token, commands }),
     })
+    if (res.status === 401) {
+      // The outbox stays; logging in again sends it.
+      return signedOut(await tx(['outbox'], (s) => req(s('outbox').count())))
+    }
     if (!res.ok) throw new Error(`sync: HTTP ${res.status}`)
     type Status = { status: 'ok' } | { status: 'error'; code: string }
     const body: { statuses: Record<string, Status>; delta: Row[]; token: number; clock: Hlc | null } =

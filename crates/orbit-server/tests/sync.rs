@@ -1,17 +1,36 @@
 use axum::{
     Router,
     body::{Body, to_bytes},
+    extract::ConnectInfo,
     http::{Request, StatusCode, header},
 };
 use serde_json::{Value, json};
+use std::net::SocketAddr;
 use tower::ServiceExt;
 
 const INBOX: &str = "00000000-0000-7000-8000-000000000001";
 const DEVICE: &str = "01900000-0000-7000-8000-0000000000d1";
 
-async fn sync(app: &Router, body: Value) -> (StatusCode, Value) {
+/// A server on `dir` with its user set up, and a Device token for it.
+async fn app(dir: &std::path::Path) -> (Router, String) {
+    let (app, code) = orbit_server::app(dir).unwrap();
+    let body = json!({ "code": code.unwrap(), "password": "a long password", "name": "Test", "platform": "cli" });
+    let mut req = Request::post("/auth/setup")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1))));
+    let res = app.clone().oneshot(req).await.unwrap();
+    let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let res: Value = serde_json::from_slice(&bytes).unwrap();
+    (app, res["token"].as_str().unwrap().into())
+}
+
+async fn sync((app, token): &(Router, String), body: Value) -> (StatusCode, Value) {
     let req = Request::post("/sync")
         .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
         .body(Body::from(body.to_string()))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
@@ -26,7 +45,7 @@ async fn sync(app: &Router, body: Value) -> (StatusCode, Value) {
 #[tokio::test]
 async fn no_token_returns_a_full_snapshot_with_inbox() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let (status, res) = sync(&app, json!({ "v": 1, "commands": [] })).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
@@ -48,7 +67,7 @@ fn cmd(uuid: &str, r#type: &str, args: Value, wall: u64) -> Value {
 #[tokio::test]
 async fn commands_apply_in_order_and_other_devices_get_the_delta() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
     let t0 = snap["token"].clone();
 
@@ -87,7 +106,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
 #[tokio::test]
 async fn a_replayed_uuid_returns_its_stored_status_without_reapplying() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let early_complete = cmd(
         "01900000-0000-7000-8000-0000000000c1",
         "task.complete",
@@ -135,7 +154,7 @@ async fn a_replayed_uuid_returns_its_stored_status_without_reapplying() {
 #[tokio::test]
 async fn more_than_100_commands_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let commands: Vec<Value> = (0..101)
         .map(|i| {
             cmd(
@@ -154,7 +173,7 @@ async fn more_than_100_commands_is_rejected() {
 async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
     // e.g. the data dir was wiped while a client kept its token.
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let (_, res) = sync(&app, json!({ "v": 1, "token": 40, "commands": [] })).await;
     assert_eq!(
         res["delta"],
@@ -167,7 +186,7 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
 async fn the_protocol_version_is_checked() {
     // The 426 window itself is tested in orbit-core with a larger current version.
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let v = orbit_core::PROTOCOL_V;
     let (status, _) = sync(&app, json!({ "v": v, "commands": [] })).await;
     assert_eq!(status, StatusCode::OK);
@@ -185,7 +204,7 @@ async fn a_data_dir_from_before_field_clocks_still_opens() {
              INSERT INTO rows VALUES ('00000000-0000-7000-8000-000000000001', '{\"kind\":\"area\",\"id\":\"00000000-0000-7000-8000-000000000001\",\"name\":\"Inbox\"}', 1);",
         )
         .unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let (status, res) = sync(&app, json!({ "v": 1, "commands": [] })).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(res["delta"][0]["name"], "Inbox");
@@ -194,7 +213,7 @@ async fn a_data_dir_from_before_field_clocks_still_opens() {
 #[tokio::test]
 async fn a_rejected_command_sends_back_its_rows_current_state() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let create = cmd(
         "01900000-0000-7000-8000-0000000000c1",
         "task.create",
@@ -228,7 +247,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
 #[tokio::test]
 async fn the_response_clock_is_the_newest_edit_behind_the_delta() {
     let dir = tempfile::tempdir().unwrap();
-    let app = orbit_server::app(dir.path()).unwrap();
+    let app = app(dir.path()).await;
     let create = cmd(
         "01900000-0000-7000-8000-0000000000c1",
         "task.create",

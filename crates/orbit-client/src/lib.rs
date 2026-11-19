@@ -36,6 +36,47 @@ impl Client {
         })
     }
 
+    /// Logs in as a new Device. Its id becomes this replica's HLC device; the outbox is kept,
+    /// so changes made while signed out go out on the next sync.
+    pub async fn login(
+        &mut self,
+        password: &str,
+        totp: Option<&str>,
+        name: &str,
+        platform: &str,
+    ) -> Result<Uuid> {
+        let body = serde_json::json!({ "password": password, "totp": totp, "name": name, "platform": platform });
+        let res: serde_json::Value = self
+            .http
+            .post(format!("{}/auth/login", self.url))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let (Some(device), Some(token)) = (res["device"].as_str(), res["token"].as_str()) else {
+            return Err(format!("unexpected login response: {res}").into());
+        };
+        let device = Uuid::parse_str(device)?;
+        let hlc = match meta(&self.db, "hlc")? {
+            Some(s) => Hlc {
+                device,
+                ..serde_json::from_str(&s)?
+            },
+            None => Hlc {
+                wall: 0,
+                counter: 0,
+                device,
+            },
+        };
+        let tx = self.db.transaction()?;
+        set_meta(&tx, "hlc", &serde_json::to_string(&hlc)?)?;
+        set_meta(&tx, "auth", token)?;
+        tx.commit()?;
+        Ok(device)
+    }
+
     pub fn create_task(&mut self, title: &str, now_ms: u64) -> Result<Uuid> {
         let id = new_id(now_ms, &random()?);
         self.enqueue(
@@ -107,15 +148,11 @@ impl Client {
                 token,
                 commands,
             };
-            let res: SyncResponse = self
-                .http
-                .post(format!("{}/sync", self.url))
-                .json(&req)
-                .send()
-                .await?
-                .error_for_status()?
-                .json()
-                .await?;
+            let mut post = self.http.post(format!("{}/sync", self.url)).json(&req);
+            if let Some(token) = meta(&self.db, "auth")? {
+                post = post.bearer_auth(token);
+            }
+            let res: SyncResponse = post.send().await?.error_for_status()?.json().await?;
 
             let tx = self.db.transaction()?;
             let mut answered = 0;
@@ -160,8 +197,14 @@ impl Client {
     }
 }
 
-/// This Device's last clock reading; the first call mints the Device id.
-// shortcut: random Device id per replica until login (#34) issues one.
+/// True if `e` is a 401: the Device was revoked or never logged in. Log in again to send the outbox.
+pub fn is_signed_out(e: &(dyn std::error::Error + 'static)) -> bool {
+    e.downcast_ref::<reqwest::Error>()
+        .and_then(reqwest::Error::status)
+        == Some(reqwest::StatusCode::UNAUTHORIZED)
+}
+
+/// This Device's last clock reading. Before the first login the Device id is a random placeholder.
 fn clock(db: &Connection, now_ms: u64) -> Result<Hlc> {
     match meta(db, "hlc")? {
         Some(s) => Ok(serde_json::from_str(&s)?),

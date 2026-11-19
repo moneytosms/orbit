@@ -1,11 +1,16 @@
-use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    routing::{delete, get, post},
+};
 use orbit_core::{
     Clocks, Command, Hlc, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, VersionError,
     apply_lww, check_version,
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     path::Path,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -14,14 +19,41 @@ use std::{
 /// How long a command uuid's status is kept for replays.
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
-// shortcut: one connection behind a mutex, queries run on the async thread; move to spawn_blocking/pool when load matters.
-type Db = Arc<Mutex<Connection>>;
+mod auth;
+pub use auth::reset_password;
 
-/// Opens (or creates) `<data_dir>/orbit.db` and returns the HTTP app.
-pub fn app(data_dir: &Path) -> rusqlite::Result<Router> {
+pub(crate) struct Shared {
+    // shortcut: one connection behind a mutex, queries run on the async thread; move to spawn_blocking/pool when load matters.
+    db: Mutex<Connection>,
+    /// The one-time first-run code; `None` once the user exists.
+    setup: Mutex<Option<String>>,
+    limits: Mutex<HashMap<std::net::IpAddr, auth::Limit>>,
+}
+type St = Arc<Shared>;
+
+/// Locks a mutex even if a panic mid-request poisoned it: the data behind it stays usable.
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
+fn open(data_dir: &Path) -> rusqlite::Result<Connection> {
     std::fs::create_dir_all(data_dir)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
-    let conn = Connection::open(data_dir.join("orbit.db"))?;
+    Connection::open(data_dir.join("orbit.db"))
+}
+
+/// Opens (or creates) `<data_dir>/orbit.db` and returns the HTTP app, plus the setup code
+/// to print when no user exists yet. Serve it with `into_make_service_with_connect_info::<SocketAddr>`.
+pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
+    let conn = open(data_dir)?;
+    auth::migrate(&conn)?;
     // `clocks` is the row's per-field last-writer HLCs (JSON); it never leaves the server.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rows (id TEXT PRIMARY KEY, data TEXT NOT NULL, clocks TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -44,13 +76,29 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<Router> {
     if load(&conn, &inbox.id().to_string())?.is_none() {
         write(&conn, &inbox, &Clocks::new())?;
     }
-    Ok(Router::new()
+    let setup = auth::setup_code(&conn)?;
+    let shared = Shared {
+        db: Mutex::new(conn),
+        setup: Mutex::new(setup.clone()),
+        limits: Mutex::default(),
+    };
+    let router = Router::new()
         .route("/sync", post(sync))
-        .with_state(Arc::new(Mutex::new(conn))))
+        .route("/auth", get(auth::state))
+        .route("/auth/setup", post(auth::setup))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/password", post(auth::password))
+        .route("/auth/totp", post(auth::totp_start))
+        .route("/auth/totp/confirm", post(auth::totp_confirm))
+        .route("/devices", get(auth::devices).post(auth::create_token))
+        .route("/devices/{id}", delete(auth::revoke))
+        .with_state(Arc::new(shared));
+    Ok((router, setup))
 }
 
 async fn sync(
-    State(db): State<Db>,
+    State(st): State<St>,
+    _: auth::Device,
     Json(req): Json<SyncRequest>,
 ) -> Result<Json<SyncResponse>, StatusCode> {
     match check_version(PROTOCOL_V, req.v) {
@@ -61,8 +109,7 @@ async fn sync(
     if req.commands.len() > 100 {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
-    // A panic mid-request leaves the connection usable; don't let poison take the server down.
-    let mut conn = db.lock().unwrap_or_else(|e| e.into_inner());
+    let mut conn = lock(&st.db);
     run(&mut conn, req).map(Json).map_err(|e| {
         eprintln!("sync failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -70,10 +117,7 @@ async fn sync(
 }
 
 fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
+    let now = now_ms();
     conn.execute(
         "DELETE FROM processed WHERE at < ?",
         [now - KEEP_PROCESSED_MS],
@@ -185,6 +229,6 @@ fn write(conn: &Connection, row: &Row, clocks: &Clocks) -> rusqlite::Result<()> 
     Ok(())
 }
 
-fn json_err(e: serde_json::Error) -> rusqlite::Error {
+pub(crate) fn json_err(e: serde_json::Error) -> rusqlite::Error {
     rusqlite::Error::ToSqlConversionFailure(e.into())
 }

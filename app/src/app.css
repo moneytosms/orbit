@@ -1,0 +1,168 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/figtree';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Orbit tokens, from DESIGN.md. */
+:root {
+  --bg: #fbfaf8;
+  --side: #f5f3ef;
+  --surface: #ffffff;
+  --sunk: #f2efea;
+  --hover: rgba(60, 45, 25, 0.055);
+  --press: rgba(60, 45, 25, 0.09);
+  --line: #ebe7e0;
+  --line-strong: #dcd5ca;
+  --scrim: rgba(30, 22, 14, 0.32);
+  --text: #2a2723;
+  --muted: #6b665e;
+  --icon: #8a847a;
+  --accent: #c2552f;
+  --accent-ink: #ffffff;
+  --accent-soft: #f8ebe4;
+  --accent-line: #e9b9a5;
+  --accent-text: #a3441f;
+  --ok: #3d7a4d;
+  --ok-soft: #e5f0e7;
+  --ok-text: #2d6a3c;
+  --warn: #9a5d08;
+  --warn-soft: #f7ecd8;
+  --warn-text: #8a5307;
+  --danger: #bb3a2a;
+  --danger-soft: #f9e6e2;
+  --danger-text: #a8331f;
+  --career: #b37419;
+  --college: #3b6cb0;
+  --learning: #468253;
+  --home: #ad4f66;
+  --shadow-1: 0 1px 2px rgba(45, 32, 18, 0.06), 0 1px 1px rgba(45, 32, 18, 0.03);
+  --shadow-2: 0 14px 36px rgba(45, 32, 18, 0.14), 0 3px 8px rgba(45, 32, 18, 0.07);
+  color-scheme: light;
+
+}
+
+[data-theme='dark'] {
+  --bg: #1b1a18;
+  --side: #211f1d;
+  --surface: #252321;
+  --sunk: #1e1d1b;
+  --hover: rgba(255, 240, 220, 0.06);
+  --press: rgba(255, 240, 220, 0.1);
+  --line: #33302c;
+  --line-strong: #45413b;
+  --text: #ede8e0;
+  --muted: #a8a197;
+  --icon: #8f897f;
+  --accent: #e2835e;
+  --accent-ink: #1b1a18;
+  --accent-soft: #3a281f;
+  --accent-line: #7a4631;
+  --accent-text: #e2835e;
+  --ok: #7fc08c;
+  --ok-soft: #1f2f23;
+  --ok-text: #7fc08c;
+  --warn: #e2ab5a;
+  --warn-soft: #33291a;
+  /* DESIGN.md gives no dark on-tint text for warn/danger; the fill colour passes 5:1 on its soft tint. */
+  --warn-text: #e2ab5a;
+  --danger: #ef8070;
+  --danger-soft: #3a2320;
+  --danger-text: #ef8070;
+  --career: #dba24c;
+  --college: #79a2e0;
+  --learning: #82bb8d;
+  --home: #dc8ba0;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 16px 40px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'Figtree Variable', system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-side: var(--side);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-hover: var(--hover);
+  --color-press: var(--press);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-scrim: var(--scrim);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-icon: var(--icon);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-accent-text: var(--accent-text);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-text: var(--ok-text);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-text: var(--warn-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+  --color-career: var(--career);
+  --color-college: var(--college);
+  --color-learning: var(--learning);
+  --color-home: var(--home);
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-3xl: 16px;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+    /* Scrollbars hidden everywhere; content still scrolls. */
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
+  html,
+  body,
+  #app {
+    @apply bg-bg text-text h-full font-sans text-sm antialiased;
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+  svg.lucide {
+    stroke-width: 1.8;
+  }
+}
+
+@theme {
+  --breakpoint-desk: 701px;
+}
+
+@layer components {
+  .page-title {
+    @apply mb-4 text-[23px] leading-[1.2] font-bold tracking-[-0.015em] desk:text-[28px];
+  }
+  .panel {
+    @apply rounded-2xl border border-line bg-surface p-4 shadow-1;
+  }
+  .panel-title {
+    @apply mb-3 text-base font-semibold;
+  }
+  .chip {
+    @apply inline-flex h-[22px] items-center rounded-sm px-2 text-[12.5px];
+  }
+  .link {
+    @apply text-accent-text underline decoration-accent-line underline-offset-2;
+  }
+}

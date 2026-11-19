@@ -1,8 +1,39 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
 import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
+
+const api = 'http://127.0.0.1:8080'
+const proxy = { '/sync': api, '/auth': api, '/devices': api }
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
-  server: { proxy: { '/sync': 'http://127.0.0.1:8080' } },
+  plugins: [
+    tailwindcss(),
+    svelte(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'Orbit',
+        short_name: 'Orbit',
+        description: 'Tasks, goals and routines',
+        theme_color: '#fbfaf8',
+        background_color: '#fbfaf8',
+        display: 'standalone',
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        // The wasm core and the self-hosted font must be cached for the app to open offline.
+        globPatterns: ['**/*.{js,css,html,wasm,woff2,svg,png}'],
+      },
+    }),
+  ],
+  resolve: { alias: { $lib: path.resolve('./src/lib') } },
+  server: { proxy },
+  preview: { proxy },
 })
