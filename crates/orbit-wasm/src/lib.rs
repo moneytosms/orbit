@@ -56,3 +56,38 @@ pub fn parse_quick_add(input: &str, now: &str, known_json: &str) -> Result<Strin
         input, now, &known,
     ))?)
 }
+
+/// Every bundled palette as a JSON array: name, grade, offered strategies, featured flag and swatch colours.
+#[wasm_bindgen]
+pub fn theme_list() -> String {
+    let featured = orbit_core::theme::featured();
+    let list: Vec<serde_json::Value> = orbit_core::theme::palettes()
+        .iter()
+        .map(|(name, p)| {
+            serde_json::json!({
+                "name": name,
+                "grade": orbit_core::theme::grade(p),
+                "offered": orbit_core::theme::offered(p),
+                "featured": featured.contains(name),
+                "bg": p.bg,
+                "text": p.text,
+                "main": p.main,
+            })
+        })
+        .collect();
+    serde_json::to_string(&list).expect("theme list serialises")
+}
+
+/// The app.css token overrides for palette `name` under `strategy` (`direct|derived|accent`), as a JSON object.
+#[wasm_bindgen]
+pub fn theme_tokens(name: &str, strategy: &str) -> Result<String, JsError> {
+    let palettes = orbit_core::theme::palettes();
+    let palette = palettes
+        .get(name)
+        .ok_or_else(|| JsError::new("unknown theme"))?;
+    let strategy: orbit_core::theme::Strategy =
+        serde_json::from_value(serde_json::Value::String(strategy.to_string()))?;
+    Ok(serde_json::to_string(&orbit_core::theme::tokens(
+        palette, strategy,
+    ))?)
+}

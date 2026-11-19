@@ -8,14 +8,78 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as auth from '$lib/auth'
-  import { getTheme, setTheme, type Theme } from '$lib/theme'
+  import {
+    getAccent,
+    getDensity,
+    getFontSize,
+    getTheme,
+    paletteList,
+    setAccent,
+    setDensity,
+    setFontSize,
+    setTheme,
+    type Choice,
+    type Density,
+    type FontSize,
+    type PaletteInfo,
+    type Strategy,
+  } from '$lib/theme'
 
-  let theme = $state(getTheme())
-  const themes: [Theme, string][] = [
+  let choice = $state<Choice>(getTheme())
+  const pick = (c: Choice) => setTheme((choice = c))
+  const orbit: [Choice, string][] = [
     ['light', 'Orbit Light'],
     ['dark', 'Orbit Dark'],
     ['system', 'System'],
   ]
+  const palettes = paletteList()
+  const featured = palettes.filter((p) => p.featured)
+  const direct = palettes.filter((p) => p.offered.includes('direct'))
+  const strategyLabel: Record<Strategy, string> = { direct: 'Direct', derived: 'Derived', accent: 'Accent' }
+  const gradeLabel = { aaa: 'AAA', aa: 'AA', low: 'Low' }
+  const mt = (name: string, s: Strategy): Choice => `mt:${name}:${s}`
+  // The palette the current choice uses, so its other offered strategies can be picked.
+  const active = $derived(choice.startsWith('mt:') ? palettes.find((p) => p.name === choice.split(':')[1]) : undefined)
+  const activeStrategy = $derived(choice.split(':')[2])
+
+  let density: Density = $state(getDensity())
+  let fontSize: FontSize = $state(getFontSize())
+  let accent: string | null = $state(getAccent())
+  const cssAccent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c2552f'
+
+  // Free disk on the server; a failed check shows nothing.
+  let freeMb: number | undefined = $state()
+  fetch('/disk')
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then(
+      (d: { free_bytes: number }) => {
+        if (d.free_bytes < 1_000_000_000) freeMb = Math.floor(d.free_bytes / 1_000_000)
+      },
+      () => {},
+    )
+
+  let exporting = $state(false)
+  let exportMsg = $state('')
+  async function exportAll() {
+    exporting = true
+    exportMsg = ''
+    try {
+      const res = await fetch('/export')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const url = URL.createObjectURL(await res.blob())
+      const d = new Date()
+      const p = (n: number) => String(n).padStart(2, '0')
+      const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+      // A plain link would be intercepted by the PWA, so download from an object URL.
+      const a = Object.assign(document.createElement('a'), { href: url, download: `orbit-export-${day}.zip` })
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch {
+      exportMsg = "Couldn't export. Try again when you're online."
+    } finally {
+      exporting = false
+    }
+  }
 
   let list: auth.Device[] = $state([])
   let listError = $state('')
@@ -86,22 +150,117 @@
   }
 </script>
 
+<!-- Snippets keep the segmented-button styling in one place. -->
+{#snippet tab(pressed: boolean, onpick: () => void, text: string)}
+  <button
+    type="button"
+    aria-pressed={pressed}
+    onclick={onpick}
+    class="h-7 rounded-md px-3 font-medium text-muted aria-pressed:bg-surface aria-pressed:text-text aria-pressed:shadow-1"
+  >
+    {text}
+  </button>
+{/snippet}
+
+{#snippet swatchTab(p: PaletteInfo, s: Strategy)}
+  <button
+    type="button"
+    aria-pressed={choice === mt(p.name, s)}
+    onclick={() => pick(mt(p.name, s))}
+    class="flex h-7 items-center gap-2 rounded-md px-2.5 text-muted aria-pressed:bg-surface aria-pressed:text-text aria-pressed:shadow-1"
+  >
+    <span aria-hidden="true" class="flex overflow-hidden rounded-xs border border-line">
+      <span class="size-2.5" style:background={p.bg}></span>
+      <span class="size-2.5" style:background={p.text}></span>
+      <span class="size-2.5" style:background={p.main}></span>
+    </span>
+    <span>{p.name.replaceAll('_', ' ')}</span>
+    <span class="text-[12px] text-icon">{gradeLabel[p.grade]}</span>
+  </button>
+{/snippet}
+
 <h1 class="page-title">Settings</h1>
 <div class="flex flex-col gap-4">
+  {#if freeMb !== undefined}
+    <div role="alert" class="rounded-2xl border border-line bg-warn-soft p-4 text-warn-text">
+      Server disk is nearly full: {freeMb} MB free. Back up and free space.
+    </div>
+  {/if}
+
   <section class="panel">
     <h2 class="panel-title">Appearance</h2>
-    <div class="inline-flex gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Theme">
-      {#each themes as [value, label] (value)}
-        <button
-          type="button"
-          aria-pressed={theme === value}
-          onclick={() => setTheme((theme = value))}
-          class="h-7 rounded-md px-3 font-medium text-muted aria-pressed:bg-surface aria-pressed:text-text aria-pressed:shadow-1"
-        >
-          {label}
-        </button>
+
+    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Featured</h3>
+    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Featured themes">
+      {#each orbit as [value, label] (value)}
+        {@render tab(choice === value, () => pick(value), label)}
+      {/each}
+      {#each featured as p (p.name)}
+        {@render swatchTab(p, p.offered[0])}
       {/each}
     </div>
+
+    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">More themes</h3>
+    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="More themes">
+      {#each palettes as p (p.name)}
+        {@render swatchTab(p, p.offered[0])}
+      {/each}
+    </div>
+
+    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Direct</h3>
+    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Direct themes">
+      {#each direct as p (p.name)}
+        {@render swatchTab(p, 'direct')}
+      {/each}
+    </div>
+
+    {#if active}
+      <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Mapping for {active.name.replaceAll('_', ' ')}</h3>
+      <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Mapping">
+        {#each active.offered as s (s)}
+          {@render tab(activeStrategy === s, () => pick(mt(active.name, s)), strategyLabel[s])}
+        {/each}
+      </div>
+    {/if}
+
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center gap-3">
+        <Label for="accent">Accent</Label>
+        <input
+          id="accent"
+          type="color"
+          value={accent ?? cssAccent()}
+          oninput={(e) => setAccent((accent = e.currentTarget.value))}
+          class="size-8 cursor-pointer rounded-md border border-line bg-surface p-0.5"
+        />
+        <Button size="sm" disabled={accent === null} onclick={() => setAccent((accent = null))}>Reset accent</Button>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span id="density-label">Density</span>
+        <div class="flex gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="density-label">
+          {#each [['comfortable', 'Comfortable'], ['compact', 'Compact']] as [value, label] (value)}
+            {@render tab(density === value, () => setDensity((density = value as Density)), label)}
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span id="font-label">Font size</span>
+        <div class="flex gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="font-label">
+          {#each [['s', 'S'], ['m', 'M'], ['l', 'L']] as [value, label] (value)}
+            {@render tab(fontSize === value, () => setFontSize((fontSize = value as FontSize)), label)}
+          {/each}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">Export</h2>
+    <p class="mb-3 text-muted">Download every item as a zip of JSON.</p>
+    <Button class="self-start" disabled={exporting} onclick={exportAll}>Export everything</Button>
+    {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
   </section>
 
   <section class="panel">
