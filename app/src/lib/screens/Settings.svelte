@@ -8,7 +8,17 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as auth from '$lib/auth'
-  import { getSettings, setStartView, views, VIEW_INBOX, VIEW_UPCOMING, type View } from '$lib/sync'
+  import {
+    getDaySettings,
+    getSettings,
+    setDayStart,
+    setStartView,
+    setTimezone,
+    views,
+    VIEW_INBOX,
+    VIEW_UPCOMING,
+    type View,
+  } from '$lib/sync'
   import {
     getAccent,
     getDensity,
@@ -97,8 +107,16 @@
   let newToken = $state('')
   let startView = $state('')
   let allViews = $state<View[]>([])
+  let timezone = $state('')
+  let dayStart = $state('00:00')
+  const zones: string[] =
+    typeof Intl.supportedValuesOf === 'function' ? (Intl.supportedValuesOf as (k: string) => string[])('timeZone') : []
   getSettings().then((s) => {
     if (s) startView = s.start_view
+  })
+  getDaySettings().then((s) => {
+    timezone = s.timezone
+    dayStart = s.day_start
   })
   views().then((v) => (allViews = v))
   // Inbox and Upcoming are already plain routes; hidden views stay listed only if they are the current start.
@@ -288,6 +306,31 @@
         <option value="view:{v.id}">{v.name}</option>
       {/each}
     </select>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">Day</h2>
+    <p class="mb-3 text-muted">Routines roll over to a new day at the Day start, in this timezone.</p>
+    <div class="grid max-w-sm gap-3">
+      <select
+        bind:value={timezone}
+        onchange={() => setTimezone(timezone)}
+        aria-label="Timezone"
+        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+      >
+        <option value="">This device</option>
+        {#each zones as z (z)}
+          <option value={z}>{z}</option>
+        {/each}
+      </select>
+      <input
+        type="time"
+        bind:value={dayStart}
+        onchange={() => dayStart && setDayStart(dayStart)}
+        aria-label="Day start"
+        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+      />
+    </div>
   </section>
 
   <section class="panel">

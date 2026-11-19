@@ -172,3 +172,36 @@ pub fn print_filter(node_json: &str, known_json: &str) -> Result<String, JsError
     let known: orbit_core::filter_text::Known = serde_json::from_str(known_json)?;
     Ok(orbit_core::filter_text::print(&node, &known))
 }
+
+/// The Check-in id for a Routine and `YYYY-MM-DD` day, shared by every Device.
+#[wasm_bindgen]
+pub fn checkin_id(routine_id: &str, date: &str) -> Result<String, JsError> {
+    Ok(orbit_core::routine::checkin_id(routine_id.parse()?, date).to_string())
+}
+
+/// Streaks, completion rate and per-day states of Routine `routine_id` over `rows_json` (a Row array).
+#[wasm_bindgen]
+pub fn routine_stats(rows_json: &str, routine_id: &str, today: &str) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let id: orbit_core::Uuid = routine_id.parse()?;
+    let Some(Row::Routine(r)) = rows.iter().find(|r| r.id() == id) else {
+        return Err(JsError::new("no such routine"));
+    };
+    let checkins: Vec<_> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Checkin(c) if c.routine_id == id => Some(c.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut stats = serde_json::to_value(orbit_core::routine::stats(r, &checkins, today))?;
+    stats["ended"] = orbit_core::routine::is_ended(r, today).into();
+    stats["paused"] = orbit_core::routine::is_paused(r, today).into();
+    Ok(stats.to_string())
+}
+
+/// The Day-start date at `now_ms`; `utc_offset_min` is the synced zone's offset at that moment.
+#[wasm_bindgen]
+pub fn local_day(now_ms: f64, utc_offset_min: i32, day_start: &str) -> String {
+    orbit_core::routine::local_day(now_ms as u64, utc_offset_min, day_start)
+}

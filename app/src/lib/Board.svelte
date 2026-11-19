@@ -93,7 +93,7 @@
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import {
     labels as listLabels,
-    localDay,
+    dayFrom,
     moveItem,
     nameIndex as loadNames,
     orderBetween,
@@ -158,7 +158,7 @@
       return ['1', '2', '3', '4'].map((k) => col(k, `P${k}`, rowsOf(k)))
     }
     if (groupBy === 'due') {
-      const dates = new Set([localDay(0), localDay(1), ...groups.map((g) => g.key)])
+      const dates = new Set([dayFrom(0), dayFrom(1), ...groups.map((g) => g.key)])
       dates.delete('Overdue')
       dates.delete('No date')
       const out = [col('Overdue', 'Overdue', rowsOf('Overdue'), false)]

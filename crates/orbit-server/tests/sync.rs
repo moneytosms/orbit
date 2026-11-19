@@ -1011,3 +1011,52 @@ async fn a_project_is_touched_when_a_task_under_it_is_created() {
     assert_eq!(res["statuses"][c(0xf6)], json!({ "status": "ok" }));
     assert_eq!(row(&res, PROJECT)["touched_at"], now + 500);
 }
+
+#[tokio::test]
+async fn routines_converge_on_one_check_in_and_an_archived_one_is_read_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let routine = c(0xd1);
+    let checkin =
+        orbit_core::routine::checkin_id(routine.parse().unwrap(), "2026-03-02").to_string();
+    let other = "01900000-0000-7000-8000-0000000000d2";
+    let set = |uuid: &str, device: &str, state: &str, wall: u64| {
+        cmd_from(
+            device,
+            uuid,
+            "checkin.set",
+            json!({ "id": checkin, "routine_id": routine, "date": "2026-03-02", "state": state }),
+            wall,
+        )
+    };
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0xd3), "routine.create", json!({ "id": routine, "parent_id": PROJECT, "name": "Meds",
+            "schedule": { "kind": "daily" }, "start": "2026-03-01" }), now + 1),
+        set(&c(0xd4), DEVICE, "done", now + 2),
+        set(&c(0xd5), other, "skipped", now + 3),
+        cmd(&c(0xd6), "routine.create", json!({ "id": c(0xd7), "parent_id": PROJECT, "name": "Bad",
+            "schedule": { "kind": "daily" }, "start": "2026-03-01", "goal_id": PROJECT }), now + 4),
+        cmd(&c(0xd8), "item.archive", json!({ "id": routine }), now + 5),
+        set(&c(0xd9), DEVICE, "done", now + 6),
+        cmd(&c(0xda), "checkin.clear", json!({ "id": checkin }), now + 7),
+    ]})).await;
+    for n in [0xd3, 0xd4, 0xd5, 0xd8] {
+        assert_eq!(res["statuses"][c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        res["statuses"][c(0xd6)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    for n in [0xd9, 0xda] {
+        assert_eq!(
+            res["statuses"][c(n)],
+            json!({ "status": "error", "code": "archived" })
+        );
+    }
+    assert_eq!(row(&res, &checkin)["state"], "skipped");
+    assert_eq!(row(&res, &checkin)["cleared"], false);
+    assert_eq!(row(&res, &routine)["name"], "Meds");
+    assert!(row(&res, &routine)["archived_at"].is_u64());
+}

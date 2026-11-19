@@ -121,7 +121,8 @@ pub fn progress(goal: &Goal, rows: &[Row]) -> f64 {
             if *target <= 0.0 {
                 return 0.0;
             }
-            let sum: f64 = entries.iter().map(|e| e.amount).sum();
+            let sum: f64 = entries.iter().map(|e| e.amount).sum::<f64>()
+                + crate::routine::done_checkins(goal.id, rows) as f64;
             (sum / target).clamp(0.0, 1.0)
         }
         Progress::Manual => {
@@ -280,6 +281,55 @@ mod tests {
         assert_eq!(progress(&g(vec![]), &[]), 0.0);
         assert_eq!(progress(&g(vec![2.0, 3.0]), &[]), 0.5);
         assert_eq!(progress(&g(vec![20.0]), &[]), 1.0);
+    }
+
+    #[test]
+    fn each_done_check_in_of_a_linked_routine_adds_one_to_a_target() {
+        use crate::routine::{CheckState, Checkin, Schedule, checkin_id};
+        let g = goal(
+            1,
+            uid(100),
+            Progress::Target {
+                target: 4.0,
+                entries: vec![],
+            },
+        );
+        let routine = |n: u128, link: Option<Uuid>| {
+            Row::Routine(crate::routine::Routine {
+                id: uid(n),
+                parent_id: uid(100),
+                name: "R".into(),
+                schedule: Schedule::Daily,
+                start: "2026-03-02".into(),
+                length_days: None,
+                time: None,
+                goal_id: link,
+                pauses: vec![],
+                order: String::new(),
+                created_at: None,
+                trashed_at: None,
+                archived_at: None,
+            })
+        };
+        let tick = |r: u128, date: &str, state, cleared| {
+            Row::Checkin(Checkin {
+                id: checkin_id(uid(r), date),
+                routine_id: uid(r),
+                date: date.into(),
+                state,
+                cleared,
+            })
+        };
+        let rows = vec![
+            routine(2, Some(g.id)),
+            routine(3, None),
+            tick(2, "2026-03-02", CheckState::Done, false),
+            tick(2, "2026-03-03", CheckState::Done, false),
+            tick(2, "2026-03-04", CheckState::Skipped, false),
+            tick(2, "2026-03-05", CheckState::Done, true),
+            tick(3, "2026-03-02", CheckState::Done, false),
+        ];
+        assert_eq!(progress(&g, &rows), 0.5);
     }
 
     #[test]

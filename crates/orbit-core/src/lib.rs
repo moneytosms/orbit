@@ -4,6 +4,7 @@ pub mod order;
 pub mod page;
 pub mod parse;
 pub mod recur;
+pub mod routine;
 pub mod theme;
 pub mod trash;
 pub mod view;
@@ -199,6 +200,12 @@ pub struct Settings {
     pub accent: String,
     #[serde(default)]
     pub start_view: String,
+    /// IANA name; empty is the device's own zone.
+    #[serde(default)]
+    pub timezone: String,
+    /// `HH:MM`; empty is midnight.
+    #[serde(default)]
+    pub day_start: String,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -217,6 +224,8 @@ pub enum Row {
     Page(Page),
     Purged(Purged),
     View(view::View),
+    Routine(routine::Routine),
+    Checkin(routine::Checkin),
 }
 
 impl Row {
@@ -234,6 +243,8 @@ impl Row {
             Row::Page(p) => p.id,
             Row::Purged(p) => p.id,
             Row::View(v) => v.id,
+            Row::Routine(r) => r.id,
+            Row::Checkin(c) => c.id,
         }
     }
 
@@ -252,6 +263,8 @@ impl Row {
             Row::Goal(g) => Some(g.parent_id),
             Row::Milestone(m) => Some(m.goal_id),
             Row::Page(p) => Some(p.parent_id),
+            Row::Routine(r) => Some(r.parent_id),
+            Row::Checkin(c) => Some(c.routine_id),
         }
     }
 
@@ -494,6 +507,10 @@ pub enum Op {
         accent: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         start_view: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timezone: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        day_start: Option<String>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -566,6 +583,65 @@ pub enum Op {
     /// Custom views only: to the Trash.
     #[serde(rename = "view.delete")]
     ViewDelete { id: Uuid },
+    #[serde(rename = "routine.create")]
+    RoutineCreate {
+        id: Uuid,
+        parent_id: Uuid,
+        name: String,
+        schedule: routine::Schedule,
+        /// `YYYY-MM-DD`, the creator's Day start date.
+        start: String,
+        #[serde(default)]
+        length_days: Option<u32>,
+        #[serde(default)]
+        time: Option<String>,
+        #[serde(default)]
+        goal_id: Option<Uuid>,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "routine.update")]
+    RoutineUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schedule: Option<routine::Schedule>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        length_days: Option<Option<u32>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        time: Option<Option<String>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        goal_id: Option<Option<Uuid>>,
+    },
+    /// Stops misses from `date` on.
+    #[serde(rename = "routine.pause")]
+    RoutinePause { id: Uuid, date: String },
+    /// Ends the open pause at `date`.
+    #[serde(rename = "routine.resume")]
+    RoutineResume { id: Uuid, date: String },
+    /// `id` is `checkin_id(routine_id, date)`, so two devices share one row.
+    #[serde(rename = "checkin.set")]
+    CheckinSet {
+        id: Uuid,
+        routine_id: Uuid,
+        date: String,
+        state: routine::CheckState,
+    },
+    #[serde(rename = "checkin.clear")]
+    CheckinClear { id: Uuid },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -635,6 +711,12 @@ impl Op {
             | Op::ViewUpdate { id, .. }
             | Op::ViewReset { id }
             | Op::ViewDelete { id }
+            | Op::RoutineCreate { id, .. }
+            | Op::RoutineUpdate { id, .. }
+            | Op::RoutinePause { id, .. }
+            | Op::RoutineResume { id, .. }
+            | Op::CheckinSet { id, .. }
+            | Op::CheckinClear { id }
             | Op::LabelCreate { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
@@ -651,6 +733,7 @@ impl Op {
                 | Op::GoalCreate { .. }
                 | Op::MilestoneCreate { .. }
                 | Op::PageCreate { .. }
+                | Op::RoutineCreate { .. }
         )
     }
 
@@ -663,6 +746,8 @@ impl Op {
             | Op::PageCreate { parent_id, .. } => Some(*parent_id),
             Op::TaskCreate { parent_id, .. } => Some(parent_id.unwrap_or(INBOX)),
             Op::MilestoneCreate { goal_id, .. } => Some(*goal_id),
+            Op::RoutineCreate { parent_id, .. } => Some(*parent_id),
+            Op::CheckinSet { routine_id, .. } => Some(*routine_id),
             Op::ItemMove { parent_id, .. } => *parent_id,
             _ => None,
         }
@@ -679,6 +764,7 @@ impl Op {
             | Op::MilestoneCreate { .. }
             | Op::PageCreate { .. }
             | Op::ViewCreate { .. }
+            | Op::RoutineCreate { .. }
             | Op::LabelCreate { .. } => vec![],
             Op::ViewDelete { .. } => vec!["trashed_at"],
             Op::ViewReset { .. } => vec![
@@ -804,16 +890,41 @@ impl Op {
                 theme,
                 accent,
                 start_view,
+                timezone,
+                day_start,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
                 ("start_view", start_view.is_some()),
+                ("timezone", timezone.is_some()),
+                ("day_start", day_start.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
             Op::TaskComplete { .. } => vec!["completed_at"],
+            Op::RoutineUpdate {
+                name,
+                schedule,
+                length_days,
+                time,
+                goal_id,
+                ..
+            } => [
+                ("name", name.is_some()),
+                ("schedule", schedule.is_some()),
+                ("length_days", length_days.is_some()),
+                ("time", time.is_some()),
+                ("goal_id", goal_id.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
+            Op::RoutinePause { .. } | Op::RoutineResume { .. } => vec!["pauses"],
+            Op::CheckinSet { .. } => vec!["state", "cleared"],
+            Op::CheckinClear { .. } => vec!["cleared"],
         }
     }
 }
@@ -1023,12 +1134,18 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..p
                 })),
+                Some(Row::Routine(r)) => Ok(Row::Routine(routine::Routine {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..r
+                })),
                 Some(
                     Row::Label(_)
                     | Row::Settings(_)
                     | Row::Completion(_)
                     | Row::Purged(_)
-                    | Row::View(_),
+                    | Row::View(_)
+                    | Row::Checkin(_),
                 ) => Err(ErrorCode::BadParent),
                 None => Err(ErrorCode::NotFound),
             }
@@ -1099,6 +1216,12 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::ViewUpdate { .. }
         | Op::ViewReset { .. }
         | Op::ViewDelete { .. } => view::apply(existing, cmd),
+        Op::RoutineCreate { .. }
+        | Op::RoutineUpdate { .. }
+        | Op::RoutinePause { .. }
+        | Op::RoutineResume { .. }
+        | Op::CheckinSet { .. }
+        | Op::CheckinClear { .. } => routine::apply(existing, cmd),
         Op::GoalCreate {
             id,
             parent_id,
@@ -1308,6 +1431,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             theme,
             accent,
             start_view,
+            timezone,
+            day_start,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1317,6 +1442,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     theme: String::new(),
                     accent: String::new(),
                     start_view: String::new(),
+                    timezone: String::new(),
+                    day_start: String::new(),
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1324,6 +1451,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 theme: theme.clone().unwrap_or(old.theme),
                 accent: accent.clone().unwrap_or(old.accent),
                 start_view: start_view.clone().unwrap_or(old.start_view),
+                timezone: timezone.clone().unwrap_or(old.timezone),
+                day_start: day_start.clone().unwrap_or(old.day_start),
             }))
         }
     }
@@ -1374,6 +1503,9 @@ pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> 
         (Row::Page(_), Row::Area(a)) => a.id != INBOX,
         (Row::Page(_), Row::Project(_) | Row::Goal(_)) => true,
         (Row::Task(_), Row::Area(_) | Row::Project(_) | Row::Section(_) | Row::Task(_)) => true,
+        (Row::Routine(_), Row::Area(a)) => a.id != INBOX,
+        (Row::Routine(_), Row::Project(_)) => true,
+        (Row::Checkin(_), Row::Routine(_)) => true,
         _ => false,
     };
     if ok {
@@ -1489,6 +1621,8 @@ pub fn completion_id(task: Uuid, cmd: Uuid) -> Uuid {
     let id = task.as_u128() ^ cmd.as_u128().rotate_left(64);
     Builder::from_random_bytes(id.to_be_bytes()).into_uuid()
 }
+
+pub use routine::checkin_id;
 
 fn json(row: &Row) -> serde_json::Value {
     serde_json::to_value(row).expect("rows serialize")
@@ -2219,7 +2353,9 @@ mod tests {
                 id: SETTINGS,
                 theme: "dracula".into(),
                 accent: String::new(),
-                start_view: String::new()
+                start_view: String::new(),
+                timezone: String::new(),
+                day_start: String::new()
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

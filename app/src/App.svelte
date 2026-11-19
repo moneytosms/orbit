@@ -2,6 +2,7 @@
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Goals from './lib/screens/Goals.svelte'
+  import Routines from './lib/screens/Routines.svelte'
   import Page from './lib/screens/Page.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
   import Settings from './lib/screens/Settings.svelte'
@@ -127,6 +128,8 @@
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}
         <Goals {areas} />
+      {:else if screen.name === 'routines'}
+        <Routines {areas} />
       {:else if screen.name === 'trash'}
         <Trash onchange={refresh} />
       {:else if screen.name === 'settings'}
