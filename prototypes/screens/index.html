@@ -1,0 +1,248 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Question (#26): what do Orbit's main screens look like on desktop and phone?
+     Three app shells (?variant=A|B|C), seven screens (?screen=), desktop/phone frame (?device=), Orbit base theme (?theme=).
+     A = sidebar tree, B = rail + focused column, C = three-pane master/detail. Static fake data, no persistence. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbit screens prototype</title>
+<style>
+:root{--bg:#14161b;--surface:#1a1d23;--raised:#20242c;--border:#2a2f39;--text:#e8eaf0;--muted:#9aa2b1;--accent:#8aa4ff;--danger:#f07272;--warn:#f0b85a;--ok:#6fcf97;--chip:#262b35;--p1:#f07272;--p2:#f0b85a;--p3:#8aa4ff;--p4:#5b6372}
+[data-theme=light]{--bg:#f6f6f3;--surface:#ffffff;--raised:#f0f0ec;--border:#e2e2dc;--text:#1a1c21;--muted:#5b616d;--accent:#3550c8;--danger:#c22f2f;--warn:#a8650a;--ok:#1d8a4f;--chip:#ebebe6;--p1:#c22f2f;--p2:#a8650a;--p3:#3550c8;--p4:#9aa0aa}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:14px/1.45 Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+button{font:inherit;color:inherit}
+.stage{height:100vh;display:flex;align-items:center;justify-content:center;padding-bottom:64px}
+.frame{width:100%;height:100%;background:var(--bg);overflow:hidden;position:relative}
+.phone .frame{width:390px;height:780px;border-radius:34px;border:10px solid #000;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.muted{color:var(--muted)}.grow{flex:1;min-width:0}.small{font-size:12px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:22px 0 8px;font-weight:600}
+.chk{width:18px;height:18px;border-radius:50%;border:2px solid var(--pc,var(--p4));flex:none;cursor:pointer}
+.chk.on{background:var(--ok);border-color:var(--ok)}
+.chip{font-size:11.5px;padding:1px 8px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.chip.d{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+.chip.w{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.chip.a{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.task{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border)}
+.task .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task .meta{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.phone .task{flex-wrap:wrap}.phone .task .meta{width:100%;justify-content:flex-start;padding-left:28px}
+.bar{height:6px;border-radius:9px;background:var(--chip);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);border-radius:9px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+.ic{display:inline-flex;width:18px;justify-content:center;color:var(--muted)}
+.add{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;color:var(--muted);margin:8px 0}
+.tabs{display:flex;gap:2px;background:var(--raised);border-radius:9px;padding:2px}
+.tabs button{border:0;background:none;padding:4px 10px;border-radius:7px;cursor:pointer;color:var(--muted);font-size:12.5px}
+.tabs button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.scroll{overflow:auto;height:100%}
+/* board */
+.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.col{flex:0 0 250px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px}
+.phone .col{flex-basis:290px}
+.bcard{background:var(--raised);border:1px solid var(--border);border-radius:9px;padding:9px;margin-bottom:7px}
+/* timeline */
+.tl{position:relative;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow-x:auto}
+.tl .in{min-width:640px;position:relative;padding:0 0 10px}
+.tl .wk{display:grid;grid-template-columns:repeat(8,1fr);border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)}
+.tl .wk div{padding:6px 8px;border-left:1px solid var(--border)}
+.lane{position:relative;height:30px;margin:6px 0}
+.lane span{position:absolute;top:2px;height:26px;border-radius:7px;padding:4px 9px;font-size:12px;white-space:nowrap;overflow:hidden;background:color-mix(in srgb,var(--accent) 20%,var(--raised));border:1px solid color-mix(in srgb,var(--accent) 60%,transparent)}
+.lane .ms{width:14px;height:14px;transform:rotate(45deg);top:8px;padding:0;background:var(--warn);border:0;border-radius:2px}
+.today{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:1}
+/* roadmap */
+.phases{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;overflow-x:auto}
+.phone .phases{grid-template-columns:1fr}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px}
+.phase.cur{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ref{display:flex;gap:8px;align-items:center;padding:5px 0;font-size:13px}
+/* goal */
+.ring{--p:60;width:96px;height:96px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p)*1%),var(--chip) 0);display:grid;place-items:center;flex:none}
+.ring b{width:76px;height:76px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:20px}
+.ms-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
+.dia{width:11px;height:11px;transform:rotate(45deg);border:2px solid var(--warn);flex:none}.dia.on{background:var(--warn)}
+/* page */
+.doc{max-width:720px;font-size:15px;line-height:1.65}
+.doc h1{font-size:28px;margin-bottom:4px}
+.lnk{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:5px;padding:0 4px;text-decoration:none}
+.att{display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:10px;margin:12px 0;background:var(--surface)}
+.att i{width:36px;height:36px;border-radius:8px;background:var(--chip);display:grid;place-items:center;font-style:normal}
+/* routines */
+.rts{display:flex;gap:8px;flex-wrap:wrap}
+.rt{display:flex;gap:8px;align-items:center;padding:7px 11px;border-radius:99px;background:var(--surface);border:1px solid var(--border);font-size:13px}
+.rt.done{opacity:.55}.rt b{color:var(--warn);font-weight:600}
+/* ===== Shell A: sidebar tree ===== */
+.A{display:grid;grid-template-columns:250px 1fr;height:100%}
+.A aside{background:var(--surface);border-right:1px solid var(--border);padding:12px 10px;overflow:auto}
+.A .srch{display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid var(--border);border-radius:9px;color:var(--muted);margin-bottom:12px;background:var(--bg)}
+.A .srch kbd{margin-left:auto;font-size:11px}
+.nv{display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:7px;cursor:pointer;color:var(--text)}
+.nv:hover{background:var(--raised)}.nv.on{background:var(--raised);color:var(--accent)}
+.nv .n{margin-left:auto;font-size:11px;color:var(--muted)}
+.nv.l2{padding-left:26px}.nv.l3{padding-left:44px;font-size:13px}
+.A main{overflow:auto;padding:20px 32px 80px}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.phone .hdr .grow{flex-basis:100%}.phone .hdr .tabs{overflow-x:auto;max-width:100%}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:4px}
+.phone .A{display:block}.phone .A aside{display:none}.phone .A aside.open{display:block;position:absolute;inset:0 60px 0 0;z-index:5;box-shadow:10px 0 40px rgba(0,0,0,.4)}
+.phone .A main{padding:14px 14px 90px;height:100%}
+.btabs{display:none}
+.phone .btabs{display:flex;position:absolute;left:0;right:0;bottom:0;height:64px;background:var(--surface);border-top:1px solid var(--border);justify-content:space-around;align-items:center;z-index:4}
+.btabs div{display:flex;flex-direction:column;align-items:center;font-size:10.5px;color:var(--muted);gap:2px;cursor:pointer}.btabs div.on{color:var(--accent)}
+.btabs .plus{width:46px;height:46px;border-radius:50%;background:var(--accent);color:var(--bg);font-size:26px;display:grid;place-items:center;margin-top:-18px}
+.ham{display:none;border:0;background:none;font-size:20px;cursor:pointer;padding:0}.phone .ham{display:block}
+/* ===== Shell B: rail + focused column ===== */
+.B{display:grid;grid-template-columns:56px 1fr;height:100%}
+.B .rail{background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.B .rail div{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;cursor:pointer;color:var(--muted);font-size:17px}
+.B .rail div.on{background:var(--raised);color:var(--accent)}.B .rail .sp{flex:1;height:auto}
+.B .top{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 20px}
+.path{display:flex;gap:4px;align-items:center;font-size:13px}
+.path span{padding:3px 8px;border-radius:7px;background:var(--raised);cursor:pointer}.path i{color:var(--muted);font-style:normal}
+.B .kbox{margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid var(--border);border-radius:9px;padding:5px 10px;color:var(--muted);min-width:260px;font-size:13px}
+.B .body{overflow:auto;height:calc(100% - 52px);padding:28px 24px 90px}
+.B .colm{max-width:760px;margin:0 auto}.B .colm.wide{max-width:none}
+.phone .B{display:block}.phone .B .rail{display:none}.phone .B .kbox{display:none}
+.phone .B .top{padding:0 12px;overflow-x:auto}.phone .B .body{padding:16px 14px 110px}
+.fab{display:none}
+.phone .fab{display:flex;position:absolute;left:14px;right:14px;bottom:16px;gap:8px;z-index:4}
+.phone .fab .s{flex:1;height:46px;border-radius:23px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;padding:0 16px;color:var(--muted);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.phone .fab .p{width:46px;height:46px;border-radius:50%;background:var(--accent);color:var(--bg);font-size:24px;display:grid;place-items:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+/* ===== Shell C: three-pane ===== */
+.C{display:grid;grid-template-columns:200px 290px 1fr;height:100%}
+.C .p1{background:var(--surface);border-right:1px solid var(--border);padding:12px 8px;overflow:auto}
+.C .p2{border-right:1px solid var(--border);overflow:auto;background:color-mix(in srgb,var(--surface) 50%,var(--bg))}
+.C .p2 .hd{padding:14px 14px 8px;position:sticky;top:0;background:inherit}
+.C .p2 .it{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;gap:10px;align-items:center}
+.C .p2 .it.on{background:var(--raised);box-shadow:inset 3px 0 var(--accent)}
+.C .p3{overflow:auto;padding:20px 28px 80px}
+.C.nop2{grid-template-columns:200px 1fr}.C.nop2 .p2{display:none}
+.phone .C{display:block;height:100%}.phone .C .p1,.phone .C .p2{display:none}
+.phone .C .p3{padding:0 14px 30px;height:100%}
+.back{display:none}.phone .back{display:flex;align-items:center;gap:8px;height:50px;color:var(--accent);position:sticky;top:0;background:var(--bg);z-index:2;cursor:pointer}
+/* dashboard variants */
+.dashC{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}.phone .dashC{grid-template-columns:1fr}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:11px}
+.week div{padding:6px 0;border-radius:7px;background:var(--raised)}.week .on{outline:2px solid var(--accent)}
+.week b{display:block;font-size:15px;color:var(--text)}
+.hero{font-size:13px;color:var(--muted);margin-bottom:22px}
+.big .task{padding:12px 4px;font-size:15px}
+/* switcher */
+#sw{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#0b0b0d;color:#fff;border-radius:99px;padding:6px 8px;display:flex;gap:6px;align-items:center;font:12.5px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:99;outline:2px solid #fff;flex-wrap:wrap;justify-content:center;max-width:96vw}
+#sw button{background:#2a2a2e;color:#fff;border:0;border-radius:99px;padding:5px 10px;cursor:pointer}
+#sw button.on{background:#fff;color:#000}#sw .sep{width:1px;height:20px;background:#444}
+#sw b{min-width:150px;text-align:center}
+</style></head><body>
+<div class="stage" id="stage"><div class="frame" id="app"></div></div>
+<div id="sw"></div>
+<script>
+const P=new URLSearchParams(location.search);
+const S={v:P.get('variant')||'A',screen:P.get('screen')||'dash',device:P.get('device')||(innerWidth<700?'phone':'desk'),theme:P.get('theme')||'dark',drawer:false,done:new Set()};
+const VARIANTS={A:'Sidebar tree',B:'Rail + focused column',C:'Three-pane'};
+const SCREENS={dash:'Dashboard',list:'List',board:'Board',timeline:'Timeline',roadmap:'Roadmap',goal:'Goal',page:'Page'};
+
+// ---------- fake data ----------
+const T=[
+ {id:1,t:'Submit Acme internship application',p:1,sec:'Applying',chips:[['d','Deadline today']],why:'Deadline today',s:0,w:2},
+ {id:2,t:'Pay rent',p:2,sec:'',area:'Home',chips:[['d','Overdue 1d']],why:'Overdue',s:-1,w:1},
+ {id:3,t:'Rust ch. 8 exercises',p:3,area:'Learning',chips:[],why:'Learn Rust behind pace',s:1,w:2},
+ {id:4,t:'Update CV with Orbit project',p:2,sec:'Prep',chips:[['','Fri'],['','#writing']],why:'Due window',s:2,w:2},
+ {id:5,t:'Mock interview with Priya',p:3,sec:'Interviews',chips:[['','Mon 4pm'],['','⏰']],s:4,w:1},
+ {id:6,t:'Shortlist 10 companies',p:4,sec:'Prep',chips:[['','✓ 3/10 subtasks']],s:-3,w:3},
+ {id:7,t:'Cover letter template',p:4,sec:'Prep',chips:[['','#writing']],s:1,w:2},
+ {id:8,t:'Follow up with Globex recruiter',p:3,sec:'Applying',chips:[['w','Deadline Sat']],s:3,w:1},
+ {id:9,t:'LeetCode: 2 mediums',p:4,sec:'Interviews',chips:[['','Daily ↻']],s:0,w:1},
+];
+const proj=T.filter(t=>t.sec);
+const ROUT=[['Medicine 9am',1,0],['Gym',0,6],['Read 20 min',0,12],['Journal',0,0]];
+const GOALS=[['Get internship',60,'6/10 · Mar 31','w','Behind pace'],['Read 5 books',40,'2/5 books'],['Learn Rust',35,'Roadmap · Phase 2']];
+const TREE=[
+ ['Career','◇',[['Internship hunt','▦','list'],['Get internship','◎','goal'],['Interview notes','▤','page']]],
+ ['College','◇',[['Semester 5','▦'],['GPA 9+','◎']]],
+ ['Learning','◇',[['Learn Rust','◎'],['Rust roadmap','⇢','roadmap'],['Read 5 books','◎']]],
+ ['Home','◇',[['Move flat','▦'],['Errands','▦']]],
+];
+const crumbs={dash:['Dashboard'],list:['Career','Internship hunt'],board:['Career','Internship hunt'],timeline:['Career','Internship hunt'],roadmap:['Learning','Rust roadmap'],goal:['Career','Get internship'],page:['Career','Get internship','Interview notes']};
+
+// ---------- shared screen bits ----------
+const task=t=>`<div class="task"><span class="chk ${S.done.has(t.id)?'on':''}" style="--pc:var(--p${t.p})" onclick="tog(${t.id})"></span><span class="t" style="${S.done.has(t.id)?'text-decoration:line-through;opacity:.5':''}">${t.t}${t.area?` <span class="muted small">· ${t.area}</span>`:''}</span><span class="meta">${t.chips.map(([k,c])=>`<span class="chip ${k}">${c}</span>`).join('')}</span></div>`;
+const next=()=>T.filter(t=>t.why).map(t=>({...t,chips:[['a',t.why],...t.chips.filter(c=>c[1]!==t.why)]})).map(task).join('');
+const routines=()=>`<div class="rts">${ROUT.map(([n,d,s])=>`<div class="rt ${d?'done':''}"><span class="chk ${d?'on':''}" style="width:15px;height:15px"></span>${n}${s?` <b>${s}d</b>`:''}</div>`).join('')}</div>`;
+const goalsBars=()=>GOALS.map(([n,p,s,k,c])=>`<div style="margin:10px 0"><div style="display:flex;gap:8px;align-items:center;margin-bottom:5px"><span class="ic">◎</span><span class="grow">${n}</span>${c?`<span class="chip ${k}">${c}</span>`:''}<span class="muted small">${s}</span></div><div class="bar"><i style="width:${p}%"></i></div></div>`).join('');
+const layoutTabs=()=>`<div class="tabs">${['list','board','timeline'].map(k=>`<button class="${S.screen===k?'on':''}" onclick="go('${k}')">${SCREENS[k]}</button>`).join('')}<button>Table</button><button>Calendar</button></div>`;
+const viewHdr=()=>`<div class="hdr"><div class="grow"><div class="crumb">Career ›</div><h1>Internship hunt</h1></div>${layoutTabs()}<span class="chip">Filter</span><span class="chip">Group: Section</span></div>`;
+
+const listBody=()=>`${viewHdr()}<div class="add">+ Add task <span class="small">· try "Email Globex fri p2 #career !1h"</span></div>
+ ${['Applying','Prep','Interviews'].map(s=>`<h2>${s}</h2>${proj.filter(t=>t.sec===s).map(task).join('')}`).join('')}`;
+const boardBody=()=>`${viewHdr()}<div class="board">${['Applying','Prep','Interviews','Done'].map(s=>`<div class="col"><div style="display:flex;margin-bottom:8px"><b class="grow">${s}</b><span class="muted small">${proj.filter(t=>t.sec===s).length}</span></div>${proj.filter(t=>t.sec===s).map(t=>`<div class="bcard"><div style="display:flex;gap:8px"><span class="chk" style="--pc:var(--p${t.p});width:15px;height:15px;margin-top:2px"></span><span>${t.t}</span></div><div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">${t.chips.map(([k,c])=>`<span class="chip ${k}">${c}</span>`).join('')}</div></div>`).join('')}<div class="muted small">+ Add</div></div>`).join('')}</div>`;
+const tlGrid=(rows,todayPct)=>`<div class="tl"><div class="in"><div class="wk">${['Nov 17','Nov 24','Dec 1','Dec 8','Dec 15','Dec 22','Dec 29','Jan 5'].map(w=>`<div>${w}</div>`).join('')}</div><div class="today" style="left:${todayPct}%"></div>${rows}</div></div>`;
+const timelineBody=()=>`${viewHdr()}${tlGrid(proj.map(t=>`<div class="lane"><span style="left:${4+(t.s+3)*7}%;width:${t.w*11}%">${t.t}</span></div>`).join('')+`<div class="lane"><span class="ms" style="left:70%"></span><span style="left:73%;background:none;border:0" class="small">◆ 3 interviews done</span></div>`,4)}<p class="muted small">Undated tasks: 2 · drag onto the grid to schedule</p>`;
+const roadmapBody=()=>`<div class="hdr"><div class="grow"><div class="crumb">Learning › Learn Rust ›</div><h1>Rust roadmap</h1></div><div class="tabs"><button class="on">Phases</button><button>Timeline</button></div></div>
+ <div class="phases">${[['Basics','Nov',100,[['◎','The Book ch. 1-6',1],['☐','Rustlings 1-40',1]]],['Ownership','Dec',45,[['☐','Rust ch. 8 exercises',0],['◆','Lifetimes quiz',0],['☐','Write a linked list',0]],1],['Build a CLI','Jan',0,[['▦','orbit-cli prototype',0],['◎','Ship to AUR',0]]],['Async','Feb · undated',0,[['☐','Tokio tutorial',0]]]].map(([n,d,p,items,cur])=>`<div class="phase ${cur?'cur':''}"><div style="display:flex"><b class="grow">${n}</b><span class="muted small">${d}</span></div><div class="bar" style="margin:8px 0 10px"><i style="width:${p}%"></i></div>${items.map(([i,t,x])=>`<div class="ref"><span class="ic">${i}</span><span style="${x?'text-decoration:line-through;opacity:.55':''}">${t}</span></div>`).join('')}<div class="muted small" style="margin-top:6px">+ Reference item</div></div>`).join('')}</div>
+ <h2>Timeline</h2>${tlGrid(`<div class="lane"><span style="left:0;width:18%">Basics</span></div><div class="lane"><span style="left:16%;width:38%">Ownership</span><span class="ms" style="left:50%"></span></div><div class="lane"><span style="left:52%;width:40%">Build a CLI</span></div>`,12)}`;
+const goalBody=()=>`<div class="crumb">Career ›</div><div class="hdr"><h1 class="grow">Get internship</h1><span class="chip w">Behind pace</span><span class="chip">Count goal</span></div>
+ <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap" class="card"><div class="ring" style="--p:60"><b>60%</b></div><div class="grow"><div><b>6 of 10</b> linked items done</div><div class="muted small">Target Mar 31 · expected 70% by today · +500 Stardust on done</div><div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><span class="chip">Roadmap: none</span><span class="chip">2 Pages</span><span class="chip">Area: Career</span></div></div></div>
+ <h2>Milestones</h2>${[['10 applications sent','Dec 1',1],['3 interviews done','Jan 10',0],['Offer accepted','Mar 31',0]].map(([n,d,x])=>`<div class="ms-row"><span class="dia ${x?'on':''}"></span><span class="grow">${n}</span><span class="muted small">${d}</span></div>`).join('')}
+ <h2>Sub-goals</h2><div class="ms-row"><span class="ic">◎</span><span class="grow">Portfolio site live</span><span class="muted small">Manual · not done</span></div>
+ <h2>Linked tasks</h2>${proj.slice(0,4).map(task).join('')}<div class="add">+ Link or add task</div>
+ <h2>Pages</h2><div class="ms-row" style="cursor:pointer" onclick="go('page')"><span class="ic">▤</span><span class="grow">Interview notes</span><span class="muted small">edited 2h ago</span></div><div class="ms-row"><span class="ic">▤</span><span class="grow">Companies research</span><span class="muted small">Nov 2</span></div>`;
+const pageBody=()=>`<div class="doc"><div class="crumb">Career › Get internship ›</div><h1>Interview notes</h1><div class="muted small" style="margin-bottom:18px">Page · edited 2h ago on Pixel · 3 backlinks</div>
+ <p>Prep for <a class="lnk" href="#">@Mock interview with Priya</a> on Monday. Focus on the system design round; reuse the story from <a class="lnk" href="#">[[Companies research]]</a>.</p>
+ <h3>Questions to practise</h3><ul><li>Design a URL shortener</li><li>Tell me about a conflict on a team</li><li>Why <a class="lnk" href="#">@Career</a> in backend?</li></ul>
+ <div class="att"><i>PDF</i><div class="grow"><div>acme-jd.pdf</div><div class="muted small">412 KB · available offline</div></div><span class="muted small">Open</span></div>
+ <blockquote style="border-left:3px solid var(--accent);margin:0;padding:2px 14px;color:var(--muted)">Ask about the team's on-call rotation.</blockquote>
+ <h2>Backlinks</h2><div class="ms-row"><span class="ic">☐</span><span class="grow">Mock interview with Priya</span></div><div class="ms-row"><span class="ic">◎</span><span class="grow">Get internship</span></div></div>`;
+const greet=`<div class="crumb">Thursday, Nov 19</div><h1>Good morning</h1>`;
+// dashboard: one per shell, structurally different on purpose
+const dashA=()=>`${greet}<h2>What's next</h2>${next()}<h2>Routines today</h2>${routines()}<h2>Goals</h2>${goalsBars()}<h2>Upcoming</h2>${T.filter(t=>t.s>2).map(task).join('')}`;
+const dashB=()=>`<div class="hero">Thursday, Nov 19 · 4 next · 3 routines left · Stardust 1,240</div><div class="big">${next()}</div><div class="add">+ Add task</div><h2>Routines</h2>${routines()}<h2>Goals</h2>${GOALS.map(([n,p,s,k,c])=>`<span class="chip ${k||''}" style="margin:0 6px 6px 0;display:inline-block">◎ ${n} · ${p}%${c?' · '+c:''}</span>`).join('')}`;
+const dashC=()=>`${greet}<div class="dashC" style="margin-top:16px"><div class="card"><h2 style="margin-top:0">What's next</h2>${next()}</div><div style="display:grid;gap:14px;align-content:start"><div class="card"><h2 style="margin-top:0">This week</h2><div class="week">${['Mon 16','Tue 17','Wed 18','Thu 19','Fri 20','Sat 21','Sun 22'].map((d,i)=>`<div class="${i===3?'on':''}">${d.split(' ')[0]}<b>${d.split(' ')[1]}</b>${'•'.repeat([1,0,2,4,2,1,0][i])}</div>`).join('')}</div></div><div class="card"><h2 style="margin-top:0">Routines</h2>${routines()}</div></div><div class="card"><h2 style="margin-top:0">Goals</h2><div style="display:flex;gap:16px;flex-wrap:wrap">${GOALS.map(([n,p])=>`<div style="text-align:center;font-size:12px"><div class="ring" style="--p:${p};width:64px;height:64px;margin:0 auto 6px"><b style="width:50px;height:50px;font-size:13px">${p}%</b></div>${n}</div>`).join('')}</div></div><div class="card"><h2 style="margin-top:0">Roadmap · Rust</h2><div class="small">Phase 2 of 4 · Ownership</div><div class="bar" style="margin-top:8px"><i style="width:45%"></i></div></div></div>`;
+const BODY={list:listBody,board:boardBody,timeline:timelineBody,roadmap:roadmapBody,goal:goalBody,page:pageBody};
+const body=v=>S.screen==='dash'?{A:dashA,B:dashB,C:dashC}[v]():BODY[S.screen]();
+
+// ---------- shells ----------
+function shellA(){
+ const nav=`<div class="srch">⌕ Search or run… <kbd>Ctrl K</kbd></div>
+  ${[['dash','⌂','Dashboard',4],['inbox','⇣','Inbox',3],['up','▤','Upcoming',''],['cal','▦','Calendar','']].map(([k,i,n,c])=>`<div class="nv ${S.screen===k?'on':''}" onclick="go('${k==='dash'?'dash':S.screen}')"><span class="ic">${i}</span>${n}<span class="n">${c}</span></div>`).join('')}
+  <h2>Views</h2><div class="nv"><span class="ic">⚑</span>P1 this week</div><div class="nv"><span class="ic">#</span>Writing</div>
+  <h2>Areas</h2>${TREE.map(([a,i,kids])=>`<div class="nv"><span class="ic">▾</span>${a}</div>${kids.map(([n,ic,sc])=>`<div class="nv l2 ${sc&&(S.screen===sc||(sc==='list'&&['board','timeline'].includes(S.screen)))?'on':''}" ${sc?`onclick="go('${sc}')"`:''}><span class="ic">${ic}</span>${n}</div>`).join('')}`).join('')}
+  <h2>Routines</h2><div class="nv"><span class="ic">↻</span>Today <span class="n">1/4</span></div>
+  <div class="nv" style="margin-top:14px"><span class="ic">✦</span>Profile <span class="n">1,240</span></div>`;
+ return `<div class="A"><aside class="${S.drawer?'open':''}">${nav}</aside><main><div style="display:flex;align-items:center;gap:10px" ${S.device==='phone'?'':'hidden'}><button class="ham" onclick="S.drawer=!S.drawer;render()">☰</button><span class="muted small">${crumbs[S.screen].join(' › ')}</span></div>${body('A')}</main>
+ <div class="btabs">${[['dash','⌂','Home'],['list','⇣','Inbox']].map(([k,i,n])=>`<div class="${S.screen===k?'on':''}" onclick="go('${k}')"><span style="font-size:18px">${i}</span>${n}</div>`).join('')}<div><span class="plus">+</span></div><div><span style="font-size:18px">⌕</span>Search</div><div onclick="S.drawer=true;render()"><span style="font-size:18px">☰</span>Browse</div></div></div>`;
+}
+function shellB(){
+ const c=crumbs[S.screen];
+ const wide=['board','timeline','roadmap'].includes(S.screen);
+ return `<div class="B"><div class="rail">${[['dash','⌂'],['list','⇣'],['roadmap','⇢'],['goal','◎'],['page','▤']].map(([k,i])=>`<div class="${S.screen===k?'on':''}" onclick="go('${k}')" title="${SCREENS[k]}">${i}</div>`).join('')}<div class="sp"></div><div>✦</div><div>⚙</div></div>
+ <div><div class="top"><div class="path">${c.map((x,i)=>`${i?'<i>/</i>':''}<span>${x} ▾</span>`).join('')}</div><div class="kbox">⌕ Search, > action, + add <span style="margin-left:auto">Ctrl K</span></div></div>
+ <div class="body"><div class="colm ${wide?'wide':''}">${body('B')}</div></div></div>
+ <div class="fab"><div class="s">⌕ Search or + add…</div><div class="p">+</div></div></div>`;
+}
+function shellC(){
+ const ctx={list:'Internship hunt',board:'Internship hunt',timeline:'Internship hunt',goal:'Career',page:'Get internship',roadmap:'Learning'}[S.screen];
+ const items={
+  'Internship hunt':proj.map(t=>[t.t,'☐','list',t.chips[0]?.[1]]),
+  'Career':[['Internship hunt','▦','list','6 tasks'],['Get internship','◎','goal','60%'],['Interview notes','▤','page','']],
+  'Get internship':[['Overview','◎','goal',''],['Interview notes','▤','page','2h'],['Companies research','▤','page','Nov 2']],
+  'Learning':[['Learn Rust','◎','goal','35%'],['Rust roadmap','⇢','roadmap','Phase 2'],['Read 5 books','◎','goal','2/5']],
+ }[ctx];
+ const sel={goal:'Get internship',page:'Interview notes',roadmap:'Rust roadmap'}[S.screen];
+ const p1=`<div class="nv ${S.screen==='dash'?'on':''}" onclick="go('dash')"><span class="ic">⌂</span>Dashboard</div><div class="nv"><span class="ic">⇣</span>Inbox<span class="n">3</span></div><div class="nv"><span class="ic">⌕</span>Search<span class="n">Ctrl K</span></div>
+  <h2>Areas</h2>${TREE.map(([a])=>`<div class="nv ${ctx===a||(a==='Career'&&['Internship hunt','Get internship'].includes(ctx))?'on':''}" onclick="go('${a==='Learning'?'roadmap':'goal'}')"><span class="ic">◇</span>${a}</div>`).join('')}<h2>Views</h2><div class="nv"><span class="ic">⚑</span>P1 this week</div>`;
+ const p2=items?`<div class="hd"><div class="crumb">${ctx==='Internship hunt'||ctx==='Get internship'?'Career ›':''}</div><b style="font-size:16px">${ctx}</b></div>${items.map(([n,i,sc,m])=>`<div class="it ${n===sel?'on':''}" onclick="go('${sc}')"><span class="ic">${i}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n}</span><span class="muted small">${m||''}</span></div>`).join('')}`:'';
+ return `<div class="C ${items&&S.screen!=='list'&&S.screen!=='board'&&S.screen!=='timeline'?'':'nop2'}"><div class="p1">${p1}</div><div class="p2">${p2}</div><div class="p3"><div class="back" onclick="go('dash')">‹ ${S.screen==='dash'?'Orbit':ctx||'Back'}</div>${body('C')}</div></div>`;
+}
+
+// ---------- plumbing ----------
+function tog(id){S.done.has(id)?S.done.delete(id):S.done.add(id);render()}
+function go(k){if(k in SCREENS){S.screen=k;S.drawer=false;render()}}
+function render(){
+ document.documentElement.dataset.theme=S.theme;
+ document.getElementById('stage').className='stage '+(S.device==='phone'?'phone':'');
+ document.getElementById('app').innerHTML={A:shellA,B:shellB,C:shellC}[S.v]();
+ const q=new URLSearchParams({variant:S.v,screen:S.screen,device:S.device,theme:S.theme});history.replaceState(null,'','?'+q);
+ const ks=Object.keys(VARIANTS);
+ document.getElementById('sw').innerHTML=`<button onclick="cyc(-1)">←</button><b>${S.v} · ${VARIANTS[S.v]}</b><button onclick="cyc(1)">→</button><span class="sep"></span>${Object.entries(SCREENS).map(([k,n])=>`<button class="${S.screen===k?'on':''}" onclick="go('${k}')">${n}</button>`).join('')}<span class="sep"></span><button class="${S.device==='desk'?'on':''}" onclick="S.device='desk';render()">Desktop</button><button class="${S.device==='phone'?'on':''}" onclick="S.device='phone';render()">Phone</button><button onclick="S.theme=S.theme==='dark'?'light':'dark';render()">${S.theme==='dark'?'☾':'☀'}</button>`;
+}
+function cyc(d){const ks=Object.keys(VARIANTS);S.v=ks[(ks.indexOf(S.v)+d+ks.length)%ks.length];S.drawer=false;render()}
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,[contenteditable]'))return;if(e.key==='ArrowLeft')cyc(-1);if(e.key==='ArrowRight')cyc(1)});
+render();
+</script></body></html>
