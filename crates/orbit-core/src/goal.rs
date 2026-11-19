@@ -217,6 +217,7 @@ mod tests {
             not_today_on: None,
             links: vec![],
             reminders: vec![],
+            blobs: vec![],
         })
     }
 

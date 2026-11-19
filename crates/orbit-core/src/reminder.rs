@@ -266,6 +266,7 @@ mod tests {
             trashed_at: None,
             reminders,
             links: vec![],
+            blobs: vec![],
             pinned_on: None,
             not_today_on: None,
         }

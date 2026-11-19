@@ -90,6 +90,37 @@ fn scan(line: &str, out: &mut Vec<Uuid>) {
     }
 }
 
+/// The sha256 hashes (lowercase hex) of the `blob:` links in `markdown`, deduplicated, in order of
+/// first appearance. `![name](blob:<hash>)` and `[name](blob:<hash>)` both count; code doesn't.
+pub fn blob_refs(markdown: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut fence = false;
+    for line in markdown.lines() {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            fence = !fence;
+            continue;
+        }
+        if fence {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(at) = rest.find("](blob:") {
+            let after = &rest[at + "](blob:".len()..];
+            let hash: String = after.chars().take_while(|c| *c != ')').collect();
+            let hash = hash.trim().to_ascii_lowercase();
+            if hash.len() == 64
+                && hash.bytes().all(|b| b.is_ascii_hexdigit())
+                && !out.contains(&hash)
+            {
+                out.push(hash);
+            }
+            rest = after;
+        }
+    }
+    out
+}
+
 /// The ids of the Pages and Tasks whose bodies link to `id`, leaving out any in the Trash
 /// (or under something in the Trash).
 pub fn backlinks(rows: &[Row], id: Uuid) -> Vec<Uuid> {
@@ -146,6 +177,16 @@ mod tests {
     }
 
     #[test]
+    fn blob_refs_find_images_and_files_without_duplicates() {
+        let h1 = "a".repeat(64);
+        let h2 = "B".repeat(64);
+        let md = format!(
+            "![pic](blob:{h1}) and [doc.pdf](blob:{h2}) again ![pic](blob:{h1})\n```\n[x](blob:{h1})\n```\n[bad](blob:abc)"
+        );
+        assert_eq!(blob_refs(&md), vec![h1, "b".repeat(64)]);
+    }
+
+    #[test]
     fn backlinks_skip_trashed_sources() {
         let page = |n: u128, links: Vec<Uuid>, trashed: Option<u64>| {
             Row::Page(crate::Page {
@@ -157,6 +198,7 @@ mod tests {
                 order: String::new(),
                 trashed_at: trashed,
                 links,
+                blobs: vec![],
             })
         };
         let rows = vec![

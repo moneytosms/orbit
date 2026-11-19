@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { initSync, parse_quick_add } from '../../wasm/orbit_wasm'
 import { login } from './auth'
 import { req, tx } from './db'
+import { addFile } from './blobs'
 import {
   completeTask,
   createArea,
@@ -79,6 +80,7 @@ let gate: Promise<void> | undefined
 let httpStatus = 200
 let rejectWith: string | undefined
 let full = false
+let order: string[] = []
 
 // Stand-in server: accepts every command and returns whatever delta the test sets.
 const DEVICE = '01900000-0000-7000-8000-0000000000d1'
@@ -92,6 +94,11 @@ vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     if (body.password !== 'right') return new Response(JSON.stringify({ error: 'credentials' }), { status: 401 })
     return new Response(JSON.stringify({ device: DEVICE }))
   }
+  if (url.startsWith('/blobs/')) {
+    order.push(`PUT ${url}`)
+    return new Response('', { status: 201 })
+  }
+  order.push('POST /sync')
   const body: Body = JSON.parse(init.body as string)
   requests.push(body)
   await gate
@@ -466,8 +473,9 @@ test('a full delta clears local rows but keeps the outbox', async () => {
   delta = [{ kind: 'task', id: other, parent_id: INBOX, title: 'Server only', completed_at: null, order: '' }]
   let release!: () => void
   gate = new Promise((r) => (release = r))
+  const sent = requests.length
   const inFlight = sync()
-  await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0))
+  await vi.waitFor(() => expect(requests.length).toBeGreaterThan(sent))
   const kept = await createTask('Queued meanwhile')
   gate = undefined
   release()
@@ -670,4 +678,26 @@ test('Horizon builtin runs and timelineData returns a milestone and a task tick'
   const data = (await timelineData([g])).get(g)!
   expect(data.milestones.map((m) => m.title)).toEqual(['Halfway'])
   expect(data.ticks).toEqual([{ id: t, title: 'Linked', date: '2026-02-02' }])
+})
+
+test('an attachment added offline is uploaded before the command that cites it', async () => {
+  const area = (await tree()).find((t) => t.area.name === 'lk-area')!.area.id
+  const page = await createPage(area, 'With file')
+  await sync()
+  online = false
+  const { hash, markdown } = await addFile(new File(['hello'], 'note.txt', { type: 'text/plain' }))
+  expect(markdown).toBe(`[note.txt](blob:${hash})`)
+  await editPageBody(page, `see ${markdown}`, 0)
+  online = true
+  order = []
+  await sync()
+  expect(order[0]).toBe(`PUT /blobs/${hash}`)
+  expect(order.indexOf('POST /sync')).toBeGreaterThan(0)
+  expect(requests.at(-1)!.commands).toMatchObject([{ type: 'page.edit_body' }])
+  expect((await getPage(page))!.blobs).toEqual([hash])
+})
+
+test('a file over the limit is refused with a clear message', async () => {
+  const big = new File([new Uint8Array(25 * 1024 * 1024 + 1)], 'big.bin')
+  await expect(addFile(big)).rejects.toThrow(/at most 25 MB/)
 })

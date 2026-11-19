@@ -166,6 +166,9 @@ pub struct Task {
     /// Offsets before due or deadline, or absolute times. One field for sync.
     #[serde(default)]
     pub reminders: Vec<reminder::Reminder>,
+    /// The `blob:` sha256 hashes in `description`, kept up to date by every write to it.
+    #[serde(default)]
+    pub blobs: Vec<String>,
 }
 
 fn default_priority() -> u8 {
@@ -886,7 +889,7 @@ impl Op {
             Op::ItemDelete { .. } | Op::ItemRestore { .. } => vec!["trashed_at"],
             Op::ItemArchive { .. } | Op::ItemUnarchive { .. } => vec!["archived_at"],
             Op::PageRename { .. } => vec!["title"],
-            Op::PageEditBody { .. } => vec!["body", "rev", "links"],
+            Op::PageEditBody { .. } => vec!["body", "rev", "links", "blobs"],
             Op::ProjectUpdate { goal_id, .. } => {
                 if goal_id.is_some() {
                     vec!["goal_id"]
@@ -952,6 +955,7 @@ impl Op {
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .chain(description.is_some().then_some("links"))
+            .chain(description.is_some().then_some("blobs"))
             .collect(),
             Op::SettingsUpdate {
                 theme,
@@ -1027,6 +1031,8 @@ pub enum ErrorCode {
     BadField,
     /// The item or an ancestor is archived, which makes it read-only.
     Archived,
+    /// The body references a `blob:` hash the server doesn't have yet; upload it and retry.
+    MissingBlob,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1172,6 +1178,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     not_today_on: None,
                     links: vec![],
                     reminders: vec![],
+                    blobs: vec![],
                 }))
             }
         }
@@ -1273,6 +1280,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     links: match description {
                         Some(d) => link::targets(d),
                         None => t.links,
+                    },
+                    blobs: match description {
+                        Some(d) => link::blob_refs(d),
+                        None => t.blobs,
                     },
                     description: description.clone().unwrap_or(t.description),
                     due: due.clone().unwrap_or(t.due),
@@ -1489,6 +1500,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     trashed_at: None,
                     links: link::targets(body),
+                    blobs: link::blob_refs(body),
                 }))
             }
         }
@@ -1509,6 +1521,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 body: body.clone(),
                 rev: p.rev + 1,
                 links: link::targets(body),
+                blobs: link::blob_refs(body),
                 ..p
             })),
             _ => Err(ErrorCode::NotFound),
@@ -1881,7 +1894,7 @@ mod tests {
                 "description": "", "due": null, "deadline": null, "duration_min": null,
                 "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
                 "pinned_on": null, "not_today_on": null,
-                "links": [], "reminders": [],
+                "links": [], "reminders": [], "blobs": [],
             })
         );
     }
@@ -2121,6 +2134,7 @@ mod tests {
         assert_eq!(
             fields,
             [
+                ("blobs", 1000),
                 ("completed_at", 1000),
                 ("created_at", 1000),
                 ("deadline", 1000),
@@ -2207,6 +2221,7 @@ mod tests {
             not_today_on: None,
             links: vec![],
             reminders: vec![],
+            blobs: vec![],
         })
     }
 

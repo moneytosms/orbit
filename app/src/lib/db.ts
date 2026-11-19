@@ -1,5 +1,5 @@
-// IndexedDB: `outbox` (commands by uuid), `rows` (synced records by id), `meta` (token, hlc).
-type Store = 'outbox' | 'rows' | 'meta'
+// IndexedDB: `outbox` (commands by uuid), `rows` (synced records by id), `meta` (token, hlc), `blobs` (attachments by hash).
+type Store = 'outbox' | 'rows' | 'meta' | 'blobs'
 
 export const req = <T>(r: IDBRequest<T>) =>
   new Promise<T>((ok, fail) => {
@@ -10,11 +10,13 @@ export const req = <T>(r: IDBRequest<T>) =>
 let db: Promise<IDBDatabase> | undefined
 const open = () =>
   (db ??= new Promise((ok, fail) => {
-    const r = indexedDB.open('orbit', 1)
+    const r = indexedDB.open('orbit', 2)
     r.onupgradeneeded = () => {
-      r.result.createObjectStore('outbox', { keyPath: 'uuid' })
-      r.result.createObjectStore('rows', { keyPath: 'id' })
-      r.result.createObjectStore('meta')
+      const have = r.result.objectStoreNames
+      if (!have.contains('outbox')) r.result.createObjectStore('outbox', { keyPath: 'uuid' })
+      if (!have.contains('rows')) r.result.createObjectStore('rows', { keyPath: 'id' })
+      if (!have.contains('meta')) r.result.createObjectStore('meta')
+      if (!have.contains('blobs')) r.result.createObjectStore('blobs', { keyPath: 'hash' })
     }
     r.onsuccess = () => ok(r.result)
     r.onerror = () => {

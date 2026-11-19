@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use orbit_core::{
     Clocks, Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse,
@@ -23,6 +23,7 @@ use std::{
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 mod auth;
+mod blobs;
 pub use auth::reset_password;
 
 pub(crate) struct Shared {
@@ -30,6 +31,8 @@ pub(crate) struct Shared {
     db: Mutex<Connection>,
     /// The data dir, for free-space checks.
     data: PathBuf,
+    /// Per-file blob size limit in bytes.
+    max_blob: usize,
     /// The one-time first-run code; `None` once the user exists.
     setup: Mutex<Option<String>>,
     limits: Mutex<HashMap<std::net::IpAddr, auth::Limit>>,
@@ -83,9 +86,11 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
         write(&conn, &inbox, &Clocks::new())?;
     }
     let setup = auth::setup_code(&conn)?;
+    let max_blob = blobs::max_bytes();
     let shared = Shared {
         db: Mutex::new(conn),
         data: data_dir.to_path_buf(),
+        max_blob,
         setup: Mutex::new(setup.clone()),
         limits: Mutex::default(),
     };
@@ -101,6 +106,12 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
         .route("/auth/totp/confirm", post(auth::totp_confirm))
         .route("/devices", get(auth::devices).post(auth::create_token))
         .route("/devices/{id}", delete(auth::revoke))
+        .route(
+            "/blobs/{hash}",
+            put(blobs::put)
+                .get(blobs::get)
+                .layer(axum::extract::DefaultBodyLimit::max(max_blob)),
+        )
         .with_state(Arc::new(shared));
     Ok((router, setup))
 }
@@ -119,7 +130,7 @@ async fn sync(
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
     let mut conn = lock(&st.db);
-    run(&mut conn, req).map(Json).map_err(|e| {
+    run(&mut conn, &st.data, req).map(Json).map_err(|e| {
         eprintln!("sync failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -185,7 +196,7 @@ async fn disk(
     Ok(Json(serde_json::json!({ "free_bytes": free_bytes })))
 }
 
-fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse> {
+fn run(conn: &mut Connection, data: &Path, req: SyncRequest) -> rusqlite::Result<SyncResponse> {
     let now = now_ms();
     conn.execute(
         "DELETE FROM processed WHERE at < ?",
@@ -194,13 +205,15 @@ fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse
     let mut statuses = BTreeMap::new();
     let mut rejected = Vec::new();
     for cmd in &req.commands {
-        let status = run_command(conn, cmd, now)?;
+        let status = run_command(conn, data, cmd, now)?;
         if status != Status::Ok {
             rejected.push(cmd.op.target().to_string());
         }
         statuses.insert(cmd.uuid, status);
     }
     purge(conn, now)?;
+    // shortcut: walks the blobs dir on every sync, move to a timed task if blob counts grow large
+    blobs::gc(conn, data, now)?;
     let purge_seq = purge_seq(conn)?;
     let max = max_seq(conn)?;
     // A token from before a data reset, or from before purged tombstones were dropped, can't be
@@ -271,7 +284,8 @@ fn purge_seq(conn: &Connection) -> rusqlite::Result<i64> {
 /// Runs `purge` against the data dir at `now_ms` (ms since the epoch). For tests.
 pub fn purge_at(data_dir: &Path, now_ms: i64) -> rusqlite::Result<()> {
     let mut conn = open(data_dir)?;
-    purge(&mut conn, now_ms)
+    purge(&mut conn, now_ms)?;
+    blobs::gc(&conn, data_dir, now_ms)
 }
 
 /// Drops tombstones older than 90 days, then turns rows trashed over 30 days ago, and
@@ -327,7 +341,12 @@ fn purge(conn: &mut Connection, now: i64) -> rusqlite::Result<()> {
 }
 
 /// One transaction per command; a rejected command doesn't stop the batch.
-fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Result<Status> {
+fn run_command(
+    conn: &mut Connection,
+    data: &Path,
+    cmd: &Command,
+    now: i64,
+) -> rusqlite::Result<Status> {
     let tx = conn.transaction()?;
     let uuid = cmd.uuid.to_string();
     let seen: Option<String> = tx
@@ -339,6 +358,12 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
         .optional()?;
     if let Some(seen) = seen {
         return serde_json::from_str(&seen).map_err(json_err);
+    }
+    // Not recorded as processed: the client uploads the blob and sends the same command again.
+    if blobs::refs(cmd).iter().any(|h| !blobs::exists(data, h)) {
+        return Ok(Status::Error {
+            code: ErrorCode::MissingBlob,
+        });
     }
     let (existing, mut clocks) = match load(&tx, &cmd.op.target().to_string())? {
         Some((data, clocks)) => (
