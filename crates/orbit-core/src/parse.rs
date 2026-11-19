@@ -318,6 +318,8 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         labels: Vec::new(),
     };
     let mut title: Vec<String> = Vec::new();
+    // shortcut: words after `every`/`every!` stay title text, not a due date; #40 parses them as recurrence.
+    let mut recurring = false;
     let mut i = 0;
     while i < ws.len() {
         let w = &ws[i];
@@ -381,7 +383,11 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
             i += 1;
             continue;
         }
+        if matches!(lower[i].as_str(), "every" | "every!") {
+            recurring = true;
+        }
         if out.due.is_none()
+            && !recurring
             && let Some(today) = today
         {
             {
@@ -647,6 +653,11 @@ mod tests {
         assert!(r.tokens.is_empty());
         let r = p("x every! day");
         assert_eq!(r.title, "x every! day");
+        let r = p("standup every monday 9am p2");
+        assert_eq!(r.title, "standup every monday 9am");
+        assert_eq!((r.due, r.priority), (None, Some(2)));
+        // A date before `every` still counts.
+        assert_eq!(due("x tomorrow every week"), d("2026-11-20", None));
     }
 
     #[test]
