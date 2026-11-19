@@ -236,7 +236,7 @@ pub fn builtins() -> Vec<View> {
         builtin(
             VIEW_RECENT,
             "recent",
-            "Recent",
+            "Recently captured",
             "clock",
             ViewKind::Task,
             all(vec![cond("created_at", CondOp::After, json!("-8d"))]),
@@ -1167,6 +1167,7 @@ mod tests {
             done,
         ];
         let v = view_or_builtin(VIEW_RECENT, &rows).unwrap();
+        assert_eq!(v.name, "Recently captured");
         assert_eq!(ids(&v, &rows), [3, 1]);
     }
 

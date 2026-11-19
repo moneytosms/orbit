@@ -6,10 +6,22 @@
   import Inbox from './lib/screens/Inbox.svelte'
   import Settings from './lib/screens/Settings.svelte'
   import Trash from './lib/screens/Trash.svelte'
+  import View from './lib/screens/View.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, routes, type Screen } from './lib/routes'
-  import { getSettings, onRejected, onSignedOut, start, tasksIn, tree, updateSettings } from './lib/sync'
+  import {
+    getSettings,
+    onRejected,
+    onSignedOut,
+    start,
+    tasksIn,
+    tree,
+    updateSettings,
+    views,
+    VIEW_UPCOMING,
+  } from './lib/sync'
+  import type { View as ViewRow } from './lib/sync'
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { inbox_id } from '../wasm/orbit_wasm'
 
@@ -18,6 +30,7 @@
   let areas: Awaited<ReturnType<typeof tree>> = $state([])
   let inboxCount = $state(0)
   let rows: Awaited<ReturnType<typeof tasksIn>> = $state([])
+  let allViews = $state<ViewRow[]>([])
   let screen: Screen = $state(readScreen())
   let toast = $state('')
   let hide: ReturnType<typeof setTimeout>
@@ -34,13 +47,14 @@
   })
   /** The parent whose Tasks the list shows; undefined on screens without a list. */
   const listParent = (s: Screen) =>
-    s.name === 'page' ? undefined : 'id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined
+    s.name === 'page' || s.name === 'view' ? undefined : 'id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined
   const parent = $derived(listParent(screen))
   const title = $derived.by(() => {
     const s = screen
     if (s.name === 'area') return areas.find((a) => a.area.id === s.id)?.area.name ?? 'Area'
     if (s.name === 'project') return areas.flatMap((a) => a.projects).find((p) => p.id === s.id)?.name ?? 'Project'
     if (s.name === 'page') return 'Page'
+    if (s.name === 'view') return allViews.find((v) => v.id === s.id)?.name ?? 'View'
     return routes[s.name].label
   })
 
@@ -48,6 +62,7 @@
     areas = await tree()
     rows = parent ? await tasksIn(parent) : []
     inboxCount = (await tasksIn(inbox_id())).length
+    allViews = await views()
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
     const remote = await getSettings()
     if (remote && ((remote.theme && remote.theme !== getTheme()) || (remote.accent || null) !== getAccent())) {
@@ -55,12 +70,22 @@
     }
   }
 
+  // A saved start view opens at launch, but only while the address bar names no screen.
+  async function applyStartView() {
+    if (location.hash) return
+    const stored = (await getSettings())?.start_view
+    if (!stored) return
+    location.hash = stored.startsWith('view:') ? `#/view/${stored.slice('view:'.length)}` : `#/${stored}`
+    screen = readScreen()
+  }
+
   let started = false
-  function enter() {
+  async function enter() {
     gate = 'app'
     pending = 0
     if (!started) start(refresh)
     started = true
+    await applyStartView()
     refresh()
   }
 
@@ -88,6 +113,12 @@
     {#snippet children(add)}
       {#if screen.name === 'page'}
         <Page id={screen.id} onchange={refresh} />
+      {:else if screen.name === 'view'}
+        {#key screen.id}
+          <View id={screen.id} {areas} onchange={refresh} />
+        {/key}
+      {:else if screen.name === 'upcoming'}
+        <View id={VIEW_UPCOMING} {areas} onchange={refresh} />
       {:else if parent}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}

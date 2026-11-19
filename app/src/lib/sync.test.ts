@@ -13,6 +13,7 @@ import {
   createPage,
   createProject,
   createTask,
+  createView,
   archived,
   archiveItem,
   deleteItem,
@@ -24,6 +25,11 @@ import {
   getSettings,
   getTask,
   runView,
+  pinnedViews,
+  reorderViews,
+  resetView,
+  updateView,
+  views,
   goalProgress,
   labels,
   moveItem,
@@ -40,6 +46,7 @@ import {
   tree,
   updateSettings,
   updateTask,
+  VIEW_SLIPPING,
   type Task,
 } from './sync'
 
@@ -439,4 +446,26 @@ test('runView on the built-in Upcoming returns a Task due tomorrow, grouped by d
   const { groups } = await runView(upcoming)
   const hit = groups.find((g) => g.rows.some((r) => r.id === id))
   expect(hit?.key).toBe(tomorrow)
+})
+
+test('hiding a builtin takes it out of pinnedViews; resetView brings it back', async () => {
+  expect((await pinnedViews()).map((v) => v.id)).toContain(VIEW_SLIPPING)
+  await updateView(VIEW_SLIPPING, { hidden: true })
+  expect((await pinnedViews()).map((v) => v.id)).not.toContain(VIEW_SLIPPING)
+  expect((await views()).find((v) => v.id === VIEW_SLIPPING)?.hidden).toBe(true)
+  await resetView(VIEW_SLIPPING)
+  expect((await pinnedViews()).map((v) => v.id)).toContain(VIEW_SLIPPING)
+  expect((await views()).find((v) => v.id === VIEW_SLIPPING)?.hidden).toBe(false)
+})
+
+test('reorderViews moves a view before another, then last', async () => {
+  const first = await createView('Reorder A', 'task')
+  const second = await createView('Reorder B', 'task')
+  await reorderViews(second, first)
+  let ids = (await views()).map((v) => v.id)
+  expect(ids.indexOf(second)).toBe(ids.indexOf(first) - 1)
+
+  await reorderViews(second, null)
+  ids = (await views()).map((v) => v.id)
+  expect(ids.at(-1)).toBe(second)
 })

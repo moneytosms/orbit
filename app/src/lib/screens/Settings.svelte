@@ -8,6 +8,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as auth from '$lib/auth'
+  import { getSettings, setStartView, views, VIEW_INBOX, VIEW_UPCOMING, type View } from '$lib/sync'
   import {
     getAccent,
     getDensity,
@@ -94,6 +95,18 @@
 
   let tokenName = $state('')
   let newToken = $state('')
+  let startView = $state('')
+  let allViews = $state<View[]>([])
+  getSettings().then((s) => {
+    if (s) startView = s.start_view
+  })
+  views().then((v) => (allViews = v))
+  // Inbox and Upcoming are already plain routes; hidden views stay listed only if they are the current start.
+  const startOptions = $derived(
+    allViews.filter(
+      (v) => v.id !== VIEW_INBOX && v.id !== VIEW_UPCOMING && (!v.hidden || `view:${v.id}` === startView),
+    ),
+  )
   async function createToken(e: SubmitEvent) {
     e.preventDefault()
     try {
@@ -101,7 +114,8 @@
       tokenName = ''
       load()
     } catch (err) {
-      listError = err instanceof Error && err.message === 'device_name' ? 'Give the token a name.' : "Couldn't create the token."
+      listError =
+        err instanceof Error && err.message === 'device_name' ? 'Give the token a name.' : "Couldn't create the token."
     }
   }
   const revoke = (id: string) => auth.revoke(id).then(load, () => (listError = "Couldn't revoke that Device."))
@@ -119,7 +133,9 @@
       load()
     } catch (err) {
       const c = err instanceof Error ? err.message : ''
-      pwMsg = { credentials: 'Current password is wrong.', weak_password: 'Use at least 8 characters.' }[c] ?? 'Could not change the password.'
+      pwMsg =
+        { credentials: 'Current password is wrong.', weak_password: 'Use at least 8 characters.' }[c] ??
+        'Could not change the password.'
     }
   }
 
@@ -257,6 +273,24 @@
   </section>
 
   <section class="panel">
+    <h2 class="panel-title">Start view</h2>
+    <p class="mb-3 text-muted">Where Orbit opens when you launch it.</p>
+    <select
+      bind:value={startView}
+      onchange={() => setStartView(startView)}
+      aria-label="Start view"
+      class="h-[34px] w-full max-w-sm rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+    >
+      <option value="">Inbox</option>
+      <option value="upcoming">Upcoming</option>
+      <option value="goals">Goals</option>
+      {#each startOptions as v (v.id)}
+        <option value="view:{v.id}">{v.name}</option>
+      {/each}
+    </select>
+  </section>
+
+  <section class="panel">
     <h2 class="panel-title">Export</h2>
     <p class="mb-3 text-muted">Download every item as a zip of JSON.</p>
     <Button class="self-start" disabled={exporting} onclick={exportAll}>Export everything</Button>
@@ -320,8 +354,8 @@
     {#if enroll}
       <form onsubmit={confirmTotp} class="flex max-w-sm flex-col gap-3">
         <p class="text-muted">
-          Add this key to your authenticator app, or <a class="link" href={enroll.url}>open it there</a>, then enter
-          the code it shows.
+          Add this key to your authenticator app, or <a class="link" href={enroll.url}>open it there</a>, then enter the
+          code it shows.
         </p>
         <code class="rounded-xs bg-sunk p-2 tracking-wider break-all select-all">{enroll.secret}</code>
         <Input bind:value={totpCode} inputmode="numeric" autocomplete="one-time-code" aria-label="Code" required />
@@ -330,7 +364,14 @@
     {:else}
       <form onsubmit={startTotp} class="flex max-w-sm flex-col gap-3">
         <p class="text-muted">Ask for a code from an authenticator app after the password.</p>
-        <Input type="password" bind:value={totpPassword} placeholder="Current password" aria-label="Current password" autocomplete="current-password" required />
+        <Input
+          type="password"
+          bind:value={totpPassword}
+          placeholder="Current password"
+          aria-label="Current password"
+          autocomplete="current-password"
+          required
+        />
         <Button type="submit" class="self-start">Set up authenticator</Button>
       </form>
     {/if}
