@@ -8,6 +8,7 @@ use axum::{
 use orbit_core::{
     Clocks, Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse,
     VersionError, apply, apply_lww, check_parent, check_version,
+    trash::{self, KEEP_PURGED_MS, KEEP_TRASH_MS},
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::{
@@ -62,7 +63,8 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rows (id TEXT PRIMARY KEY, data TEXT NOT NULL, clocks TEXT NOT NULL, seq INTEGER NOT NULL);
          CREATE INDEX IF NOT EXISTS rows_seq ON rows (seq);
-         CREATE TABLE IF NOT EXISTS processed (uuid TEXT PRIMARY KEY, status TEXT NOT NULL, at INTEGER NOT NULL);",
+         CREATE TABLE IF NOT EXISTS processed (uuid TEXT PRIMARY KEY, status TEXT NOT NULL, at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);",
     )?;
     // Data dirs from before per-field clocks.
     let has_clocks: bool = conn.query_row(
@@ -152,7 +154,9 @@ async fn export(State(st): State<St>, _: auth::Device) -> Result<Response, Statu
 
 /// Every row's `data` as a JSON array, ordered by id.
 fn items_json(conn: &Connection) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut stmt = conn.prepare("SELECT data FROM rows ORDER BY id")?;
+    let mut stmt = conn.prepare(
+        "SELECT data FROM rows WHERE json_extract(data, '$.kind') != 'purged' ORDER BY id",
+    )?;
     let mut items = Vec::new();
     for data in stmt.query_map([], |r| r.get::<_, String>(0))? {
         items.push(serde_json::from_str::<serde_json::Value>(&data?)?);
@@ -196,9 +200,16 @@ fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse
         }
         statuses.insert(cmd.uuid, status);
     }
-    let max: i64 = conn.query_row("SELECT COALESCE(MAX(seq), 0) FROM rows", [], |r| r.get(0))?;
-    // A token from before a data reset can't be trusted: send everything.
-    let since = req.token.filter(|&t| t <= max as u64).unwrap_or(0);
+    purge(conn, now)?;
+    let purge_seq = purge_seq(conn)?;
+    let max = max_seq(conn)?;
+    // A token from before a data reset, or from before purged tombstones were dropped, can't be
+    // trusted: send everything.
+    let since = req
+        .token
+        .filter(|&t| t <= max as u64 && t >= purge_seq as u64)
+        .unwrap_or(0);
+    let full = req.token.is_some() && since == 0 && req.token != Some(0);
     let mut stmt =
         conn.prepare("SELECT id, data, clocks, seq FROM rows WHERE seq > ? ORDER BY seq")?;
     let mut token = since;
@@ -234,7 +245,85 @@ fn run(conn: &mut Connection, req: SyncRequest) -> rusqlite::Result<SyncResponse
         delta,
         token,
         clock,
+        full,
     })
+}
+
+/// The highest seq among live rows and dropped tombstones, so seqs never go back.
+fn max_seq(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT MAX(COALESCE((SELECT MAX(seq) FROM rows), 0), COALESCE((SELECT value FROM meta WHERE key = 'purge_seq'), 0))",
+        [],
+        |r| r.get(0),
+    )
+}
+
+/// The highest seq of a tombstone that was dropped; older tokens can't see those deletions.
+fn purge_seq(conn: &Connection) -> rusqlite::Result<i64> {
+    Ok(conn
+        .query_row("SELECT value FROM meta WHERE key = 'purge_seq'", [], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .unwrap_or(0))
+}
+
+/// Runs `purge` against the data dir at `now_ms` (ms since the epoch). For tests.
+pub fn purge_at(data_dir: &Path, now_ms: i64) -> rusqlite::Result<()> {
+    let mut conn = open(data_dir)?;
+    purge(&mut conn, now_ms)
+}
+
+/// Drops tombstones older than 90 days, then turns rows trashed over 30 days ago, and
+/// everything under them, into `{id, purged}` tombstones.
+fn purge(conn: &mut Connection, now: i64) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    let old_tombstones =
+        "json_extract(data, '$.kind') = 'purged' AND json_extract(data, '$.purged_at') < ?1";
+    let dropped: i64 = tx.query_row(
+        &format!("SELECT COALESCE(MAX(seq), 0) FROM rows WHERE {old_tombstones}"),
+        [now - KEEP_PURGED_MS as i64],
+        |r| r.get(0),
+    )?;
+    if dropped > 0 {
+        let keep = dropped.max(purge_seq(&tx)?);
+        tx.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('purge_seq', ?1)",
+            [keep],
+        )?;
+        tx.execute(
+            &format!("DELETE FROM rows WHERE {old_tombstones}"),
+            [now - KEEP_PURGED_MS as i64],
+        )?;
+    }
+    // Milestones hang under their Goal by `goal_id`; for Tasks and Projects `goal_id` is only a link.
+    let ids: Vec<String> = {
+        let mut stmt = tx.prepare(
+            "WITH RECURSIVE d(id) AS (
+                 SELECT id FROM rows
+                  WHERE json_extract(data, '$.trashed_at') < ?1
+                 UNION
+                 SELECT r.id FROM rows r JOIN d ON
+                     json_extract(r.data, '$.parent_id') = d.id
+                     OR (json_extract(r.data, '$.kind') = 'milestone'
+                         AND json_extract(r.data, '$.goal_id') = d.id)
+             )
+             SELECT id FROM rows WHERE id IN (SELECT id FROM d)
+               AND json_extract(data, '$.kind') != 'purged'",
+        )?;
+        stmt.query_map([now - KEEP_TRASH_MS as i64], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    for id in ids {
+        let id = orbit_core::Uuid::parse_str(&id)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+        let tombstone = Row::Purged(orbit_core::Purged {
+            id,
+            purged_at: now as u64,
+        });
+        write(&tx, &tombstone, &Clocks::new())?;
+    }
+    tx.commit()
 }
 
 /// One transaction per command; a rejected command doesn't stop the batch.
@@ -258,10 +347,37 @@ fn run_command(conn: &mut Connection, cmd: &Command, now: i64) -> rusqlite::Resu
         ),
         None => (None, Clocks::new()),
     };
-    let status = match check_tree(&tx, existing.as_ref(), cmd)? {
+    // Chains from the target, and from the parent a create or move puts it under.
+    let lookup = |id: orbit_core::Uuid| load_row(&tx, &id.to_string()).ok().flatten();
+    let own = existing
+        .as_ref()
+        .map(|r| trash::chain(r, &lookup))
+        .unwrap_or_default();
+    let under = cmd
+        .op
+        .new_parent()
+        .and_then(&lookup)
+        .map(|p| trash::chain(&p, &lookup))
+        .unwrap_or_default();
+    let archived = !matches!(cmd.op, Op::ItemUnarchive { .. })
+        && (trash::any_archived(&own) || trash::any_archived(&under));
+    // A create under a trashed parent: a Task goes to the Inbox, anything else is born trashed.
+    let (adjusted, born_trashed) = match trash::top_trashed(&under) {
+        Some(at) if cmd.op.is_create() => trash::adjust_create(cmd, at),
+        _ => (cmd.clone(), None),
+    };
+    let cmd = &adjusted;
+    let status = match if archived {
+        Some(ErrorCode::Archived)
+    } else {
+        check_tree(&tx, existing.as_ref(), cmd)?
+    } {
         Some(code) => Status::Error { code },
         None => match apply_lww(existing.clone(), &mut clocks, cmd) {
-            Ok(row) => {
+            Ok(mut row) => {
+                if born_trashed.is_some() {
+                    row.set_trashed(born_trashed);
+                }
                 write(&tx, &row, &clocks)?;
                 if let (Some(Row::Page(old)), Op::PageEditBody { body, base_rev, .. }) =
                     (&existing, &cmd.op)
@@ -468,7 +584,7 @@ fn write(conn: &Connection, row: &Row, clocks: &Clocks) -> rusqlite::Result<()> 
     let data = serde_json::to_string(row).map_err(json_err)?;
     let clocks = serde_json::to_string(clocks).map_err(json_err)?;
     conn.execute(
-        "INSERT INTO rows (id, data, clocks, seq) VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq), 0) + 1 FROM rows))
+        "INSERT INTO rows (id, data, clocks, seq) VALUES (?1, ?2, ?3, (SELECT MAX(COALESCE((SELECT MAX(seq) FROM rows), 0), COALESCE((SELECT value FROM meta WHERE key = 'purge_seq'), 0)) + 1))
          ON CONFLICT (id) DO UPDATE SET data = excluded.data, clocks = excluded.clocks, seq = excluded.seq",
         [row.id().to_string(), data, clocks],
     )?;

@@ -1,6 +1,7 @@
 <script lang="ts">
   import Editor from '$lib/Editor.svelte'
-  import { editPageBody, getPage, renamePage, type Page } from '$lib/sync'
+  import { Button } from '$lib/components/ui/button'
+  import { deleteItem, editPageBody, getPage, renamePage, type Page } from '$lib/sync'
 
   let { id, onchange }: { id: string; onchange: () => void } = $props()
 
@@ -31,6 +32,13 @@
     onchange()
   }
 
+  async function remove() {
+    if (!page) return
+    await deleteItem(page.id)
+    onchange()
+    location.hash = '#/inbox'
+  }
+
   async function saveTitle(e: FocusEvent) {
     const input = e.currentTarget as HTMLInputElement
     const value = input.value.trim()
@@ -54,6 +62,7 @@
       class="page-title mb-3 w-full bg-transparent outline-none"
     />
     <Editor value={page.body} label="Page body" onchange={saveBody} />
+    <Button variant="ghost" aria-label="Delete page" class="mt-3" onclick={remove}>Delete page</Button>
   {/key}
 {:else if loaded}
   <p class="text-sm text-muted">This page no longer exists.</p>

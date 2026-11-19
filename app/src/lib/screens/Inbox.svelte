@@ -7,8 +7,10 @@
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import Composer from '$lib/Composer.svelte'
   import {
+    archiveItem,
     completeTask,
     createPage,
+    deleteItem,
     labels,
     moveItem,
     orderBetween,
@@ -67,6 +69,11 @@
     const [y, m, d] = due.date.split('-').map(Number)
     const day = new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
     return due.time ? `${day} ${due.time}` : day
+  }
+  async function leave(fn: (id: string) => Promise<unknown>) {
+    await fn(parentId)
+    onchange()
+    location.hash = '#/inbox'
   }
   function closeDrawer() {
     openId = null
@@ -139,6 +146,8 @@
   <h1 class="page-title flex-1">{title}</h1>
   {#if parentId !== inbox_id()}
     <Button variant="ghost" onclick={() => onadd?.(`@${title} `)}>Add task</Button>
+    <Button variant="ghost" aria-label="Archive {title}" onclick={() => leave(archiveItem)}>Archive</Button>
+    <Button variant="ghost" aria-label="Delete {title}" onclick={() => leave(deleteItem)}>Delete</Button>
   {/if}
 </div>
 <div class="mb-4">

@@ -50,7 +50,7 @@ async fn no_token_returns_a_full_snapshot_with_inbox() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "" }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "", "trashed_at": null, "archived_at": null }])
     );
     assert_eq!(res["statuses"], json!({}));
     assert!(res["token"].as_u64().unwrap() > 0);
@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -180,7 +180,7 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
     let (_, res) = sync(&app, json!({ "v": 1, "token": 40, "commands": [] })).await;
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "" }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "", "trashed_at": null, "archived_at": null }])
     );
     assert_eq!(res["token"], 1);
 }
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "trashed_at": null }])
     );
 }
 
@@ -730,4 +730,199 @@ async fn a_page_cannot_live_under_a_page_or_the_inbox() {
             "{n:x}"
         );
     }
+}
+
+const DAY: u64 = 24 * 60 * 60 * 1000;
+
+fn real_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+/// Area > Project > (Section, Task), all created at `now`; returns the sync token.
+async fn tree(app: &(Router, String), now: u64) -> Value {
+    let (_, res) = sync(
+        app,
+        json!({ "v": 1, "commands": [
+            cmd(&c(0xe1), "area.create", json!({ "id": AREA, "name": "Home", "order": "a" }), now),
+            cmd(&c(0xe2), "project.create", json!({ "id": PROJECT, "parent_id": AREA, "name": "P", "order": "a" }), now),
+            cmd(&c(0xe3), "section.create", json!({ "id": SUB, "parent_id": PROJECT, "name": "S", "order": "a" }), now),
+            cmd(&c(0xe4), "task.create", json!({ "id": TASK, "title": "T", "parent_id": PROJECT, "order": "a" }), now),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"].as_object().unwrap().len(), 4);
+    res["token"].clone()
+}
+
+fn row<'a>(res: &'a Value, id: &str) -> &'a Value {
+    res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == id)
+        .unwrap_or_else(|| panic!("no row {id} in {res}"))
+}
+
+#[tokio::test]
+async fn delete_sets_trashed_at_and_restore_clears_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xe5), "item.delete", json!({ "id": TASK }), now + 10),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xe5)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, TASK)["trashed_at"], now + 10);
+    let t1 = res["token"].clone();
+
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t1, "commands": [
+            cmd(&c(0xe6), "item.restore", json!({ "id": TASK }), now + 20),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xe6)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, TASK)["trashed_at"], Value::Null);
+}
+
+#[tokio::test]
+async fn an_edit_to_a_trashed_task_applies_and_it_stays_trashed() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xe5), "item.delete", json!({ "id": TASK }), now + 10),
+            cmd(&c(0xe6), "task.update", json!({ "id": TASK, "title": "Renamed" }), now + 20),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xe6)], json!({ "status": "ok" }));
+    let task = row(&res, TASK);
+    assert_eq!(task["title"], "Renamed");
+    assert_eq!(task["trashed_at"], now + 10);
+}
+
+#[tokio::test]
+async fn creates_under_a_trashed_parent_are_trashed_or_captured_to_the_inbox() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let section = c(0xf1);
+    let task = c(0xf2);
+
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0xe5), "item.delete", json!({ "id": PROJECT }), now + 10),
+        cmd(&c(0xe6), "section.create", json!({ "id": section, "parent_id": PROJECT, "name": "Late", "order": "b" }), now + 5),
+        cmd(&c(0xe7), "task.create", json!({ "id": task, "title": "Late", "parent_id": PROJECT, "order": "b" }), now + 5),
+    ]})).await;
+    assert_eq!(res["statuses"][c(0xe6)], json!({ "status": "ok" }));
+    assert_eq!(res["statuses"][c(0xe7)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, &section)["trashed_at"], now + 10);
+    assert_eq!(row(&res, &task)["parent_id"], INBOX);
+    assert_eq!(row(&res, &task)["trashed_at"], Value::Null);
+}
+
+#[tokio::test]
+async fn purge_leaves_tombstones_that_expire_and_an_old_token_gets_a_full_resync() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xe5), "item.delete", json!({ "id": PROJECT }), now),
+        ]}),
+    )
+    .await;
+    let t1 = res["token"].clone();
+
+    // Under 30 days: still in Trash.
+    orbit_server::purge_at(dir.path(), (now + 29 * DAY) as i64).unwrap();
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t1, "commands": [] })).await;
+    assert_eq!(res["delta"], json!([]));
+
+    let purged_at = now + 31 * DAY;
+    orbit_server::purge_at(dir.path(), purged_at as i64).unwrap();
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t1, "commands": [] })).await;
+    assert_eq!(res["full"], false);
+    for id in [PROJECT, SUB, TASK] {
+        assert_eq!(
+            row(&res, id),
+            &json!({ "kind": "purged", "id": id, "purged_at": purged_at })
+        );
+    }
+    assert_eq!(res["delta"].as_array().unwrap().len(), 3);
+    // The Area was never trashed.
+    let (_, all) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    assert_eq!(row(&all, AREA)["kind"], "area");
+    let t2 = res["token"].clone();
+
+    // Tombstones are dropped after 90 more days; a token from before that is stale.
+    orbit_server::purge_at(dir.path(), (purged_at + 91 * DAY) as i64).unwrap();
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [] })).await;
+    assert_eq!(res["full"], true);
+    let ids: Vec<&str> = res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&AREA) && !ids.contains(&PROJECT));
+    // A token taken after the purge still works.
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t2, "commands": [] })).await;
+    assert_eq!(res["full"], false);
+}
+
+#[tokio::test]
+async fn an_archived_project_is_read_only_until_unarchived() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0xe5), "item.archive", json!({ "id": PROJECT }), now + 10),
+        cmd(&c(0xe6), "task.update", json!({ "id": TASK, "title": "Nope" }), now + 20),
+        cmd(&c(0xe7), "task.create", json!({ "id": c(0xf2), "title": "New", "parent_id": PROJECT }), now + 21),
+    ]})).await;
+    assert_eq!(res["statuses"][c(0xe5)], json!({ "status": "ok" }));
+    assert_eq!(
+        res["statuses"][c(0xe6)],
+        json!({ "status": "error", "code": "archived" })
+    );
+    assert_eq!(
+        res["statuses"][c(0xe7)],
+        json!({ "status": "error", "code": "archived" })
+    );
+    assert_eq!(row(&res, TASK)["title"], "T");
+    let t1 = res["token"].clone();
+
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t1, "commands": [
+            cmd(&c(0xe8), "item.unarchive", json!({ "id": PROJECT }), now + 30),
+            cmd(&c(0xe9), "task.update", json!({ "id": TASK, "title": "Yes" }), now + 40),
+        ]}),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xe8)], json!({ "status": "ok" }));
+    assert_eq!(res["statuses"][c(0xe9)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, TASK)["title"], "Yes");
+    assert_eq!(row(&res, PROJECT)["archived_at"], Value::Null);
 }

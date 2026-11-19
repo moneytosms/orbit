@@ -169,6 +169,11 @@ impl Client {
         })
     }
 
+    /// Any local row by id.
+    pub fn get_row(&self, id: Uuid) -> Result<Option<Row>> {
+        row(&self.db, id)
+    }
+
     pub fn outbox_len(&self) -> Result<usize> {
         let n: i64 = self
             .db
@@ -214,8 +219,16 @@ impl Client {
                 }
                 tx.execute("DELETE FROM outbox WHERE uuid = ?", [cmd.uuid.to_string()])?;
             }
+            if res.full {
+                tx.execute("DELETE FROM rows", [])?;
+            }
             for r in &res.delta {
-                put(&tx, r)?;
+                match r {
+                    Row::Purged(p) => {
+                        tx.execute("DELETE FROM rows WHERE id = ?", [p.id.to_string()])?;
+                    }
+                    _ => put(&tx, r)?,
+                }
             }
             set_meta(&tx, "token", &res.token.to_string())?;
             if let Some(seen) = &res.clock {

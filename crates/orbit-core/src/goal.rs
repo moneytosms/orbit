@@ -52,6 +52,12 @@ pub struct Goal {
     /// Unix ms of the last edit.
     #[serde(default)]
     pub touched_at: Option<u64>,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
+    /// Unix ms when it was archived.
+    #[serde(default)]
+    pub archived_at: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -66,6 +72,9 @@ pub struct Milestone {
     pub done: bool,
     #[serde(default)]
     pub order: String,
+    /// Unix ms when it went to the Trash.
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
 }
 
 /// The Goal a Task counts towards: its own link, else its Project ancestor's.
@@ -175,6 +184,8 @@ mod tests {
             completed_at: None,
             order: String::new(),
             touched_at: None,
+            trashed_at: None,
+            archived_at: None,
         }
     }
 
@@ -193,6 +204,7 @@ mod tests {
             label_ids: vec![],
             recurrence: None,
             goal_id,
+            trashed_at: None,
         })
     }
 
@@ -203,6 +215,8 @@ mod tests {
             name: "P".into(),
             order: String::new(),
             goal_id,
+            trashed_at: None,
+            archived_at: None,
         })
     }
 
@@ -214,6 +228,7 @@ mod tests {
             date: None,
             done,
             order: String::new(),
+            trashed_at: None,
         })
     }
 
@@ -222,6 +237,8 @@ mod tests {
             id: uid(n),
             name: "A".into(),
             order: String::new(),
+            trashed_at: None,
+            archived_at: None,
         })
     }
 

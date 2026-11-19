@@ -214,3 +214,66 @@ async fn two_devices_reordering_the_same_task_converge_on_the_later_move() {
         assert_eq!((t.parent_id, t.order.as_str()), (area, "c"));
     }
 }
+
+#[tokio::test]
+async fn offline_creates_under_a_project_trashed_meanwhile_follow_it_into_trash() {
+    let s = server().await;
+    let (mut a, mut b) = (device(&s).await, device(&s).await);
+    // Real time: the server purges anything trashed 30 days before its own clock.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let area = a.create_area("Home", "a", now).unwrap();
+    let project = orbit_core::new_id(now, &[1; 10]);
+    a.enqueue(
+        Op::ProjectCreate {
+            id: project,
+            parent_id: area,
+            name: "P".into(),
+            order: "a".into(),
+        },
+        now,
+    )
+    .unwrap();
+    a.sync(now).await.unwrap();
+    b.sync(now).await.unwrap();
+
+    // A trashes the project while B, offline, adds a task and a section to it.
+    a.enqueue(Op::ItemDelete { id: project }, now + 1000)
+        .unwrap();
+    let task = orbit_core::new_id(now, &[2; 10]);
+    let section = orbit_core::new_id(now, &[3; 10]);
+    b.enqueue(
+        Op::TaskCreate {
+            id: task,
+            title: "Late".into(),
+            parent_id: Some(project),
+            order: "a".into(),
+        },
+        now + 500,
+    )
+    .unwrap();
+    b.enqueue(
+        Op::SectionCreate {
+            id: section,
+            parent_id: project,
+            name: "Late".into(),
+            order: "a".into(),
+        },
+        now + 600,
+    )
+    .unwrap();
+    a.sync(now + 2000).await.unwrap();
+    assert!(b.sync(now + 2000).await.unwrap().is_empty());
+    b.sync(now + 3000).await.unwrap();
+
+    {
+        let d = &b;
+        assert_eq!(d.task(task).unwrap().unwrap().parent_id, orbit_core::INBOX);
+        let Some(orbit_core::Row::Section(sec)) = d.get_row(section).unwrap() else {
+            panic!("no section")
+        };
+        assert_eq!(sec.trashed_at, Some(now + 1000));
+    }
+}

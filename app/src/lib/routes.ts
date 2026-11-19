@@ -6,6 +6,7 @@ import Map from '@lucide/svelte/icons/map'
 import Repeat from '@lucide/svelte/icons/repeat'
 import Settings from '@lucide/svelte/icons/settings'
 import Target from '@lucide/svelte/icons/target'
+import Trash2 from '@lucide/svelte/icons/trash-2'
 
 /** Every screen in the shell, by hash route. Inbox, Settings and Goals are built; the rest show a stub. */
 export const routes = {
@@ -16,6 +17,7 @@ export const routes = {
   roadmaps: { label: 'Roadmaps', icon: Map },
   routines: { label: 'Routines', icon: Repeat },
   profile: { label: 'Profile', icon: CircleUser },
+  trash: { label: 'Trash', icon: Trash2 },
   settings: { label: 'Settings', icon: Settings },
 }
 export type Route = keyof typeof routes

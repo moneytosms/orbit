@@ -2,6 +2,7 @@ import {
   apply,
   completion_for,
   goal_progress,
+  hidden_ids,
   inbox_id,
   new_id,
   next_hlc,
@@ -27,8 +28,16 @@ export type Task = {
   label_ids: string[]
   recurrence: Recurrence | null
   goal_id: string | null
+  trashed_at: number | null
 }
-export type Area = { kind: 'area'; id: string; name: string; order: string }
+export type Area = {
+  kind: 'area'
+  id: string
+  name: string
+  order: string
+  trashed_at: number | null
+  archived_at: number | null
+}
 export type Project = {
   kind: 'project'
   id: string
@@ -36,8 +45,17 @@ export type Project = {
   name: string
   order: string
   goal_id: string | null
+  trashed_at: number | null
+  archived_at: number | null
 }
-export type Section = { kind: 'section'; id: string; parent_id: string; name: string; order: string }
+export type Section = {
+  kind: 'section'
+  id: string
+  parent_id: string
+  name: string
+  order: string
+  trashed_at: number | null
+}
 export type Label = { kind: 'label'; id: string; name: string }
 export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
@@ -61,6 +79,8 @@ export type Goal = {
   target_date: string | null
   completed_at: number | null
   order: string
+  trashed_at: number | null
+  archived_at: number | null
 }
 export type Milestone = {
   kind: 'milestone'
@@ -70,6 +90,7 @@ export type Milestone = {
   date: string | null
   done: boolean
   order: string
+  trashed_at: number | null
 }
 export type Page = {
   kind: 'page'
@@ -79,6 +100,7 @@ export type Page = {
   body: string
   rev: number
   order: string
+  trashed_at: number | null
 }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
 type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page
@@ -106,10 +128,16 @@ const clock = async (meta: IDBObjectStore): Promise<Hlc> =>
   (await req(meta.get('hlc'))) ?? { wall: 0, counter: 0, device: newId() }
 
 const allRows = () => tx(['rows'], (s) => req<Row[]>(s('rows').getAll()))
+/** Rows that are not trashed, archived or under such a row. */
+const visibleRows = async () => {
+  const rows = await allRows()
+  const hidden = new Set<string>(hidden_ids(JSON.stringify(rows)))
+  return rows.filter((r) => !hidden.has(r.id))
+}
 
 /** Areas except the Inbox, each with its Projects, both in display order. */
 export async function tree(): Promise<{ area: Area; projects: Project[] }[]> {
-  const rows = await allRows()
+  const rows = await visibleRows()
   const inbox = inbox_id()
   const areas = rows.filter((r): r is Area => r.kind === 'area' && r.id !== inbox).sort(byOrder)
   const projects = rows.filter((r): r is Project => r.kind === 'project')
@@ -118,7 +146,7 @@ export async function tree(): Promise<{ area: Area; projects: Project[] }[]> {
 
 /** Open Tasks under `parentId`, each followed depth-first by its open subtasks. Depth caps at 3. */
 export async function tasksIn(parentId: string): Promise<{ task: Task; depth: number }[]> {
-  const open = (await allRows()).filter((r): r is Task => r.kind === 'task' && r.completed_at === null)
+  const open = (await visibleRows()).filter((r): r is Task => r.kind === 'task' && r.completed_at === null)
   const out: { task: Task; depth: number }[] = []
   const seen = new Set<string>()
   const walk = (parent: string, depth: number) => {
@@ -191,6 +219,28 @@ export async function getSettings(): Promise<{ theme: string; accent: string } |
   return row ? { theme: row.theme, accent: row.accent } : null
 }
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
+export const deleteItem = (id: string) => enqueue('item.delete', { id })
+export const restoreItem = (id: string) => enqueue('item.restore', { id })
+export const archiveItem = (id: string) => enqueue('item.archive', { id })
+export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
+export type Trashed = Exclude<Row, Completion | Label | Settings>
+/** Items deleted by hand (their own `trashed_at`), newest first. */
+export async function trashed(): Promise<Trashed[]> {
+  return (await allRows())
+    .filter((r): r is Trashed => 'trashed_at' in r && r.trashed_at != null)
+    .sort((a, b) => (b.trashed_at ?? 0) - (a.trashed_at ?? 0))
+}
+/** Areas, Projects and Goals archived by hand and not trashed. */
+export async function archived(): Promise<(Area | Project | Goal)[]> {
+  return (await allRows())
+    .filter(
+      (r): r is Area | Project | Goal =>
+        (r.kind === 'area' || r.kind === 'project' || r.kind === 'goal') &&
+        r.archived_at != null &&
+        r.trashed_at == null,
+    )
+    .sort(byOrder)
+}
 export const moveItem = (id: string, parentId: string | null, order: string) =>
   enqueue('item.move', { id, parent_id: parentId, order })
 /** Reparents `id` to the end of `parentId`'s children. */
@@ -240,19 +290,21 @@ export const editPageBody = (id: string, body: string, baseRev: number) =>
 export const getPage = (id: string) => tx(['rows'], (s) => req<Page | undefined>(s('rows').get(id)))
 /** Pages under an Area, Project or Goal, in display order. */
 export async function pagesOf(parentId: string): Promise<Page[]> {
-  return (await allRows()).filter((r): r is Page => r.kind === 'page' && r.parent_id === parentId).sort(byOrder)
+  return (await visibleRows()).filter((r): r is Page => r.kind === 'page' && r.parent_id === parentId).sort(byOrder)
 }
 /** All Pages, for quick-add `%page` matching. */
 export async function pages(): Promise<Page[]> {
-  return (await allRows()).filter((r): r is Page => r.kind === 'page').sort(byOrder)
+  return (await visibleRows()).filter((r): r is Page => r.kind === 'page').sort(byOrder)
 }
 
 /** Active (not completed) Goals, in display order. */
 export async function goals(): Promise<Goal[]> {
-  return (await allRows()).filter((r): r is Goal => r.kind === 'goal' && r.completed_at === null).sort(byOrder)
+  return (await visibleRows()).filter((r): r is Goal => r.kind === 'goal' && r.completed_at === null).sort(byOrder)
 }
 export async function milestonesOf(goalId: string): Promise<Milestone[]> {
-  return (await allRows()).filter((r): r is Milestone => r.kind === 'milestone' && r.goal_id === goalId).sort(byOrder)
+  return (await visibleRows())
+    .filter((r): r is Milestone => r.kind === 'milestone' && r.goal_id === goalId)
+    .sort(byOrder)
 }
 /** The Goal a Task inherits from its Project (through any parent Tasks), if any. */
 export async function inheritedGoal(taskId: string): Promise<string | null> {
@@ -408,7 +460,13 @@ async function flush() {
     }
     if (!res.ok) throw new Error(`sync: HTTP ${res.status}`)
     type Status = { status: 'ok' } | { status: 'error'; code: string }
-    const body: { statuses: Record<string, Status>; delta: Row[]; token: number; clock: Hlc | null } = await res.json()
+    const body: {
+      statuses: Record<string, Status>
+      delta: (Row | { kind: 'purged'; id: string })[]
+      token: number
+      full?: boolean
+      clock: Hlc | null
+    } = await res.json()
     const codes: string[] = []
     let answered = 0
     await tx(['rows', 'outbox', 'meta'], async (s) => {
@@ -423,7 +481,11 @@ async function flush() {
         }
         s('outbox').delete(cmd.uuid)
       }
-      for (const row of body.delta) s('rows').put(row)
+      if (body.full) s('rows').clear()
+      for (const row of body.delta) {
+        if (row.kind === 'purged') s('rows').delete(row.id)
+        else s('rows').put(row)
+      }
       s('meta').put(body.token, 'token')
       if (body.clock) {
         const mine = JSON.stringify(await clock(s('meta')))

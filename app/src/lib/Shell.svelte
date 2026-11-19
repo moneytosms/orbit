@@ -183,6 +183,7 @@
     </section>
     <nav class="mt-auto flex flex-col gap-0.5" aria-label="Account">
       {@render row('profile')}
+      {@render row('trash')}
       {@render row('settings')}
     </nav>
   </div>
@@ -225,7 +226,11 @@
         </button>
       </div>
     {:else if t === 'browse'}
-      <button type="button" onclick={() => (drawer = true)} class="flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted">
+      <button
+        type="button"
+        onclick={() => (drawer = true)}
+        class="flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
+      >
         <LayoutGrid size={20} class="text-icon" /> Browse
       </button>
     {:else}
