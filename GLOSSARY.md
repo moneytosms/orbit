@@ -69,7 +69,7 @@ A sibling Page saved when the same Page body was edited on two devices before sy
 _Avoid_: Duplicate, merge
 
 **Link**:
-An inline reference from a Page or Task description to a Page, Task, Goal, Project or Area.
+An inline reference from a Page or Task description to any item or Roadmap; it always shows the target's current title.
 
 **Backlink**:
 A Link seen from the thing it points at.
