@@ -2,3 +2,14 @@
 name = "orbit-server"
 version.workspace = true
 edition.workspace = true
+
+[dependencies]
+axum = "0.8.9"
+orbit-core = { version = "0.0.0", path = "../orbit-core" }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }

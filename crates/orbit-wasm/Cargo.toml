@@ -8,3 +8,5 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 orbit-core = { path = "../orbit-core" }
+serde_json = "1.0.154"
+wasm-bindgen = "0.2.130"

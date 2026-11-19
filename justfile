@@ -1,5 +1,5 @@
 # fmt, clippy, cargo test, wasm build, svelte-check, vitest, web build
-check:
+check: wasm
     pnpm -C app install --frozen-lockfile
     pnpm -C app check
     pnpm -C app test
@@ -7,7 +7,19 @@ check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
-    cargo build -p orbit-wasm --target wasm32-unknown-unknown
+
+# Build orbit-core for the browser into app/wasm
+wasm:
+    wasm-pack build crates/orbit-wasm --target web --out-dir ../../app/wasm --no-pack
+
+# Sync server on 127.0.0.1:8080, data in ./data
+server:
+    cargo run -p orbit-server
+
+# Web app dev server; proxies /sync to `just server`
+web: wasm
+    pnpm -C app install
+    pnpm -C app dev
 
 # Run `just check` before every push
 hooks:
