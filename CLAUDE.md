@@ -22,10 +22,11 @@ Personal task + notes app (Todoist-style). Rust axum server + SQLite is source o
 Everything is already installed under `~/.toolchain`; don't install Rust, JDK, Gradle or Android SDK again. `~/.zshenv` sources `~/.toolchain/env.sh` for every zsh (incl. headless agents); other shells: `source ~/.toolchain/env.sh`.
 
 - Rust: `RUSTUP_HOME`/`CARGO_HOME` in `~/.toolchain/{rustup,cargo}`. `rust-toolchain.toml` pins stable + clippy/rustfmt + wasm32.
-- sccache: `RUSTC_WRAPPER=sccache` (set in `~/.zshenv`), cache `~/.cache/sccache`, 10 GiB cap. Worktrees share it, so fresh builds are cheap.
+- Rust targets already installed: x86_64-linux-gnu, wasm32, and all four Android (aarch64, armv7, i686, x86_64). No `rustup target add`.
+- sccache: `RUSTC_WRAPPER=sccache` (set in `~/.zshenv`), cache `~/.cache/sccache` (~2 GiB warm, 10 GiB cap), ~95% hit rate. It already holds compiled deps, so a fresh worktree or post-`cargo clean` build is mostly cache hits: don't avoid builds or copy `target/` around to save time. Don't override `RUSTC_WRAPPER` or `CARGO_TARGET_DIR`. `sccache --show-stats` to check.
 - JDK 21: `JAVA_HOME=~/.toolchain/jdk`.
-- Gradle: no system `gradle`; use the wrapper. `GRADLE_USER_HOME=~/.toolchain/gradle` already caches dist 9.6.1.
-- Android: `ANDROID_HOME=~/.toolchain/android` with platforms 36/37, build-tools 36.0.0, NDK 28.2 (`NDK_HOME`), `adb`, `emulator`, `sdkmanager` on PATH. AVD `orbit` in `~/.toolchain/android-user/avd`.
+- Gradle: no system `gradle`; use the wrapper. `GRADLE_USER_HOME=~/.toolchain/gradle` already caches dist 9.6.1, Android Gradle Plugin 9.3.1 and Kotlin (~1 GiB), so builds work offline-ish. Don't point Gradle at another home.
+- Android: `ANDROID_HOME=~/.toolchain/android` with platforms 36/37, build-tools 36.0.0, NDK 28.2 (`NDK_HOME`), system image android-36 google_apis x86_64, `adb`, `emulator`, `sdkmanager` on PATH. AVD `orbit` in `~/.toolchain/android-user/avd`. Don't `sdkmanager --install` what's listed here.
 - Disk: `target/` grows fast; `cargo clean` when space is low (sccache keeps rebuilds quick). `/tmp` is RAM-backed: put worktrees and big builds on disk.
 
 ## Agent skills
