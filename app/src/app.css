@@ -136,10 +136,6 @@
   #app {
     @apply bg-bg text-text h-full font-sans text-sm antialiased;
   }
-  :focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-  }
   svg.lucide {
     stroke-width: 1.8;
   }
@@ -165,4 +161,12 @@
   .link {
     @apply text-accent-text underline decoration-accent-line underline-offset-2;
   }
+}
+
+/* Unlayered so it beats `shadow-*` utilities; fields keep their own accent-soft ring. */
+:focus-visible:not(input, textarea) {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
 }

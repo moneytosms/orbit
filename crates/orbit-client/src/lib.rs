@@ -37,7 +37,8 @@ impl Client {
     }
 
     /// Logs in as a new Device. Its id becomes this replica's HLC device; the outbox is kept,
-    /// so changes made while signed out go out on the next sync.
+    /// so changes made while signed out go out on the next sync. Fails with the server's error
+    /// code, e.g. `totp` when a code is needed.
     pub async fn login(
         &mut self,
         password: &str,
@@ -46,15 +47,18 @@ impl Client {
         platform: &str,
     ) -> Result<Uuid> {
         let body = serde_json::json!({ "password": password, "totp": totp, "name": name, "platform": platform });
-        let res: serde_json::Value = self
+        let res = self
             .http
             .post(format!("{}/auth/login", self.url))
             .json(&body)
             .send()
-            .await?
-            .error_for_status()?
-            .json()
             .await?;
+        let status = res.status();
+        let res: serde_json::Value = res.json().await.unwrap_or_default();
+        if !status.is_success() {
+            // The server's code (`credentials`, `totp`, `rate_limited`, ...) tells the caller what to ask for.
+            return Err(res["error"].as_str().unwrap_or(status.as_str()).into());
+        }
         let (Some(device), Some(token)) = (res["device"].as_str(), res["token"].as_str()) else {
             return Err(format!("unexpected login response: {res}").into());
         };

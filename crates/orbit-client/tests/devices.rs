@@ -128,11 +128,11 @@ async fn login_makes_the_device_id_the_hlc_device() {
         )
         .unwrap();
     assert_eq!(cmd.hlc.device, id);
-    assert!(
-        a.login("wrong password", None, "Laptop", "cli")
-            .await
-            .is_err()
-    );
+    let err = a
+        .login("wrong password", None, "Laptop", "cli")
+        .await
+        .unwrap_err();
+    assert_eq!(err.to_string(), "credentials");
 }
 
 #[tokio::test]

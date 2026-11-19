@@ -32,11 +32,15 @@
   let newToken = $state('')
   async function createToken(e: SubmitEvent) {
     e.preventDefault()
-    newToken = (await auth.createToken(tokenName)).token
-    tokenName = ''
-    load()
+    try {
+      newToken = (await auth.createToken(tokenName)).token
+      tokenName = ''
+      load()
+    } catch (err) {
+      listError = err instanceof Error && err.message === 'device_name' ? 'Give the token a name.' : "Couldn't create the token."
+    }
   }
-  const revoke = (id: string) => auth.revoke(id).then(load)
+  const revoke = (id: string) => auth.revoke(id).then(load, () => (listError = "Couldn't revoke that Device."))
 
   let current = $state('')
   let next = $state('')
