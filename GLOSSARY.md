@@ -75,12 +75,23 @@ An inline reference from a Page or Task description to a Page, Task, Goal, Proje
 A Link seen from the thing it points at.
 
 **Stardust**:
-The points earned by completing Tasks, Milestones, Goals and Check-ins; shown only on the profile, never deducted.
+The points earned by completing Tasks, Milestones, Goals and Check-ins, and by earning Badges and Patches; shown only on the profile, never deducted.
 _Avoid_: Karma, XP, score
 
 **Level**:
 A named rank reached by total Stardust, from Dust to Universe.
 _Avoid_: Rank, tier
+
+**Badge**:
+An achievement earned once, or repeatedly for some, in one of five tiers from Meteorite to Black Hole; never taken away.
+_Avoid_: Achievement, trophy, medal
+
+**Patch**:
+A one-of-a-kind award for a Roadmap whose every Phase is done.
+_Avoid_: Badge (that is a catalog achievement)
+
+**Gamification**:
+The single setting that shows or hides Stardust, Levels, Badges and Patches; streaks are not part of it.
 
 **Daily target**:
 The number of Tasks to complete in a day (with a weekly counterpart); hitting it on consecutive working days builds a streak.
