@@ -20,6 +20,8 @@
     reorderViews,
     updateView,
     views,
+    VIEW_INBOX,
+    VIEW_UPCOMING,
     type Area,
     type Project,
     type View,
@@ -62,7 +64,8 @@
     loadViews()
   })
   async function loadViews() {
-    pinned = await pinnedViews()
+    // Inbox and Upcoming have fixed nav rows instead of pins.
+    pinned = (await pinnedViews()).filter((v) => v.id !== VIEW_INBOX && v.id !== VIEW_UPCOMING)
     hiddenViews = (await views()).filter((v) => v.hidden)
   }
   async function newView() {
@@ -94,7 +97,10 @@
       newTask()
     }
   }
-  const tabs: (Route | 'add' | 'browse')[] = ['home', 'upcoming', 'add', 'routines', 'browse']
+  const isHidden = (id: string) => hiddenViews.some((v) => v.id === id)
+  let tabs: (Route | 'add' | 'browse')[] = $derived(
+    isHidden(VIEW_UPCOMING) ? ['home', 'add', 'routines', 'browse'] : ['home', 'upcoming', 'add', 'routines', 'browse'],
+  )
 
   // A drop takes the order between its new neighbours.
   function considerAreas(e: CustomEvent<DndEvent<AreaItem>>) {
@@ -218,8 +224,12 @@
     </div>
     <nav class="flex flex-col gap-0.5" aria-label="Main">
       {@render row('home')}
-      <DropTarget parentId={inbox_id()}>{@render row('inbox', inboxCount)}</DropTarget>
-      {@render row('upcoming')}
+      {#if !isHidden(VIEW_INBOX)}
+        <DropTarget parentId={inbox_id()}>{@render row('inbox', inboxCount)}</DropTarget>
+      {/if}
+      {#if !isHidden(VIEW_UPCOMING)}
+        {@render row('upcoming')}
+      {/if}
     </nav>
     <nav class="flex flex-col gap-0.5" aria-label="Plans">
       {@render row('goals')}
@@ -307,7 +317,7 @@
 
 <nav
   aria-label="Tabs"
-  class="fixed inset-x-0 bottom-0 grid h-[72px] grid-cols-5 border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
+  class="fixed inset-x-0 bottom-0 grid h-[72px] grid-flow-col auto-cols-fr border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
 >
   {#each tabs as t (t)}
     {#if t === 'add'}

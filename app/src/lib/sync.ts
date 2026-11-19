@@ -2,6 +2,7 @@ import {
   apply,
   builtin_views,
   completion_for,
+  completion_id,
   evaluate_view,
   goal_progress,
   hidden_ids,
@@ -487,13 +488,15 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
   return id
 }
 
+const COMPLETES = ['task.complete', 'goal.complete', 'milestone.update']
+
 /** Applies a command to its row via core; throws the error code if core rejects it. */
 async function predict(rows: IDBObjectStore, cmd: Command) {
   const existing = await req(rows.get((cmd.args.id as string) ?? SETTINGS))
   const from = existing ? JSON.stringify(existing) : undefined
   rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
   // A completion also logs a record, as the server does.
-  if (['task.complete', 'goal.complete', 'milestone.update'].includes(cmd.type)) {
+  if (COMPLETES.includes(cmd.type)) {
     const log = completion_for(from, JSON.stringify(cmd))
     if (log) rows.put(JSON.parse(log))
   }
@@ -577,6 +580,7 @@ async function flush() {
         if (status.status === 'error') {
           // Undo the guess; the delta brings back the server's row if it has one.
           s('rows').delete((cmd.args.id as string) ?? SETTINGS)
+          if (COMPLETES.includes(cmd.type)) s('rows').delete(completion_id(cmd.args.id as string, cmd.uuid))
           codes.push(status.code)
         }
         s('outbox').delete(cmd.uuid)

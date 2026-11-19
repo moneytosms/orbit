@@ -165,6 +165,20 @@ test('a rejected command is dropped, its guess undone and the rejection reported
   expect(requests.at(-1)!.commands).toEqual([])
 })
 
+test('a rejected completion drops its guessed completion record', async () => {
+  const id = await createTask('Rejected done')
+  await sync()
+  await completeTask(id)
+  const completions = () =>
+    tx(['rows'], (s) => req<{ kind: string; item_id?: string }[]>(s('rows').getAll())).then((rows) =>
+      rows.filter((r) => r.kind === 'completion' && r.item_id === id),
+    )
+  expect(await completions()).toHaveLength(1)
+  rejectWith = 'archived'
+  await sync()
+  expect(await completions()).toEqual([])
+})
+
 test('an old protocol version (426) keeps the outbox for after an update', async () => {
   await createTask('Kept')
   httpStatus = 426

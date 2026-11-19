@@ -488,6 +488,16 @@ fn check_tree(
         if let Err(code) = orbit_core::goal::check_nesting(p, grandparent.as_ref()) {
             return Ok(Some(code));
         }
+        // A Goal with Sub-goals of its own can't become a Sub-goal.
+        let has_subgoals: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM rows WHERE json_extract(data, '$.kind') = 'goal'
+             AND json_extract(data, '$.parent_id') = ?1)",
+            [candidate.id().to_string()],
+            |r| r.get(0),
+        )?;
+        if has_subgoals {
+            return Ok(Some(ErrorCode::BadParent));
+        }
     }
     // Walk up from the new parent; meeting the row itself would make a cycle.
     let mut next = candidate.parent_id();

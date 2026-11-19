@@ -75,6 +75,10 @@
     if (location.hash) return
     const stored = (await getSettings())?.start_view
     if (!stored) return
+    // A hidden start view falls back to the default screen.
+    const id =
+      stored === 'upcoming' ? VIEW_UPCOMING : stored.startsWith('view:') ? stored.slice('view:'.length) : undefined
+    if (id && (await views()).find((v) => v.id === id)?.hidden !== false) return
     location.hash = stored.startsWith('view:') ? `#/view/${stored.slice('view:'.length)}` : `#/${stored}`
     screen = readScreen()
   }

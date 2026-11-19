@@ -340,6 +340,9 @@
                 <Check size={12} strokeWidth={3} />
               </button>
               <span class="min-w-0 flex-1 truncate">{r.title}</span>
+              {#if r.recurrence}
+                <span class="text-xs text-muted" aria-label="Repeats {r.recurrence.rule}">↻</span>
+              {/if}
             {/if}
             {#if r.due}
               <span class="text-xs {r.due.date < today() ? 'text-danger' : 'text-muted'}">{dueText(r.due)}</span>

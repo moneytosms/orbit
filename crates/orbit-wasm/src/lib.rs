@@ -44,6 +44,12 @@ pub fn completion_for(existing: Option<String>, command: &str) -> Result<Option<
     }
 }
 
+/// The id of the completion record `cmd_uuid` logs for `item_id`, so a rejected guess can be dropped.
+#[wasm_bindgen]
+pub fn completion_id(item_id: &str, cmd_uuid: &str) -> Result<String, JsError> {
+    Ok(orbit_core::completion_id(item_id.parse()?, cmd_uuid.parse()?).to_string())
+}
+
 /// `{progress, behind}` for goal `goal_id` over `rows_json` (a Row array); `today` is `YYYY-MM-DD`.
 #[wasm_bindgen]
 pub fn goal_progress(rows_json: &str, goal_id: &str, today: &str) -> Result<String, JsError> {

@@ -543,16 +543,32 @@ async fn completing_a_goal_or_milestone_logs_a_completion_and_sub_goals_stay_one
             1005,
         ),
         cmd(&c(0xc7), "goal.complete", json!({ "id": goal }), 1006),
+        cmd(
+            &c(0xc8),
+            "goal.create",
+            json!({ "id": c(0x14), "parent_id": AREA, "name": "Other", "order": "b" }),
+            1007,
+        ),
+        // `goal` has a Sub-goal, so moving it under another Goal would nest two deep.
+        cmd(
+            &c(0xc9),
+            "item.move",
+            json!({ "id": goal, "parent_id": c(0x14), "order": "a" }),
+            1008,
+        ),
     ];
     let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
     let st = &res["statuses"];
-    for n in [0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7] {
+    for n in [0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc8] {
         assert_eq!(st[c(n)], json!({ "status": "ok" }), "{n:x}");
     }
-    assert_eq!(
-        st[c(0xc4)],
-        json!({ "status": "error", "code": "bad_parent" })
-    );
+    for n in [0xc4, 0xc9] {
+        assert_eq!(
+            st[c(n)],
+            json!({ "status": "error", "code": "bad_parent" }),
+            "{n:x}"
+        );
+    }
     let rows = res["delta"].as_array().unwrap();
     let mut items: Vec<_> = rows
         .iter()

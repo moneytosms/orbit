@@ -722,6 +722,14 @@ fn is_completed(row: &Row) -> bool {
     }
 }
 
+/// A filter that names `completed` shows completed rows whatever `show_completed` says.
+fn mentions_completed(n: &Node) -> bool {
+    match n {
+        Node::Group { children, .. } => children.iter().any(mentions_completed),
+        Node::Cond { path, .. } => path == "completed",
+    }
+}
+
 fn in_scope(row: &Row, scope: Uuid, by_id: &ById) -> bool {
     let mut cur = Some(row);
     for _ in 0..MAX_WALK {
@@ -743,10 +751,11 @@ pub fn evaluate(view: &View, rows: &[Row], today: &str) -> Vec<Group> {
         today: parse_ymd(today).unwrap_or(0),
     };
     let lookup = |id: Uuid| cx.by_id.get(&id).map(|r| (*r).clone());
+    let show_completed = view.show_completed || mentions_completed(&view.filter);
     let mut found: Vec<&Row> = rows
         .iter()
         .filter(|r| is_candidate(view.kind, r))
-        .filter(|r| view.show_completed || !is_completed(r))
+        .filter(|r| show_completed || !is_completed(r))
         .filter(|r| !trash::hidden(r, &lookup))
         .filter(|r| view.scope.is_none_or(|scope| in_scope(r, scope, &cx.by_id)))
         .filter(|r| eval(&view.filter, r, &cx))
@@ -1193,6 +1202,23 @@ mod tests {
         assert_eq!(ids(&v, &rows), [3]);
         v.show_completed = true;
         assert_eq!(ids(&v, &rows), [3, 5]);
+    }
+
+    #[test]
+    fn a_filter_on_completed_shows_completed_rows() {
+        let mut done = task(2, INBOX, json!({}), 0);
+        if let Row::Task(t) = &mut done {
+            t.completed_at = Some(1);
+        }
+        let rows = vec![task(1, INBOX, json!({}), 0), done];
+        assert_eq!(
+            run(all(vec![c("completed", "is", json!(true))]), &rows),
+            [2]
+        );
+        assert_eq!(
+            run(any(vec![c("completed", "is", json!(false))]), &rows),
+            [1]
+        );
     }
 
     #[test]
