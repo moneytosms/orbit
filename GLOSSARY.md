@@ -108,6 +108,10 @@ The time of day when a new day begins for targets, Check-ins and streaks.
 Adding a task in one short step from any surface (widget, share sheet, hotkey, quick-add, CLI), organised later.
 _Avoid_: Quick add (that is the in-app input box only)
 
+**Home-screen widget**:
+An Android launcher widget: Quick-add, List (Tasks from one source), Routines (today's Check-ins) or Goal (progress of one Goal or a list).
+_Avoid_: Widget (alone; Home has its own widgets)
+
 **Inbox**:
 The built-in Area where captures land when no destination is chosen; it holds only Tasks, cannot be deleted, and its Tasks never need filing.
 
