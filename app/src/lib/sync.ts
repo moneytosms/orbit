@@ -473,6 +473,7 @@ export const VIEW_INBOX = '00000000-0000-7000-8000-000000000101'
 export const VIEW_UPCOMING = '00000000-0000-7000-8000-000000000102'
 export const VIEW_SLIPPING = '00000000-0000-7000-8000-000000000103'
 export const VIEW_RECENT = '00000000-0000-7000-8000-000000000104'
+export const VIEW_HORIZON = '00000000-0000-7000-8000-000000000105'
 
 /** Built-in Views merged with stored rows (a stored row replaces its built-in), not trashed, in order. */
 export async function views(): Promise<View[]> {
@@ -923,4 +924,31 @@ export async function pageOwner(taskId: string): Promise<string | null> {
     r = r.parent_id ? byId.get(r.parent_id) : undefined
   }
   return null
+}
+
+/** Milestones and linked-Task due ticks per Goal id, for the Timeline. A Task counts towards its own Goal link, else its Project's. */
+export async function timelineData(
+  goalIds: string[],
+): Promise<Map<string, { milestones: Milestone[]; ticks: { id: string; title: string; date: string }[] }>> {
+  const rows = await visibleRows()
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const out = new Map(
+    goalIds.map((id) => [
+      id,
+      { milestones: [] as Milestone[], ticks: [] as { id: string; title: string; date: string }[] },
+    ]),
+  )
+  for (const r of rows) {
+    if (r.kind === 'milestone') out.get(r.goal_id)?.milestones.push(r)
+    if (r.kind !== 'task' || !r.due) continue
+    let goal = r.goal_id
+    let row: Row | undefined = r
+    for (let i = 0; !goal && row && i < 32; i++) {
+      if (row.kind === 'project') goal = row.goal_id
+      row = 'parent_id' in row ? byId.get(row.parent_id) : undefined
+    }
+    if (goal) out.get(goal)?.ticks.push({ id: r.id, title: r.title, date: r.due.date })
+  }
+  for (const v of out.values()) v.milestones.sort(byOrder)
+  return out
 }

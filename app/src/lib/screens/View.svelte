@@ -11,6 +11,7 @@
   import Board, { fieldChoices, fieldTitle } from '$lib/Board.svelte'
   import FilterEditor from '$lib/FilterEditor.svelte'
   import Table from '$lib/Table.svelte'
+  import Timeline from '$lib/Timeline.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import {
     allGoals,
@@ -120,8 +121,11 @@
     ['list', 'List'],
     ['board', 'Board'],
     ['table', 'Table'],
+    ['timeline', 'Timeline'],
   ]
-  const layout = $derived(view?.layout === 'board' || view?.layout === 'table' ? view.layout : 'list')
+  const layout = $derived(
+    view?.layout === 'board' || view?.layout === 'table' || view?.layout === 'timeline' ? view.layout : 'list',
+  )
   // Core groups by the fields above; Label is regrouped by the Board.
   const groupChoices = $derived(
     layout === 'board' ? [...groupFields, ['label', 'Label'] as [string, string]] : groupFields,
@@ -416,6 +420,16 @@
     sorts={view?.sorts ?? []}
     entity={view?.entity}
     onsort={(sorts) => save({ sorts })}
+    onopen={open}
+  />
+{:else if layout === 'timeline'}
+  <Timeline
+    rows={allRows}
+    {areas}
+    onchange={async () => {
+      await load()
+      onchange()
+    }}
     onopen={open}
   />
 {:else}
