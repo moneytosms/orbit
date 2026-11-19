@@ -59,6 +59,9 @@ import {
   localDay,
   routineStats,
   routines,
+  whatsNext,
+  pinItem,
+  notToday,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -580,4 +583,26 @@ test('a skipped day keeps the streak and is left out of the completion rate', as
   expect(stats.best_streak).toBe(3)
   expect(stats.completion_rate).toBe(1)
   expect(stats.days.map((d) => d[1])).toEqual(['done', 'skipped', 'done', 'done'])
+})
+
+test("pin moves a task to the top of today's What's next; not_today hides it", async () => {
+  const a = await createTask('Next A')
+  const b = await createTask('Next B')
+  await updateTask(a, { due: { date: dayFrom(0) }, priority: 1 })
+  await updateTask(b, { due: { date: dayFrom(0) }, priority: 3 })
+  let ids = (await whatsNext()).map((i) => i.id)
+  expect(ids.indexOf(a)).toBeLessThan(ids.indexOf(b))
+
+  await pinItem(b, true)
+  const list = await whatsNext()
+  expect(list[0].id).toBe(b)
+  expect(list[0].tier).toBe(1)
+
+  await notToday(b, true)
+  ids = (await whatsNext()).map((i) => i.id)
+  expect(ids).not.toContain(b)
+  expect(ids).toContain(a)
+
+  await notToday(b, false)
+  expect((await whatsNext()).map((i) => i.id)).toContain(b)
 })

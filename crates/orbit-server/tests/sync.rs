@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "pinned_on": null, "not_today_on": null }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null, "pinned_on": null, "not_today_on": null }])
     );
 }
 
@@ -1059,4 +1059,53 @@ async fn routines_converge_on_one_check_in_and_an_archived_one_is_read_only() {
     assert_eq!(row(&res, &checkin)["cleared"], false);
     assert_eq!(row(&res, &routine)["name"], "Meds");
     assert!(row(&res, &routine)["archived_at"].is_u64());
+}
+
+#[tokio::test]
+async fn item_pin_round_trips_through_the_server() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let create = cmd(
+        &c(0xe1),
+        "task.create",
+        json!({ "id": TASK, "title": "Buy milk" }),
+        1000,
+    );
+    let pin = cmd(
+        &c(0xe2),
+        "item.pin",
+        json!({ "id": TASK, "date": "2026-03-10" }),
+        2000,
+    );
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": [create, pin] })).await;
+    assert_eq!(res["statuses"][c(0xe2)]["status"], "ok");
+    let (_, other) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let task = other["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == TASK)
+        .unwrap();
+    assert_eq!(task["pinned_on"], "2026-03-10");
+    let hide = cmd(
+        &c(0xe3),
+        "item.not_today",
+        json!({ "id": TASK, "date": "2026-03-10" }),
+        3000,
+    );
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": other["token"], "commands": [hide] }),
+    )
+    .await;
+    let task = res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == TASK)
+        .unwrap();
+    assert_eq!(
+        (task["pinned_on"].is_null(), task["not_today_on"].clone()),
+        (true, json!("2026-03-10"))
+    );
 }

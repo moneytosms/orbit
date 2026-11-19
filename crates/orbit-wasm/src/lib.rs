@@ -205,3 +205,18 @@ pub fn routine_stats(rows_json: &str, routine_id: &str, today: &str) -> Result<S
 pub fn local_day(now_ms: f64, utc_offset_min: i32, day_start: &str) -> String {
     orbit_core::routine::local_day(now_ms as u64, utc_offset_min, day_start)
 }
+
+/// The What's next list for `rows_json`, as `[{ id, tier, reason, breadcrumb }]`.
+#[wasm_bindgen]
+pub fn whats_next(
+    rows_json: &str,
+    today: &str,
+    now_time: &str,
+    cfg_json: &str,
+) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let cfg: orbit_core::next::Cfg = serde_json::from_str(cfg_json)?;
+    Ok(serde_json::to_string(&orbit_core::next::whats_next(
+        &rows, today, now_time, &cfg,
+    ))?)
+}

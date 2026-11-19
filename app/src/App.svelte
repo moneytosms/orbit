@@ -5,6 +5,7 @@
   import Routines from './lib/screens/Routines.svelte'
   import Page from './lib/screens/Page.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
+  import Next from './lib/screens/Next.svelte'
   import Settings from './lib/screens/Settings.svelte'
   import Trash from './lib/screens/Trash.svelte'
   import View from './lib/screens/View.svelte'
@@ -134,6 +135,8 @@
         <Trash onchange={refresh} />
       {:else if screen.name === 'settings'}
         <Settings />
+      {:else if screen.name === 'home'}
+        <Next onchange={refresh} />
       {:else}
         <Stub {title} />
       {/if}

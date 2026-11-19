@@ -14,6 +14,8 @@
     setDayStart,
     setStartView,
     setTimezone,
+    getNextSettings,
+    setNextSettings,
     views,
     VIEW_INBOX,
     VIEW_UPCOMING,
@@ -119,6 +121,15 @@
     dayStart = s.day_start
   })
   views().then((v) => (allViews = v))
+  let nextDeadline = $state(3)
+  let nextDue = $state(7)
+  let nextP1 = $state(true)
+  getNextSettings().then((n) => {
+    nextDeadline = n.deadline_days
+    nextDue = n.due_days
+    nextP1 = n.undated_p1
+  })
+  const days = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0)
   // Inbox and Upcoming are already plain routes; hidden views stay listed only if they are the current start.
   const startOptions = $derived(
     allViews.filter(
@@ -330,6 +341,40 @@
         aria-label="Day start"
         class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
       />
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">What's next</h2>
+    <div class="grid max-w-sm gap-3">
+      <Label class="flex items-center justify-between gap-3">
+        Deadline window (days)
+        <Input
+          type="number"
+          min="0"
+          class="w-24"
+          bind:value={nextDeadline}
+          onchange={() => setNextSettings({ deadline_days: days(nextDeadline) })}
+        />
+      </Label>
+      <Label class="flex items-center justify-between gap-3">
+        Due window (days)
+        <Input
+          type="number"
+          min="0"
+          class="w-24"
+          bind:value={nextDue}
+          onchange={() => setNextSettings({ due_days: days(nextDue) })}
+        />
+      </Label>
+      <Label class="flex items-center gap-2">
+        <Checkbox
+          checked={nextP1}
+          aria-label="Include undated P1 tasks"
+          onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
+        />
+        Include undated P1 tasks
+      </Label>
     </div>
   </section>
 
