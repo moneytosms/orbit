@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Orbit Spike",
+  "version": "0.0.1",
+  "identifier": "dev.orbit.spike",
+  "build": { "frontendDist": "../dist" },
+  "app": { "withGlobalTauri": true, "windows": [{ "title": "Orbit Spike" }] },
+  "bundle": { "active": true, "icon": ["icons/icon.png"] }
+}
