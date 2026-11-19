@@ -74,7 +74,8 @@ People, content pipeline, books and Kindle import, inventory, the Library (notes
 - Goals with milestones and progress.
 - Routines (above).
 - Views: Inbox, Dashboard (What's next, Routines, Goal progress, streaks, stats), Upcoming, Calendar, Area/Project list/board, Horizon, Slipping, Recently captured, plus saved custom views.
-- Quick capture: Android widget, share target, desktop hotkey, web quick-add, CLI; Todoist-style syntax.
+- Quick capture: Android quick-add widget, share target, desktop hotkey, web quick-add, CLI; Todoist-style syntax.
+- Android list widget: a source picker (Inbox, Upcoming, Areas, Projects, Labels, saved Views) over Task rows you can complete from the home screen. Details open in "Android widgets: kinds, sources and actions" (#28) and "List widget data feed with the app closed" (#29).
 - Offline queue with background sync.
 - Reminders on phone and desktop (see Reminders).
 - Stardust. Todoist import (active items). Basic Pages with attachments.
