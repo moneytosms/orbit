@@ -48,6 +48,12 @@ import {
   updateTask,
   VIEW_SLIPPING,
   type Task,
+  checkIn,
+  clearCheckIn,
+  createRoutine,
+  localDay,
+  routineStats,
+  routines,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -482,4 +488,59 @@ test('reorderViews moves a view before another, then last', async () => {
   await reorderViews(second, null)
   ids = (await views()).map((v) => v.id)
   expect(ids.at(-1)).toBe(second)
+})
+
+const shiftDay = (day: string, by: number) => {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + by)
+  return d.toISOString().slice(0, 10)
+}
+
+test('a Routine ticked today counts a streak; clearing the tick undoes it', async () => {
+  await createArea('Health')
+  const [{ area: a }] = (await tree()).filter((x) => x.area.name === 'Health')
+  const id = await createRoutine(a.id, {
+    name: 'Meds',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: '09:00',
+    goal_id: null,
+  })
+  expect((await routines()).map((r) => r.id)).toContain(id)
+  const today = await localDay()
+  expect((await routineStats(id)).days.at(-1)).toEqual([today, 'pending'])
+  await checkIn(id, today, 'done')
+  let stats = await routineStats(id)
+  expect(stats.current_streak).toBe(1)
+  expect(stats.days.at(-1)).toEqual([today, 'done'])
+  await clearCheckIn(id, today)
+  stats = await routineStats(id)
+  expect(stats.current_streak).toBe(0)
+  expect(stats.days.at(-1)).toEqual([today, 'pending'])
+})
+
+test('a skipped day keeps the streak and is left out of the completion rate', async () => {
+  const [{ area }] = (await tree()).filter((x) => x.area.name === 'Health')
+  const id = await createRoutine(area.id, {
+    name: 'Stretch',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: null,
+    goal_id: null,
+  })
+  const today = await localDay()
+  // Backdate the start so there are earlier days to tick.
+  await tx(['rows'], async (s) => {
+    const row = await req<any>(s('rows').get(id))
+    s('rows').put({ ...row, start: shiftDay(today, -3) })
+  })
+  await checkIn(id, shiftDay(today, -3), 'done')
+  await checkIn(id, shiftDay(today, -2), 'skipped')
+  await checkIn(id, shiftDay(today, -1), 'done')
+  await checkIn(id, today, 'done')
+  const stats = await routineStats(id)
+  expect(stats.current_streak).toBe(3)
+  expect(stats.best_streak).toBe(3)
+  expect(stats.completion_rate).toBe(1)
+  expect(stats.days.map((d) => d[1])).toEqual(['done', 'skipped', 'done', 'done'])
 })

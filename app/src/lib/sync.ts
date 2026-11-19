@@ -11,6 +11,9 @@ import {
   next_hlc,
   observe_hlc,
   order_between,
+  checkin_id,
+  local_day,
+  routine_stats,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
@@ -62,7 +65,15 @@ export type Section = {
   trashed_at: number | null
 }
 export type Label = { kind: 'label'; id: string; name: string }
-export type Settings = { kind: 'settings'; id: string; theme: string; accent: string; start_view: string }
+export type Settings = {
+  kind: 'settings'
+  id: string
+  theme: string
+  accent: string
+  start_view: string
+  timezone?: string
+  day_start?: string
+}
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
   Pick<
@@ -131,8 +142,45 @@ export type View = {
   builtin: string | null
 }
 export type ViewGroup = { key: string; ids: string[] }
+export type Schedule =
+  { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'every'; n: number } | { kind: 'per_week'; n: number }
+export type Routine = {
+  kind: 'routine'
+  id: string
+  parent_id: string
+  name: string
+  schedule: Schedule
+  start: string
+  length_days: number | null
+  time: string | null
+  goal_id: string | null
+  pauses: { from: string; to: string | null }[]
+  order: string
+  created_at: number | null
+  trashed_at: number | null
+  archived_at: number | null
+}
+export type CheckState = 'done' | 'skipped'
+export type Checkin = {
+  kind: 'checkin'
+  id: string
+  routine_id: string
+  date: string
+  state: CheckState
+  cleared: boolean
+}
+export type DayState = 'done' | 'skipped' | 'missed' | 'paused' | 'off' | 'pending'
+export type RoutineStats = {
+  current_streak: number
+  best_streak: number
+  completion_rate: number | null
+  days: [string, DayState][]
+  ended: boolean
+  paused: boolean
+}
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
-type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page | View
+type Row =
+  Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page | View | Routine | Checkin
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -247,13 +295,18 @@ export async function getSettings(): Promise<{ theme: string; accent: string; st
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
   return row ? { theme: row.theme, accent: row.accent, start_view: row.start_view ?? '' } : null
 }
+/** The synced timezone (empty: this device's) and Day start. */
+export async function getDaySettings(): Promise<{ timezone: string; day_start: string }> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return { timezone: row?.timezone ?? '', day_start: row?.day_start || '00:00' }
+}
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
 export const setStartView = (v: string) => enqueue('settings.update', { start_view: v })
 export const deleteItem = (id: string) => enqueue('item.delete', { id })
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })
 export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
-export type Trashed = Exclude<Row, Completion | Label | Settings | View>
+export type Trashed = Exclude<Row, Completion | Label | Settings | View | Checkin>
 /** Items deleted by hand (their own `trashed_at`), newest first. */
 export async function trashed(): Promise<Trashed[]> {
   return (await allRows())
@@ -614,4 +667,81 @@ export function start(onChange: () => void) {
   sync()
   addEventListener('focus', () => sync())
   setInterval(() => document.visibilityState === 'visible' && sync(), 60_000)
+}
+
+/** Minutes the zone `tz` ("" = this device's own) is ahead of UTC at `ms`. */
+export function zoneOffset(tz: string, ms: number): number {
+  if (!tz) return -new Date(ms).getTimezoneOffset()
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+  }).formatToParts(ms)
+  const n = (t: string) => Number(parts.find((p) => p.type === t)?.value)
+  const asUtc = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'))
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60_000)
+}
+/** The Day-start date now, in the synced timezone and Day start. */
+export async function localDay(now = Date.now()): Promise<string> {
+  const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return local_day(now, zoneOffset(settings?.timezone ?? '', now), settings?.day_start || '00:00')
+}
+export const setTimezone = (timezone: string) => enqueue('settings.update', { timezone })
+export const setDayStart = (day_start: string) => enqueue('settings.update', { day_start })
+
+/** Visible Routines (not archived or trashed), in display order. */
+export async function routines(): Promise<Routine[]> {
+  return (await visibleRows()).filter((r): r is Routine => r.kind === 'routine').sort(byOrder)
+}
+/** Archived Routines, history kept. */
+export async function archivedRoutines(): Promise<Routine[]> {
+  return (await allRows())
+    .filter((r): r is Routine => r.kind === 'routine' && r.archived_at != null && r.trashed_at == null)
+    .sort(byOrder)
+}
+export type RoutineInput = {
+  name: string
+  schedule: Schedule
+  length_days: number | null
+  time: string | null
+  goal_id: string | null
+}
+/** Creates a Routine under an Area or Project, starting on the Day-start date; returns its id. */
+export async function createRoutine(parentId: string, input: RoutineInput): Promise<string> {
+  const id = newId()
+  const { length_days, time, goal_id, ...rest } = input
+  await enqueue('routine.create', {
+    id,
+    parent_id: parentId,
+    ...rest,
+    start: await localDay(),
+    length_days,
+    time,
+    goal_id,
+    order: await appendOrder(parentId),
+  })
+  return id
+}
+export const updateRoutine = (id: string, patch: Partial<RoutineInput>) => enqueue('routine.update', { id, ...patch })
+/** Ticks a Routine's day as done or skipped; the same day on two Devices is one Check-in. */
+export const checkIn = (id: string, date: string, state: CheckState) =>
+  enqueue('checkin.set', { id: checkin_id(id, date), routine_id: id, date, state })
+export const clearCheckIn = (id: string, date: string) => enqueue('checkin.clear', { id: checkin_id(id, date) })
+export const pauseRoutine = async (id: string) => enqueue('routine.pause', { id, date: await localDay() })
+export const resumeRoutine = async (id: string) => enqueue('routine.resume', { id, date: await localDay() })
+/** Streaks, completion rate and per-day states of a Routine up to the Day-start date, from core. */
+export async function routineStats(id: string, today?: string): Promise<RoutineStats> {
+  const rows = (await allRows()).filter((r) => r.id === id || (r.kind === 'checkin' && r.routine_id === id))
+  return JSON.parse(routine_stats(JSON.stringify(rows), id, today ?? (await localDay())))
+}
+/** Check-in state per date for a Routine, cleared ones left out. */
+export async function checkinsOf(id: string): Promise<Map<string, CheckState>> {
+  const m = new Map<string, CheckState>()
+  for (const r of await allRows()) if (r.kind === 'checkin' && r.routine_id === id && !r.cleared) m.set(r.date, r.state)
+  return m
 }

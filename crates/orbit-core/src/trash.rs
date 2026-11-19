@@ -21,7 +21,12 @@ impl Row {
             Row::Milestone(r) => r.trashed_at,
             Row::Page(r) => r.trashed_at,
             Row::View(r) => r.trashed_at,
-            Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_) => None,
+            Row::Routine(r) => r.trashed_at,
+            Row::Label(_)
+            | Row::Settings(_)
+            | Row::Completion(_)
+            | Row::Purged(_)
+            | Row::Checkin(_) => None,
         }
     }
 
@@ -30,6 +35,7 @@ impl Row {
             Row::Area(r) => r.archived_at,
             Row::Project(r) => r.archived_at,
             Row::Goal(r) => r.archived_at,
+            Row::Routine(r) => r.archived_at,
             _ => None,
         }
     }
@@ -45,7 +51,12 @@ impl Row {
             Row::Milestone(r) => r.trashed_at = at,
             Row::Page(r) => r.trashed_at = at,
             Row::View(r) => r.trashed_at = at,
-            Row::Label(_) | Row::Settings(_) | Row::Completion(_) | Row::Purged(_) => return false,
+            Row::Routine(r) => r.trashed_at = at,
+            Row::Label(_)
+            | Row::Settings(_)
+            | Row::Completion(_)
+            | Row::Purged(_)
+            | Row::Checkin(_) => return false,
         }
         true
     }
@@ -56,6 +67,7 @@ impl Row {
             Row::Area(r) => r.archived_at = at,
             Row::Project(r) => r.archived_at = at,
             Row::Goal(r) => r.archived_at = at,
+            Row::Routine(r) => r.archived_at = at,
             _ => return false,
         }
         true
@@ -337,5 +349,53 @@ mod tests {
         assert_eq!(top_trashed(&[t.clone(), p.clone(), a]), Some(20));
         assert_eq!(top_trashed(&[t, p]), Some(10));
         assert!(!any_archived(&[]));
+    }
+
+    fn routine(n: u128, parent: Uuid) -> Row {
+        Row::Routine(crate::routine::Routine {
+            id: uid(n),
+            parent_id: parent,
+            name: "R".into(),
+            schedule: crate::routine::Schedule::Daily,
+            start: "2026-03-02".into(),
+            length_days: None,
+            time: None,
+            goal_id: None,
+            pauses: vec![],
+            order: String::new(),
+            created_at: None,
+            trashed_at: None,
+            archived_at: None,
+        })
+    }
+
+    #[test]
+    fn a_routine_archives_and_unarchives_and_its_check_ins_are_hidden() {
+        let arch = |id| op("item.archive", serde_json::json!({"id": id}), 9);
+        let r = apply(Some(routine(4, uid(1))), &arch(uid(4))).unwrap();
+        assert_eq!(r.archived_at(), Some(9));
+        let un = op("item.unarchive", serde_json::json!({"id": uid(4)}), 10);
+        assert_eq!(apply(Some(r.clone()), &un).unwrap().archived_at(), None);
+        let c = Row::Checkin(crate::routine::Checkin {
+            id: crate::routine::checkin_id(uid(4), "2026-03-02"),
+            routine_id: uid(4),
+            date: "2026-03-02".into(),
+            state: crate::routine::CheckState::Done,
+            cleared: false,
+        });
+        assert_eq!(c.archived_at(), None);
+        assert!(!c.clone().set_archived(Some(1)));
+        assert!(hidden(&c, &lookup(&[area(1), r.clone(), c.clone()])));
+        assert!(!hidden(
+            &c,
+            &lookup(&[area(1), routine(4, uid(1)), c.clone()])
+        ));
+    }
+
+    #[test]
+    fn a_routine_goes_to_the_trash_and_a_check_in_does_not() {
+        let del = op("item.delete", serde_json::json!({"id": uid(4)}), 9);
+        let r = apply(Some(routine(4, uid(1))), &del).unwrap();
+        assert_eq!(r.trashed_at(), Some(9));
     }
 }

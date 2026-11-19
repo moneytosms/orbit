@@ -465,6 +465,9 @@ fn check_tree(
             | Op::MilestoneCreate { .. }
             | Op::PageCreate { .. }
             | Op::ItemMove { .. }
+            | Op::RoutineCreate { .. }
+            | Op::RoutineUpdate { .. }
+            | Op::CheckinSet { .. }
     ) {
         return Ok(None);
     }
@@ -478,6 +481,18 @@ fn check_tree(
     };
     if let Err(code) = check_parent(&candidate, parent.as_ref()) {
         return Ok(Some(code));
+    }
+    // A Routine links only to a Target Goal.
+    if let Row::Routine(r) = &candidate
+        && let Some(gid) = r.goal_id
+    {
+        let target = matches!(
+            load_row(conn, &gid.to_string())?,
+            Some(Row::Goal(g)) if matches!(g.progress, orbit_core::goal::Progress::Target { .. })
+        );
+        if !target {
+            return Ok(Some(ErrorCode::BadParent));
+        }
     }
     // Sub-goals go one level deep, under a top-level Goal in an Area.
     if let (Row::Goal(_), Some(p @ Row::Goal(_))) = (&candidate, parent.as_ref()) {

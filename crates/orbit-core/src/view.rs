@@ -440,6 +440,8 @@ fn kind_name(row: &Row) -> &'static str {
         Row::Page(_) => "page",
         Row::Purged(_) => "purged",
         Row::View(_) => "view",
+        Row::Routine(_) => "routine",
+        Row::Checkin(_) => "checkin",
     }
 }
 
