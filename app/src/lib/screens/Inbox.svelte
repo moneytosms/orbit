@@ -1,12 +1,13 @@
 <script lang="ts">
-  import Plus from '@lucide/svelte/icons/plus'
   import Check from '@lucide/svelte/icons/check'
   import Inbox from '@lucide/svelte/icons/inbox'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import Flag from '@lucide/svelte/icons/flag'
   import { Button } from '$lib/components/ui/button'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
-  import { completeTask, createTask, labels, moveItem, orderBetween, type Due, type Task } from '$lib/sync'
+  import Composer from '$lib/Composer.svelte'
+  import { completeTask, labels, moveItem, orderBetween, type Due, type Task } from '$lib/sync'
+  import { inbox_id } from '../../../wasm/orbit_wasm'
 
   type Entry = { task: Task; depth: number }
   type Group = { id: string; task: Task; subs: Entry[] }
@@ -16,8 +17,14 @@
     title,
     rows,
     onchange,
-  }: { parentId: string; title: string; rows: Entry[]; onchange: () => void } = $props()
-  let draft = $state('')
+    onadd,
+  }: {
+    parentId: string
+    title: string
+    rows: Entry[]
+    onchange: () => void
+    onadd?: (prefill: string) => void
+  } = $props()
   let openId = $state<string | null>(null)
   let names = $state(new Map<string, string>())
 
@@ -54,13 +61,6 @@
     return out
   })
   let items = $derived(groups)
-
-  async function add(e: SubmitEvent) {
-    e.preventDefault()
-    if (!draft.trim()) return
-    await createTask(draft, parentId)
-    draft = ''
-  }
 
   function consider(e: CustomEvent<DndEvent<Group>>) {
     items = e.detail.items
@@ -110,21 +110,15 @@
   </div>
 {/snippet}
 
-<h1 class="page-title">{title}</h1>
-<form
-  onsubmit={add}
-  class="mb-4 flex items-center gap-2 rounded-2xl border border-line bg-surface py-1.5 pr-1.5 pl-3 shadow-1 focus-within:border-accent-line"
->
-  <Plus size={16} class="text-accent" />
-  <input
-    id="composer"
-    bind:value={draft}
-    placeholder="Add a task"
-    aria-label="Task title"
-    class="h-8 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted focus-visible:shadow-none"
-  />
-  <Button type="submit" variant="primary" disabled={!draft.trim()}>Add</Button>
-</form>
+<div class="mb-2 flex items-center gap-2">
+  <h1 class="page-title flex-1">{title}</h1>
+  {#if parentId !== inbox_id()}
+    <Button variant="ghost" onclick={() => onadd?.(`@${title} `)}>Add task</Button>
+  {/if}
+</div>
+<div class="mb-4">
+  <Composer {parentId} autofocus={false} />
+</div>
 
 {#if groups.length}
   <ul use:dndzone={{ items, flipDurationMs: 150, delayTouchStart: 200 }} onconsider={consider} onfinalize={finalize}>

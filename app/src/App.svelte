@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte'
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
@@ -68,12 +67,6 @@
       () => 'login' as const,
     )
   })()
-
-  async function newTask() {
-    location.hash = '#/inbox'
-    await tick()
-    document.getElementById('composer')?.focus()
-  }
 </script>
 
 <svelte:window
@@ -86,14 +79,16 @@
 {#if gate === 'setup' || gate === 'login'}
   <Auth mode={gate} {pending} done={enter} />
 {:else if gate === 'app'}
-  <Shell {screen} {title} {areas} {inboxCount} onNew={newTask}>
-    {#if parent}
-      <Inbox parentId={parent} {title} {rows} onchange={refresh} />
-    {:else if screen.name === 'settings'}
-      <Settings />
-    {:else}
-      <Stub {title} />
-    {/if}
+  <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()}>
+    {#snippet children(add)}
+      {#if parent}
+        <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
+      {:else if screen.name === 'settings'}
+        <Settings />
+      {:else}
+        <Stub {title} />
+      {/if}
+    {/snippet}
   </Shell>
 {/if}
 

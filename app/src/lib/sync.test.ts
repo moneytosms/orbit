@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
-import { initSync } from '../../wasm/orbit_wasm'
+import { initSync, parse_quick_add } from '../../wasm/orbit_wasm'
 import { login } from './auth'
 import { req, tx } from './db'
 import {
@@ -17,6 +17,7 @@ import {
   onRejected,
   onSignedOut,
   orderBetween,
+  quickAdd,
   sync,
   tasksIn,
   tree,
@@ -248,4 +249,30 @@ test('updateSettings creates the settings row, then changes only the fields give
   await sync()
   const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'settings.update')
   expect(sent.map((c) => c.args)).toEqual([{ theme: 'dark', accent: '#c2552f' }, { theme: 'light' }])
+})
+
+const parseLine = (text: string, labelNames: string[] = []) =>
+  JSON.parse(
+    parse_quick_add(text, '2026-11-19T10:00', JSON.stringify({ areas: [], goals: [], pages: [], labels: labelNames })),
+  )
+
+test('quickAdd applies priority, due and a known label in one update', async () => {
+  const errand = await createLabel('qa-errand')
+  const id = await quickAdd(parseLine('Pay rent p1 #qa-errand tomorrow', ['qa-errand']), INBOX)
+  expect(await getTask(id)).toMatchObject({ title: 'Pay rent', priority: 1, due: { date: '2026-11-20' }, label_ids: [errand] })
+  await sync()
+  const sent = requests.flatMap((r) => r.commands).filter((c) => c.type === 'task.update' && c.args.id === id)
+  expect(sent).toMatchObject([{ args: { id, priority: 1, label_ids: [errand] } }])
+})
+
+test('quickAdd keeps an unknown $goal name in the title', async () => {
+  const id = await quickAdd(parseLine('Read book $qa-goal'), INBOX)
+  expect((await getTask(id))!.title).toBe('Read book $qa-goal')
+})
+
+test('quickAdd creates an unknown #label on save', async () => {
+  const id = await quickAdd(parseLine('Sort mail #qa-new'), INBOX)
+  const label = (await labels()).find((l) => l.name === 'qa-new')
+  expect(label).toBeDefined()
+  expect((await getTask(id))!.label_ids).toEqual([label!.id])
 })
