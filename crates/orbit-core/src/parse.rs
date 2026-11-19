@@ -214,7 +214,7 @@ fn month_day(today: i64, m: i64, d: i64) -> Option<i64> {
 }
 
 /// A date phrase at the start of `w` (lowercased words): (day number, words used).
-fn date_phrase(w: &[String], today: i64) -> Option<(i64, usize)> {
+pub(crate) fn date_phrase(w: &[String], today: i64) -> Option<(i64, usize)> {
     let first = w[0].as_str();
     match first {
         "today" => return Some((today, 1)),
@@ -295,7 +295,7 @@ fn is_sigil(c: char) -> bool {
     matches!(c, '@' | '$' | '%' | '#')
 }
 
-fn priority_word(w: &str) -> Option<u8> {
+pub(crate) fn priority_word(w: &str) -> Option<u8> {
     match w.to_ascii_lowercase().as_str() {
         "p1" => Some(1),
         "p2" => Some(2),

@@ -1,6 +1,15 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button'
-  import { labels, updateView, type Cond, type Label, type Node } from '$lib/sync'
+  import {
+    labels,
+    parseFilter,
+    printFilter,
+    updateView,
+    type Cond,
+    type FilterError,
+    type Label,
+    type Node,
+  } from '$lib/sync'
 
   let {
     id,
@@ -78,7 +87,34 @@
   const fieldClass =
     'h-7 min-w-0 rounded-md border border-line bg-surface px-1.5 text-[13px] text-text shadow-1 outline-none focus-visible:border-accent-line'
 
+  let typed = $state(false)
+  let text = $state('')
+  let error = $state<FilterError | null>(null)
+
+  async function show(toTyped: boolean) {
+    if (toTyped === typed) return
+    if (toTyped) {
+      text = await printFilter(JSON.parse(JSON.stringify(tree)))
+      error = null
+      typed = true
+    } else if (await parseText()) typed = false
+  }
+  // Parses the typed text into the tree; on a bad token it keeps the text and shows where.
+  async function parseText() {
+    try {
+      const n = await parseFilter(text)
+      tree = n.type === 'group' ? n : { type: 'group', all: true, children: [n] }
+      error = null
+      return true
+    } catch (e) {
+      error = e as FilterError
+      return false
+    }
+  }
+  const chars = $derived([...text])
+
   async function apply() {
+    if (typed && !(await parseText())) return
     await updateView(id, { filter: JSON.parse(JSON.stringify(tree)) })
     onapplied()
     onclose()
@@ -208,7 +244,29 @@
   aria-label="Filter"
   class="absolute top-full left-0 z-30 mt-1 max-h-[70vh] w-[min(640px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-line bg-surface p-3 shadow-2"
 >
-  {#if tree.type === 'group'}
+  <div class="mb-2 flex gap-1" role="group" aria-label="Editor">
+    <Button size="sm" variant={typed ? 'ghost' : 'on'} aria-pressed={!typed} onclick={() => show(false)}>Visual</Button>
+    <Button size="sm" variant={typed ? 'on' : 'ghost'} aria-pressed={typed} onclick={() => show(true)}>Typed</Button>
+  </div>
+  {#if typed}
+    <textarea
+      aria-label="Typed filter"
+      rows="3"
+      spellcheck="false"
+      bind:value={text}
+      oninput={() => (error = null)}
+      placeholder="p1 & #Career & due before: next week"
+      class="{fieldClass} h-auto w-full resize-y py-1.5 font-mono"
+    ></textarea>
+    {#if error}
+      <p role="alert" class="mt-1 font-mono text-xs break-all text-danger-text">
+        {chars.slice(0, error.start).join('')}<mark class="rounded bg-danger-soft text-danger-text"
+          >{chars.slice(error.start, Math.max(error.end, error.start + 1)).join('')}</mark
+        >{chars.slice(error.end).join('')}
+      </p>
+      <p class="text-xs text-danger-text">{error.message}</p>
+    {/if}
+  {:else if tree.type === 'group'}
     {@render groupEditor(tree, 1)}
   {/if}
   <div class="mt-1 flex items-center justify-end gap-2">

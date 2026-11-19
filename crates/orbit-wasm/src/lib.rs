@@ -153,3 +153,22 @@ pub fn theme_tokens(name: &str, strategy: &str) -> Result<String, JsError> {
         palette, strategy,
     ))?)
 }
+
+/// Typed filter text to a filter tree (JSON). `known_json` is `{labels:[{id,name}]}`; a parse error is a JSON
+/// `{start,end,message}` in the thrown message, with char offsets.
+#[wasm_bindgen]
+pub fn parse_filter(text: &str, known_json: &str, today: &str) -> Result<String, JsError> {
+    let known: orbit_core::filter_text::Known = serde_json::from_str(known_json)?;
+    match orbit_core::filter_text::parse(text, &known, today) {
+        Ok(node) => Ok(serde_json::to_string(&node)?),
+        Err(e) => Err(JsError::new(&serde_json::to_string(&e)?)),
+    }
+}
+
+/// A filter tree (JSON) as typed filter text.
+#[wasm_bindgen]
+pub fn print_filter(node_json: &str, known_json: &str) -> Result<String, JsError> {
+    let node: orbit_core::view::Node = serde_json::from_str(node_json)?;
+    let known: orbit_core::filter_text::Known = serde_json::from_str(known_json)?;
+    Ok(orbit_core::filter_text::print(&node, &known))
+}
