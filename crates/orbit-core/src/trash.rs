@@ -22,11 +22,14 @@ impl Row {
             Row::Page(r) => r.trashed_at,
             Row::View(r) => r.trashed_at,
             Row::Routine(r) => r.trashed_at,
+            Row::Roadmap(r) => r.trashed_at,
+            Row::Phase(r) => r.trashed_at,
             Row::Label(_)
             | Row::Settings(_)
             | Row::Completion(_)
             | Row::Purged(_)
-            | Row::Checkin(_) => None,
+            | Row::Checkin(_)
+            | Row::Placement(_) => None,
         }
     }
 
@@ -36,6 +39,8 @@ impl Row {
             Row::Project(r) => r.archived_at,
             Row::Goal(r) => r.archived_at,
             Row::Routine(r) => r.archived_at,
+            Row::Roadmap(r) => r.archived_at,
+            Row::Phase(r) => r.archived_at,
             _ => None,
         }
     }
@@ -52,11 +57,14 @@ impl Row {
             Row::Page(r) => r.trashed_at = at,
             Row::View(r) => r.trashed_at = at,
             Row::Routine(r) => r.trashed_at = at,
+            Row::Roadmap(r) => r.trashed_at = at,
+            Row::Phase(r) => r.trashed_at = at,
             Row::Label(_)
             | Row::Settings(_)
             | Row::Completion(_)
             | Row::Purged(_)
-            | Row::Checkin(_) => return false,
+            | Row::Checkin(_)
+            | Row::Placement(_) => return false,
         }
         true
     }
@@ -68,6 +76,8 @@ impl Row {
             Row::Project(r) => r.archived_at = at,
             Row::Goal(r) => r.archived_at = at,
             Row::Routine(r) => r.archived_at = at,
+            Row::Roadmap(r) => r.archived_at = at,
+            Row::Phase(r) => r.archived_at = at,
             _ => return false,
         }
         true

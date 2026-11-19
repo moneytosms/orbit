@@ -231,3 +231,17 @@ pub fn backlinks(rows_json: &str, id: &str) -> Result<Vec<String>, JsError> {
         .map(|u| u.to_string())
         .collect())
 }
+
+/// The Placement id for a Roadmap and an item, shared by every Device.
+#[wasm_bindgen]
+pub fn placement_id(roadmap_id: &str, item_id: &str) -> Result<String, JsError> {
+    Ok(orbit_core::roadmap::placement_id(roadmap_id.parse()?, item_id.parse()?).to_string())
+}
+
+/// Phases of Roadmap `roadmap_id` over `rows_json` (a Row array), each with its progress, current flag and items.
+#[wasm_bindgen]
+pub fn roadmap_summary(rows_json: &str, roadmap_id: &str, today: &str) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let summary = orbit_core::roadmap::summary(&rows, roadmap_id.parse()?, today);
+    Ok(serde_json::to_string(&summary)?)
+}

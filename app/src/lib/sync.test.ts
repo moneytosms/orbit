@@ -62,6 +62,11 @@ import {
   whatsNext,
   pinItem,
   notToday,
+  createRoadmap,
+  createPhase,
+  placeItem,
+  setPhaseDone,
+  roadmapSummary,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -641,4 +646,29 @@ test('a link target shows its live title and trashed or archived state; trashed 
   await archiveItem(proj)
   expect((await linkTarget(inProj))!.state).toBe('archived')
   expect(await linkTarget('00000000-0000-7000-8000-00000000dead')).toMatchObject({ state: 'purged' })
+})
+
+test('a Roadmap Phase holds items from any Area, moves them by reference and completes', async () => {
+  await createArea('Work')
+  await createArea('Home')
+  const areas = await tree()
+  const work = areas.find((x) => x.area.name === 'Work')!.area
+  const home = areas.find((x) => x.area.name === 'Home')!.area
+  const road = await createRoadmap(work.id, 'Plan')
+  const one = await createPhase(road, 'One')
+  const two = await createPhase(road, 'Two')
+  const task = await createTask('Elsewhere', home.id)
+  await placeItem(road, task, one)
+  await placeItem(road, task, two)
+  let phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases.map((p) => p.items.length)).toEqual([0, 1])
+  expect(phases[0].current).toBe(true)
+  expect((await tasksIn(home.id)).map((t) => t.task.id)).toContain(task)
+  await completeTask(task)
+  await setPhaseDone(two, true)
+  phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases[1].progress).toBe(1)
+  expect(phases[1].completed).toBe(true)
+  await setPhaseDone(two, false)
+  expect((await roadmapSummary(road, '2026-01-01'))[1].completed).toBe(false)
 })
