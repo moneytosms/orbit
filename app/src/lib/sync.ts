@@ -1,4 +1,4 @@
-import { apply, completion_for, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
+import { apply, completion_for, goal_progress, inbox_id, new_id, next_hlc, observe_hlc, order_between } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
 export type Due = { date: string; time?: string | null }
@@ -17,16 +17,33 @@ export type Task = {
   priority: 1 | 2 | 3 | 4
   label_ids: string[]
   recurrence: Recurrence | null
+  goal_id: string | null
 }
 export type Area = { kind: 'area'; id: string; name: string; order: string }
-export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string }
+export type Project = { kind: 'project'; id: string; parent_id: string; name: string; order: string; goal_id: string | null }
 export type Section = { kind: 'section'; id: string; parent_id: string; name: string; order: string }
 export type Label = { kind: 'label'; id: string; name: string }
 export type Settings = { kind: 'settings'; id: string; theme: string; accent: string }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
-export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids' | 'recurrence'>>
+export type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'due' | 'deadline' | 'duration_min' | 'priority' | 'label_ids' | 'recurrence' | 'goal_id'>>
+export type Entry = { amount: number; date: string; note: string }
+export type Progress = { kind: 'count' } | { kind: 'target'; target: number; entries: Entry[] } | { kind: 'manual' }
+export type Goal = {
+  kind: 'goal'
+  id: string
+  /** An Area, or a Goal (then this is a sub-goal). */
+  parent_id: string
+  name: string
+  done_condition: string
+  progress: Progress
+  start: string | null
+  target_date: string | null
+  completed_at: number | null
+  order: string
+}
+export type Milestone = { kind: 'milestone'; id: string; goal_id: string; title: string; date: string | null; done: boolean; order: string }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
-type Row = Area | Project | Section | Task | Label | Settings | Completion
+type Row = Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -115,6 +132,7 @@ const localToday = () => {
 }
 /** Completes a Task; a recurring one moves to its next due instead, counted from this device's local date. */
 export const completeTask = (id: string) => enqueue('task.complete', { id, today: localToday() })
+export const updateProject = (id: string, patch: { goal_id: string | null }) => enqueue('project.update', { id, ...patch })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
 export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
 
@@ -139,6 +157,53 @@ export const moveItem = (id: string, parentId: string | null, order: string) =>
   enqueue('item.move', { id, parent_id: parentId, order })
 /** Reparents `id` to the end of `parentId`'s children. */
 export const moveTo = async (id: string, parentId: string) => moveItem(id, parentId, await appendOrder(parentId))
+
+/** Creates a Goal under an Area (or a sub-goal under a Goal) and returns its id. */
+export async function createGoal(
+  parentId: string,
+  name: string,
+  opts: { progress?: Progress; start?: string; target_date?: string; done_condition?: string } = {},
+): Promise<string> {
+  const id = newId()
+  await enqueue('goal.create', { id, parent_id: parentId, name, order: await appendOrder(parentId), ...opts })
+  return id
+}
+export const updateGoal = (
+  id: string,
+  patch: { name?: string; done_condition?: string; progress?: Progress; start?: string | null; target_date?: string | null },
+) => enqueue('goal.update', { id, ...patch })
+export const completeGoal = (id: string) => enqueue('goal.complete', { id })
+/** Adds a dated amount to a Target Goal. */
+export const addEntry = (id: string, amount: number, note = '') => enqueue('goal.add_entry', { id, amount, date: localToday(), note })
+export async function createMilestone(goalId: string, title: string, date?: string): Promise<string> {
+  const id = newId()
+  await enqueue('milestone.create', { id, goal_id: goalId, title, date, order: await appendOrder(goalId) })
+  return id
+}
+export const setMilestoneDone = (id: string, done: boolean) => enqueue('milestone.update', { id, done })
+
+/** Active (not completed) Goals, in display order. */
+export async function goals(): Promise<Goal[]> {
+  return (await allRows()).filter((r): r is Goal => r.kind === 'goal' && r.completed_at === null).sort(byOrder)
+}
+export async function milestonesOf(goalId: string): Promise<Milestone[]> {
+  return (await allRows()).filter((r): r is Milestone => r.kind === 'milestone' && r.goal_id === goalId).sort(byOrder)
+}
+/** The Goal a Task inherits from its Project (through any parent Tasks), if any. */
+export async function inheritedGoal(taskId: string): Promise<string | null> {
+  const rows = await allRows()
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  let row = byId.get(taskId)
+  for (let i = 0; row && i < 32; i++) {
+    if (row.kind === 'project') return row.goal_id
+    row = 'parent_id' in row ? byId.get(row.parent_id) : undefined
+  }
+  return null
+}
+/** Progress 0..1 and whether the Goal is behind its straight-line pace, from core. */
+export async function goalProgress(goalId: string): Promise<{ progress: number; behind: boolean }> {
+  return JSON.parse(goal_progress(JSON.stringify(await allRows()), goalId, localToday()))
+}
 
 /** A quick-add line as parsed by core `parse::parse` (`parse_quick_add`). */
 export type Parsed = {
@@ -177,6 +242,8 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
     name &&
     (areas.find((a) => a.area.name.toLowerCase() === name)?.area.id ??
       areas.flatMap((a) => a.projects).find((pr) => pr.name.toLowerCase() === name)?.id)
+  const goalName = p.goal?.toLowerCase()
+  const goalId = goalName && (await goals()).find((g) => g.name.toLowerCase() === goalName)?.id
   const all = await labels()
   const ids = new Set<string>()
   for (const l of p.labels) {
@@ -197,6 +264,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
   if (p.priority != null) patch.priority = p.priority as Task['priority']
   if (p.due) patch.due = p.due
   if (p.recurrence) patch.recurrence = p.recurrence
+  if (goalId) patch.goal_id = goalId
   if (ids.size) patch.label_ids = [...ids]
   if (Object.keys(patch).length) await updateTask(id, patch)
   return id
@@ -208,7 +276,7 @@ async function predict(rows: IDBObjectStore, cmd: Command) {
   const from = existing ? JSON.stringify(existing) : undefined
   rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
   // A completion also logs a record, as the server does.
-  if (cmd.type === 'task.complete') {
+  if (['task.complete', 'goal.complete', 'milestone.update'].includes(cmd.type)) {
     const log = completion_for(from, JSON.stringify(cmd))
     if (log) rows.put(JSON.parse(log))
   }

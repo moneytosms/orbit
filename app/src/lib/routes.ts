@@ -7,7 +7,7 @@ import Repeat from '@lucide/svelte/icons/repeat'
 import Settings from '@lucide/svelte/icons/settings'
 import Target from '@lucide/svelte/icons/target'
 
-/** Every screen in the shell, by hash route. Only Inbox and Settings are built; the rest show a stub. */
+/** Every screen in the shell, by hash route. Inbox, Settings and Goals are built; the rest show a stub. */
 export const routes = {
   home: { label: 'Home', icon: House },
   inbox: { label: 'Inbox', icon: Inbox },

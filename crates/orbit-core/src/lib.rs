@@ -1,3 +1,4 @@
+pub mod goal;
 pub mod order;
 pub mod parse;
 pub mod recur;
@@ -7,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Builder;
 
+pub use goal::{Goal, Milestone, Progress};
 pub use recur::Recurrence;
 pub use uuid::Uuid;
 
@@ -73,6 +75,9 @@ pub struct Project {
     pub name: String,
     #[serde(default)]
     pub order: String,
+    /// The Goal its Tasks count towards unless they link another.
+    #[serde(default)]
+    pub goal_id: Option<Uuid>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -113,6 +118,9 @@ pub struct Task {
     /// Completing a recurring Task moves its `due` on instead of finishing it.
     #[serde(default)]
     pub recurrence: Option<Recurrence>,
+    /// The one Goal this Task counts towards.
+    #[serde(default)]
+    pub goal_id: Option<Uuid>,
 }
 
 fn default_priority() -> u8 {
@@ -165,6 +173,8 @@ pub enum Row {
     Label(Label),
     Settings(Settings),
     Completion(Completion),
+    Goal(Goal),
+    Milestone(Milestone),
 }
 
 impl Row {
@@ -177,6 +187,8 @@ impl Row {
             Row::Label(l) => l.id,
             Row::Settings(s) => s.id,
             Row::Completion(c) => c.id,
+            Row::Goal(g) => g.id,
+            Row::Milestone(m) => m.id,
         }
     }
 
@@ -187,6 +199,8 @@ impl Row {
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
             Row::Task(t) => Some(t.parent_id),
+            Row::Goal(g) => Some(g.parent_id),
+            Row::Milestone(m) => Some(m.goal_id),
         }
     }
 
@@ -287,6 +301,96 @@ pub enum Op {
             skip_serializing_if = "Option::is_none"
         )]
         recurrence: Option<Option<Recurrence>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        goal_id: Option<Option<Uuid>>,
+    },
+    #[serde(rename = "project.update")]
+    ProjectUpdate {
+        id: Uuid,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        goal_id: Option<Option<Uuid>>,
+    },
+    #[serde(rename = "goal.create")]
+    GoalCreate {
+        id: Uuid,
+        parent_id: Uuid,
+        name: String,
+        #[serde(default)]
+        progress: Option<Progress>,
+        #[serde(default)]
+        start: Option<String>,
+        #[serde(default)]
+        target_date: Option<String>,
+        #[serde(default)]
+        done_condition: String,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "goal.update")]
+    GoalUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        done_condition: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        progress: Option<Progress>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        start: Option<Option<String>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        target_date: Option<Option<String>>,
+    },
+    #[serde(rename = "goal.complete")]
+    GoalComplete { id: Uuid },
+    /// Appends to a Target Goal's entries.
+    #[serde(rename = "goal.add_entry")]
+    GoalAddEntry {
+        id: Uuid,
+        amount: f64,
+        date: String,
+        #[serde(default)]
+        note: String,
+    },
+    #[serde(rename = "milestone.create")]
+    MilestoneCreate {
+        id: Uuid,
+        goal_id: Uuid,
+        title: String,
+        #[serde(default)]
+        date: Option<String>,
+        #[serde(default)]
+        order: String,
+    },
+    /// `done: true` completes it and logs a completion.
+    #[serde(rename = "milestone.update")]
+    MilestoneUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        date: Option<Option<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        done: Option<bool>,
     },
     #[serde(rename = "task.complete")]
     TaskComplete {
@@ -357,6 +461,13 @@ impl Op {
             | Op::ItemMove { id, .. }
             | Op::TaskUpdate { id, .. }
             | Op::TaskComplete { id, .. }
+            | Op::ProjectUpdate { id, .. }
+            | Op::GoalCreate { id, .. }
+            | Op::GoalUpdate { id, .. }
+            | Op::GoalComplete { id }
+            | Op::GoalAddEntry { id, .. }
+            | Op::MilestoneCreate { id, .. }
+            | Op::MilestoneUpdate { id, .. }
             | Op::LabelCreate { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
@@ -369,7 +480,47 @@ impl Op {
             | Op::ProjectCreate { .. }
             | Op::SectionCreate { .. }
             | Op::TaskCreate { .. }
+            | Op::GoalCreate { .. }
+            | Op::MilestoneCreate { .. }
             | Op::LabelCreate { .. } => vec![],
+            Op::ProjectUpdate { goal_id, .. } => {
+                if goal_id.is_some() {
+                    vec!["goal_id"]
+                } else {
+                    vec![]
+                }
+            }
+            Op::GoalUpdate {
+                name,
+                done_condition,
+                progress,
+                start,
+                target_date,
+                ..
+            } => [
+                ("name", name.is_some()),
+                ("done_condition", done_condition.is_some()),
+                ("progress", progress.is_some()),
+                ("start", start.is_some()),
+                ("target_date", target_date.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
+            Op::GoalComplete { .. } => vec!["completed_at"],
+            Op::GoalAddEntry { .. } => vec!["progress"],
+            Op::MilestoneUpdate {
+                title, date, done, ..
+            } => [
+                ("title", title.is_some()),
+                ("date", date.is_some()),
+                ("done", done.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
             Op::ItemMove { .. } => vec!["parent_id", "order"],
             Op::TaskUpdate {
                 title,
@@ -380,6 +531,7 @@ impl Op {
                 priority,
                 label_ids,
                 recurrence,
+                goal_id,
                 ..
             } => [
                 ("title", title.is_some()),
@@ -390,6 +542,7 @@ impl Op {
                 ("priority", priority.is_some()),
                 ("label_ids", label_ids.is_some()),
                 ("recurrence", recurrence.is_some()),
+                ("goal_id", goal_id.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -500,6 +653,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     parent_id: *parent_id,
                     name: name.into(),
                     order: order.clone(),
+                    goal_id: None,
                 }))
             }
         }
@@ -548,6 +702,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     priority: default_priority(),
                     label_ids: vec![],
                     recurrence: None,
+                    goal_id: None,
                 }))
             }
         }
@@ -580,6 +735,17 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..t
                 })),
+                Some(Row::Goal(g)) => Ok(Row::Goal(Goal {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    touched_at: Some(cmd.hlc.wall.max(g.touched_at.unwrap_or(0))),
+                    ..g
+                })),
+                Some(Row::Milestone(m)) => Ok(Row::Milestone(Milestone {
+                    goal_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..m
+                })),
                 Some(Row::Label(_) | Row::Settings(_) | Row::Completion(_)) => {
                     Err(ErrorCode::BadParent)
                 }
@@ -595,6 +761,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             priority,
             label_ids,
             recurrence,
+            goal_id,
             ..
         } => match existing {
             Some(Row::Task(t)) => {
@@ -625,6 +792,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     priority: priority.unwrap_or(t.priority),
                     label_ids: label_ids.clone().unwrap_or(t.label_ids),
                     recurrence: recurrence.clone().unwrap_or(t.recurrence),
+                    goal_id: goal_id.unwrap_or(t.goal_id),
                     ..t
                 }))
             }
@@ -632,6 +800,158 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         },
         Op::TaskComplete { .. } => match existing {
             Some(Row::Task(t)) => Ok(Row::Task(complete_effects(t, cmd).0)),
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::ProjectUpdate { goal_id, .. } => match existing {
+            Some(Row::Project(p)) => Ok(Row::Project(Project {
+                goal_id: goal_id.unwrap_or(p.goal_id),
+                ..p
+            })),
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::GoalCreate {
+            id,
+            parent_id,
+            name,
+            progress,
+            start,
+            target_date,
+            done_condition,
+            order,
+        } => {
+            let name = name.trim();
+            if existing.is_some() {
+                return Err(ErrorCode::Exists);
+            }
+            if name.is_empty() {
+                return Err(ErrorCode::TitleRequired);
+            }
+            let progress = progress.clone().unwrap_or(Progress::Count);
+            check_goal_fields(&progress, start.as_deref(), target_date.as_deref())?;
+            Ok(Row::Goal(Goal {
+                id: *id,
+                parent_id: *parent_id,
+                name: name.into(),
+                done_condition: done_condition.clone(),
+                progress,
+                start: start.clone(),
+                target_date: target_date.clone(),
+                completed_at: None,
+                order: order.clone(),
+                touched_at: Some(cmd.hlc.wall),
+            }))
+        }
+        Op::GoalUpdate {
+            name,
+            done_condition,
+            progress,
+            start,
+            target_date,
+            ..
+        } => match existing {
+            Some(Row::Goal(g)) => {
+                let name = match name.as_deref().map(str::trim) {
+                    Some("") => return Err(ErrorCode::TitleRequired),
+                    Some(new) => new.into(),
+                    None => g.name.clone(),
+                };
+                let progress = progress.clone().unwrap_or(g.progress.clone());
+                let start = start.clone().unwrap_or(g.start.clone());
+                let target_date = target_date.clone().unwrap_or(g.target_date.clone());
+                check_goal_fields(&progress, start.as_deref(), target_date.as_deref())?;
+                Ok(Row::Goal(Goal {
+                    name,
+                    done_condition: done_condition.clone().unwrap_or(g.done_condition.clone()),
+                    progress,
+                    start,
+                    target_date,
+                    touched_at: touch(&g, cmd),
+                    ..g
+                }))
+            }
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::GoalComplete { .. } => match existing {
+            Some(Row::Goal(g)) => Ok(Row::Goal(Goal {
+                completed_at: g.completed_at.or(Some(cmd.hlc.wall)),
+                touched_at: touch(&g, cmd),
+                ..g
+            })),
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::GoalAddEntry {
+            amount, date, note, ..
+        } => match existing {
+            Some(Row::Goal(g)) => {
+                let Progress::Target {
+                    target,
+                    mut entries,
+                } = g.progress.clone()
+                else {
+                    return Err(ErrorCode::BadField);
+                };
+                if !amount.is_finite() || !is_date(date) {
+                    return Err(ErrorCode::BadField);
+                }
+                entries.push(goal::Entry {
+                    amount: *amount,
+                    date: date.clone(),
+                    note: note.clone(),
+                });
+                Ok(Row::Goal(Goal {
+                    progress: Progress::Target { target, entries },
+                    touched_at: touch(&g, cmd),
+                    ..g
+                }))
+            }
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::MilestoneCreate {
+            id,
+            goal_id,
+            title,
+            date,
+            order,
+        } => {
+            let title = title.trim();
+            if existing.is_some() {
+                Err(ErrorCode::Exists)
+            } else if title.is_empty() {
+                Err(ErrorCode::TitleRequired)
+            } else if date.as_deref().is_some_and(|d| !is_date(d)) {
+                Err(ErrorCode::BadField)
+            } else {
+                Ok(Row::Milestone(Milestone {
+                    id: *id,
+                    goal_id: *goal_id,
+                    title: title.into(),
+                    date: date.clone(),
+                    done: false,
+                    order: order.clone(),
+                }))
+            }
+        }
+        Op::MilestoneUpdate {
+            title, date, done, ..
+        } => match existing {
+            Some(Row::Milestone(m)) => {
+                let title = match title.as_deref().map(str::trim) {
+                    Some("") => return Err(ErrorCode::TitleRequired),
+                    Some(new) => new.into(),
+                    None => m.title.clone(),
+                };
+                if let Some(Some(d)) = date
+                    && !is_date(d)
+                {
+                    return Err(ErrorCode::BadField);
+                }
+                Ok(Row::Milestone(Milestone {
+                    title,
+                    date: date.clone().unwrap_or(m.date.clone()),
+                    done: done.unwrap_or(m.done),
+                    ..m
+                }))
+            }
             _ => Err(ErrorCode::NotFound),
         },
         Op::LabelCreate { id, name } => {
@@ -666,6 +986,25 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
     }
 }
 
+fn touch(g: &Goal, cmd: &Command) -> Option<u64> {
+    Some(cmd.hlc.wall.max(g.touched_at.unwrap_or(0)))
+}
+
+/// A Target needs a positive finite target; dates must be `YYYY-MM-DD`.
+fn check_goal_fields(
+    progress: &Progress,
+    start: Option<&str>,
+    target_date: Option<&str>,
+) -> Result<(), ErrorCode> {
+    if matches!(progress, Progress::Target { target, .. } if !target.is_finite() || *target <= 0.0)
+        || start.is_some_and(|d| !is_date(d))
+        || target_date.is_some_and(|d| !is_date(d))
+    {
+        return Err(ErrorCode::BadField);
+    }
+    Ok(())
+}
+
 /// The tree rules for `child` (its `parent_id` already set) under `parent`, the row that id
 /// points at. Callers load the parent and call this before applying a create or move; a missing
 /// parent is `None`. Cycles need the whole chain, so callers walk it themselves.
@@ -685,6 +1024,10 @@ pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> 
         // Inbox holds only Tasks.
         (Row::Project(_), Row::Area(a)) | (Row::Section(_), Row::Area(a)) => a.id != INBOX,
         (Row::Section(_), Row::Project(_)) => true,
+        // Sub-goal depth needs the grandparent: see `goal::check_nesting`.
+        (Row::Goal(_), Row::Area(a)) => a.id != INBOX,
+        (Row::Goal(_), Row::Goal(_)) => true,
+        (Row::Milestone(_), Row::Goal(_)) => true,
         (Row::Task(_), Row::Area(_) | Row::Project(_) | Row::Section(_) | Row::Task(_)) => true,
         _ => false,
     };
@@ -772,6 +1115,27 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
         },
         Some(c),
     )
+}
+
+/// The completion record `cmd` logs when applied to `old`, for a Task, Goal or Milestone.
+pub fn completion_for(old: &Row, cmd: &Command) -> Option<Completion> {
+    let at = cmd.hlc.wall;
+    let log = |item_id| Completion {
+        id: completion_id(item_id, cmd.uuid),
+        item_id,
+        at,
+    };
+    match (&cmd.op, old) {
+        (Op::TaskComplete { .. }, Row::Task(t)) => complete_effects(t.clone(), cmd).1,
+        (Op::GoalComplete { .. }, Row::Goal(g)) if g.completed_at.is_none() => Some(log(g.id)),
+        (
+            Op::MilestoneUpdate {
+                done: Some(true), ..
+            },
+            Row::Milestone(m),
+        ) if !m.done => Some(log(m.id)),
+        _ => None,
+    }
 }
 
 /// The same command always logs the same record, so a replay cannot log it twice.
@@ -892,7 +1256,7 @@ mod tests {
                 "kind": "task", "id": TASK, "parent_id": "00000000-0000-7000-8000-000000000001",
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
-                "priority": 4, "label_ids": [], "recurrence": null,
+                "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null,
             })
         );
     }
@@ -1137,6 +1501,7 @@ mod tests {
                 ("description", 1000),
                 ("due", 1000),
                 ("duration_min", 1000),
+                ("goal_id", 1000),
                 ("label_ids", 1000),
                 ("order", 1000),
                 ("parent_id", 1000),
@@ -1173,6 +1538,7 @@ mod tests {
             parent_id: parent,
             name: "P".into(),
             order: "a".into(),
+            goal_id: None,
         })
     }
     fn section(n: u128, parent: Uuid) -> Row {
@@ -1197,6 +1563,7 @@ mod tests {
             priority: 4,
             label_ids: vec![],
             recurrence: None,
+            goal_id: None,
         })
     }
 

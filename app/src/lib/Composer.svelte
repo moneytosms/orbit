@@ -2,7 +2,7 @@
   import { onMount, tick, untrack } from 'svelte'
   import Plus from '@lucide/svelte/icons/plus'
   import { Button } from '$lib/components/ui/button'
-  import { createArea, labels, quickAdd, quickTitle, tree, type Parsed } from '$lib/sync'
+  import { createArea, goals as listGoals, labels, quickAdd, quickTitle, tree, type Parsed } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
 
   let {
@@ -16,12 +16,13 @@
   let draft = $state(untrack(() => prefill))
   let caret = $state(untrack(() => prefill.length))
   let inputEl: HTMLInputElement | undefined = $state()
-  let known = $state({ areas: [] as string[], labels: [] as string[] })
+  let known = $state({ areas: [] as string[], goals: [] as string[], labels: [] as string[] })
 
   async function loadKnown() {
-    const [t, all] = await Promise.all([tree(), labels()])
+    const [t, all, gs] = await Promise.all([tree(), labels(), listGoals()])
     known = {
       areas: t.flatMap((x) => [x.area.name, ...x.projects.map((p) => p.name)]),
+      goals: gs.map((g) => g.name),
       labels: all.map((l) => l.name),
     }
   }
@@ -35,10 +36,10 @@
     const d = new Date()
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
-  // Goals and Pages have no list in the app yet, so they are never known here.
+  // Pages have no list in the app yet, so they are never known here.
   const parsed: Parsed = $derived(
     JSON.parse(
-      parse_quick_add(draft, localNow(), JSON.stringify({ areas: known.areas, goals: [], pages: [], labels: known.labels })),
+      parse_quick_add(draft, localNow(), JSON.stringify({ areas: known.areas, goals: known.goals, pages: [], labels: known.labels })),
     ),
   )
 
@@ -48,7 +49,7 @@
     if (!m) return null
     const sigil = m[2]
     const partial = m[3].toLowerCase()
-    const pool = sigil === '@' ? known.areas : sigil === '#' ? known.labels : []
+    const pool = sigil === '@' ? known.areas : sigil === '$' ? known.goals : sigil === '#' ? known.labels : []
     const options = pool.filter((n) => n.toLowerCase().includes(partial) && n.toLowerCase() !== partial).slice(0, 6)
     return { sigil, start: m.index + m[1].length, options }
   })

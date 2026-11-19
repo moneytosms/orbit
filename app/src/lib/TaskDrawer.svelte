@@ -3,8 +3,11 @@
   import {
     createLabel,
     getTask,
+    goals as listGoals,
+    inheritedGoal,
     labels as listLabels,
     updateTask,
+    type Goal,
     type Label as TaskLabel,
     type Task,
     type TaskPatch,
@@ -16,6 +19,8 @@
   let side = $state<'right' | 'bottom'>('bottom')
   let task = $state<Task | undefined>()
   let all = $state<TaskLabel[]>([])
+  let goalList = $state<Goal[]>([])
+  let inherited = $state<string | null>(null)
   let newLabel = $state('')
   const priorities = [1, 2, 3, 4] as const
 
@@ -34,6 +39,8 @@
   async function load(id: string) {
     task = await getTask(id)
     all = await listLabels()
+    goalList = await listGoals()
+    inherited = await inheritedGoal(id)
   }
 
   // Every write goes through the outbox, which predicts the row at once; re-read it to show the result.
@@ -41,6 +48,7 @@
     if (!taskId) return
     await updateTask(taskId, patch)
     task = await getTask(taskId)
+    inherited = await inheritedGoal(taskId)
   }
 
   function saveTitle(e: FocusEvent) {
@@ -188,6 +196,26 @@
               class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
             />
           </div>
+        </div>
+
+        <div class="grid gap-1.5">
+          <label for="task-goal" class="text-xs font-medium text-muted">Goal</label>
+          <select
+            id="task-goal"
+            value={task.goal_id ?? ''}
+            onchange={(e) => save({ goal_id: e.currentTarget.value || null })}
+            class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          >
+            <option value="">{inherited ? 'From project' : 'None'}</option>
+            {#each goalList as g (g.id)}
+              <option value={g.id}>{g.name}</option>
+            {/each}
+          </select>
+          {#if !task.goal_id && inherited}
+            <p class="text-xs text-muted">
+              Counts towards {goalList.find((g) => g.id === inherited)?.name ?? 'a goal'} (from project)
+            </p>
+          {/if}
         </div>
 
         <div class="grid gap-1.5">

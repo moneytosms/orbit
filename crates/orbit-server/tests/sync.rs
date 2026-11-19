@@ -85,7 +85,7 @@ async fn commands_apply_in_order_and_other_devices_get_the_delta() {
             "01900000-0000-7000-8000-0000000000c3": { "status": "ok" },
         })
     );
-    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null }]);
+    let done = json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": 1002, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null }]);
     // The completion record ships after the task.
     assert_eq!(res["delta"][0], done[0]);
     assert_eq!(res["delta"][1]["kind"], "completion");
@@ -243,7 +243,7 @@ async fn a_rejected_command_sends_back_its_rows_current_state() {
     );
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null }])
+        json!([{ "kind": "task", "id": TASK, "parent_id": INBOX, "title": "Buy milk", "completed_at": null, "order": "", "description": "", "due": null, "deadline": null, "duration_min": null, "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null }])
     );
 }
 
@@ -497,6 +497,70 @@ async fn completing_a_recurring_task_advances_its_due_and_logs_each_time() {
     assert_eq!(completions.len(), 2);
     assert_ne!(completions[0]["id"], completions[1]["id"]);
     assert!(completions.iter().all(|r| r["item_id"] == TASK));
+}
+
+#[tokio::test]
+async fn completing_a_goal_or_milestone_logs_a_completion_and_sub_goals_stay_one_deep() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (goal, sub, subsub, ms) = (c(0x10), c(0x11), c(0x12), c(0x13));
+    let cmds = vec![
+        cmd(
+            &c(0xc1),
+            "area.create",
+            json!({ "id": AREA, "name": "Home", "order": "a" }),
+            1000,
+        ),
+        cmd(
+            &c(0xc2),
+            "goal.create",
+            json!({ "id": goal, "parent_id": AREA, "name": "Get fit", "order": "a",
+                    "start": "2026-01-01", "target_date": "2026-12-31" }),
+            1001,
+        ),
+        cmd(
+            &c(0xc3),
+            "goal.create",
+            json!({ "id": sub, "parent_id": goal, "name": "Run", "order": "a" }),
+            1002,
+        ),
+        cmd(
+            &c(0xc4),
+            "goal.create",
+            json!({ "id": subsub, "parent_id": sub, "name": "Too deep", "order": "a" }),
+            1003,
+        ),
+        cmd(
+            &c(0xc5),
+            "milestone.create",
+            json!({ "id": ms, "goal_id": goal, "title": "First 5k", "order": "a" }),
+            1004,
+        ),
+        cmd(
+            &c(0xc6),
+            "milestone.update",
+            json!({ "id": ms, "done": true }),
+            1005,
+        ),
+        cmd(&c(0xc7), "goal.complete", json!({ "id": goal }), 1006),
+    ];
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": cmds })).await;
+    let st = &res["statuses"];
+    for n in [0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7] {
+        assert_eq!(st[c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        st[c(0xc4)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    let rows = res["delta"].as_array().unwrap();
+    let mut items: Vec<_> = rows
+        .iter()
+        .filter(|r| r["kind"] == "completion")
+        .map(|r| r["item_id"].clone())
+        .collect();
+    items.sort_by_key(|v| v.to_string());
+    assert_eq!(items, vec![json!(goal), json!(ms)]);
 }
 
 #[tokio::test]

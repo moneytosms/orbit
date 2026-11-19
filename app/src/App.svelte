@@ -1,6 +1,7 @@
 <script lang="ts">
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
+  import Goals from './lib/screens/Goals.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
   import Settings from './lib/screens/Settings.svelte'
   import Stub from './lib/screens/Stub.svelte'
@@ -83,6 +84,8 @@
     {#snippet children(add)}
       {#if parent}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
+      {:else if screen.name === 'goals'}
+        <Goals {areas} />
       {:else if screen.name === 'settings'}
         <Settings />
       {:else}
