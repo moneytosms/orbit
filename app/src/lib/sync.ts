@@ -615,3 +615,33 @@ export function start(onChange: () => void) {
   addEventListener('focus', () => sync())
   setInterval(() => document.visibilityState === 'visible' && sync(), 60_000)
 }
+
+/** Sets a Task's priority (1 highest, 4 none). */
+export const setPriority = (id: string, priority: Task['priority']) => updateTask(id, { priority })
+/** Sets a Task's due date (`YYYY-MM-DD`), or clears it with null. */
+export const setDue = (id: string, date: string | null) => updateTask(id, { due: date ? { date } : null })
+/** Replaces a Task's labels. */
+export const setLabels = (id: string, label_ids: string[]) => updateTask(id, { label_ids })
+/** The caller's local date shifted by `days`, as `YYYY-MM-DD`. */
+export function localDay(days = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+/** Sections directly under a Project or Area, in order. */
+export async function sectionsOf(parentId: string): Promise<Section[]> {
+  return (await visibleRows())
+    .filter((r): r is Section => r.kind === 'section' && r.parent_id === parentId)
+    .sort(byOrder)
+}
+/** Name, kind and parent of every visible Area, Project, Section, Goal and Task, by id. */
+export async function nameIndex(): Promise<Map<string, { kind: string; name: string; parent_id: string | null }>> {
+  const out = new Map<string, { kind: string; name: string; parent_id: string | null }>()
+  for (const r of await visibleRows()) {
+    if (r.kind === 'task') out.set(r.id, { kind: r.kind, name: r.title, parent_id: r.parent_id })
+    else if (r.kind === 'area' || r.kind === 'goal') out.set(r.id, { kind: r.kind, name: r.name, parent_id: null })
+    else if (r.kind === 'project' || r.kind === 'section')
+      out.set(r.id, { kind: r.kind, name: r.name, parent_id: r.parent_id })
+  }
+  return out
+}

@@ -4,6 +4,8 @@
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import Flag from '@lucide/svelte/icons/flag'
   import { Button } from '$lib/components/ui/button'
+  import Board, { cellText, type BoardRow, type CellCtx } from '$lib/Board.svelte'
+  import Table from '$lib/Table.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import Composer from '$lib/Composer.svelte'
   import {
@@ -14,8 +16,12 @@
     labels,
     moveItem,
     orderBetween,
+    nameIndex,
     pagesOf,
+    sectionsOf,
+    tasksIn,
     type Due,
+    type Sort,
     type Page,
     type Task,
   } from '$lib/sync'
@@ -40,6 +46,79 @@
   let openId = $state<string | null>(null)
   let names = $state(new Map<string, string>())
   let pageList = $state<Page[]>([])
+
+  // List | Board | Table, remembered per list on this device.
+  const layoutKey = (id: string) => `orbit.layout.${id}`
+  const readLayout = (id: string) => {
+    try {
+      const v = localStorage.getItem(layoutKey(id))
+      return v === 'board' || v === 'table' ? v : 'list'
+    } catch {
+      return 'list'
+    }
+  }
+  let layout = $state<string>('list')
+  let layoutFor = ''
+  $effect(() => {
+    if (layoutFor !== parentId) {
+      layoutFor = parentId
+      layout = readLayout(parentId)
+    }
+  })
+  function setLayout(next: string) {
+    layout = next
+    try {
+      localStorage.setItem(layoutKey(parentId), next)
+    } catch {
+      // Storage unavailable: the choice only lasts this session.
+    }
+  }
+  let boardGroups = $state<{ key: string; rows: BoardRow[] }[]>([])
+  let sectionCols = $state<{ key: string; title: string }[]>([])
+  // The Board's columns: tasks directly under the list, then one column per Section.
+  $effect(() => {
+    void rows
+    if (layout !== 'board') return
+    const id = parentId
+    sectionsOf(id).then(async (secs) => {
+      const out = [{ key: '', rows: rows.filter((r) => r.depth === 0).map((r) => r.task) as BoardRow[] }]
+      for (const sec of secs)
+        out.push({ key: sec.id, rows: (await tasksIn(sec.id)).filter((r) => r.depth === 0).map((r) => r.task) })
+      if (id !== parentId) return
+      sectionCols = [{ key: '', title: 'No section' }, ...secs.map((x) => ({ key: x.id, title: x.name }))]
+      boardGroups = out
+    })
+  })
+  let sorts = $state<Sort[]>([])
+  const sortValue = (t: Task, f: string, cx: CellCtx): string | number => {
+    if (f === 'title') return t.title.toLowerCase()
+    if (f === 'priority') return t.priority
+    if (f === 'due') return t.due?.date ?? '\uffff'
+    if (f === 'deadline') return t.deadline ?? '\uffff'
+    if (f === 'created_at') return t.created_at ?? 0
+    return cellText(t, f.replace('.name', ''), cx).toLowerCase()
+  }
+  let tableCx = $state<CellCtx>({ labels: new Map(), names: new Map() })
+  $effect(() => {
+    void rows
+    Promise.all([labels(), nameIndex()]).then(
+      ([l, n]) => (tableCx = { labels: new Map(l.map((x) => [x.id, x])), names: n }),
+    )
+  })
+  const tableRows = $derived.by(() => {
+    const out = rows.map((r) => r.task)
+    return out.sort((a, b) => {
+      for (const s of sorts) {
+        const x = sortValue(a, s.field, tableCx)
+        const y = sortValue(b, s.field, tableCx)
+        if (x !== y) return (x < y ? -1 : 1) * (s.desc ? -1 : 1)
+      }
+      return 0
+    })
+  })
+  function openRow(r: BoardRow) {
+    if (r.kind === 'task') openId = r.id
+  }
 
   // Pages of an Area or Project; the Inbox has none.
   $effect(() => {
@@ -154,7 +233,30 @@
   <Composer {parentId} autofocus={false} />
 </div>
 
-{#if groups.length}
+<div role="group" aria-label="Layout" class="mb-3 flex gap-1">
+  {#each [['list', 'List'], ['board', 'Board'], ['table', 'Table']] as [value, text] (value)}
+    <Button
+      size="sm"
+      variant={layout === value ? 'on' : 'default'}
+      aria-pressed={layout === value}
+      onclick={() => setLayout(value)}>{text}</Button
+    >
+  {/each}
+</div>
+
+{#if layout === 'board'}
+  <Board
+    groupBy="section"
+    groups={boardGroups}
+    fields={[]}
+    extra={sectionCols}
+    scopeId={parentId}
+    {onchange}
+    onopen={openRow}
+  />
+{:else if layout === 'table'}
+  <Table rows={tableRows as BoardRow[]} fields={[]} {sorts} onsort={(s) => (sorts = s)} onopen={openRow} />
+{:else if groups.length}
   <ul
     use:dndzone={{ items, type: 'task', flipDurationMs: 150, delayTouchStart: 200, useCursorForDetection: true }}
     onconsider={consider}
