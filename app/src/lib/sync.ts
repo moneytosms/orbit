@@ -13,6 +13,7 @@ import {
   order_between,
   parse_filter,
   print_filter,
+  whats_next,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 
@@ -35,6 +36,8 @@ export type Task = {
   goal_id: string | null
   created_at: number | null
   trashed_at: number | null
+  pinned_on?: string | null
+  not_today_on?: string | null
 }
 export type Area = {
   kind: 'area'
@@ -64,7 +67,16 @@ export type Section = {
   trashed_at: number | null
 }
 export type Label = { kind: 'label'; id: string; name: string }
-export type Settings = { kind: 'settings'; id: string; theme: string; accent: string; start_view: string }
+export type Settings = {
+  kind: 'settings'
+  id: string
+  theme: string
+  accent: string
+  start_view: string
+  next_deadline_days?: number | null
+  next_due_days?: number | null
+  next_undated_p1?: boolean | null
+}
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
   Pick<
@@ -98,6 +110,8 @@ export type Milestone = {
   done: boolean
   order: string
   trashed_at: number | null
+  pinned_on?: string | null
+  not_today_on?: string | null
 }
 export type Page = {
   kind: 'page'
@@ -251,6 +265,50 @@ export async function getSettings(): Promise<{ theme: string; accent: string; st
 }
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
 export const setStartView = (v: string) => enqueue('settings.update', { start_view: v })
+
+export type NextSettings = { deadline_days: number; due_days: number; undated_p1: boolean }
+const NEXT_DEFAULTS: NextSettings = { deadline_days: 3, due_days: 7, undated_p1: true }
+/** The What's next windows and undated-P1 toggle; unset fields read as their defaults. */
+export async function getNextSettings(): Promise<NextSettings> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return {
+    deadline_days: row?.next_deadline_days ?? NEXT_DEFAULTS.deadline_days,
+    due_days: row?.next_due_days ?? NEXT_DEFAULTS.due_days,
+    undated_p1: row?.next_undated_p1 ?? NEXT_DEFAULTS.undated_p1,
+  }
+}
+export const setNextSettings = (p: Partial<NextSettings>) =>
+  enqueue('settings.update', {
+    next_deadline_days: p.deadline_days,
+    next_due_days: p.due_days,
+    next_undated_p1: p.undated_p1,
+  })
+
+export type NextItem = {
+  id: string
+  kind: 'task' | 'milestone'
+  title: string
+  tier: number
+  reason: string
+  breadcrumb: string[]
+}
+/** Pins an item to the top of today's What's next (or unpins); clears itself tomorrow. */
+export const pinItem = (id: string, on: boolean) => enqueue('item.pin', { id, date: on ? localToday() : null })
+/** Hides an item from today's What's next (or brings it back); clears itself tomorrow. */
+export const notToday = (id: string, on: boolean) => enqueue('item.not_today', { id, date: on ? localToday() : null })
+/** The ranked What's next list for this device's local day and time. */
+export async function whatsNext(): Promise<NextItem[]> {
+  const d = new Date()
+  const cfg = await getNextSettings()
+  return JSON.parse(
+    whats_next(
+      JSON.stringify(await allRows()),
+      localToday(),
+      `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+      JSON.stringify(cfg),
+    ),
+  )
+}
 export const deleteItem = (id: string) => enqueue('item.delete', { id })
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })

@@ -172,3 +172,18 @@ pub fn print_filter(node_json: &str, known_json: &str) -> Result<String, JsError
     let known: orbit_core::filter_text::Known = serde_json::from_str(known_json)?;
     Ok(orbit_core::filter_text::print(&node, &known))
 }
+
+/// The What's next list for `rows_json`, as `[{ id, tier, reason, breadcrumb }]`.
+#[wasm_bindgen]
+pub fn whats_next(
+    rows_json: &str,
+    today: &str,
+    now_time: &str,
+    cfg_json: &str,
+) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let cfg: orbit_core::next::Cfg = serde_json::from_str(cfg_json)?;
+    Ok(serde_json::to_string(&orbit_core::next::whats_next(
+        &rows, today, now_time, &cfg,
+    ))?)
+}

@@ -293,6 +293,8 @@ mod tests {
             done: false,
             order: String::new(),
             trashed_at: None,
+            pinned_on: None,
+            not_today_on: None,
         });
         let mut g = goal;
         let rows = vec![area(1), g.clone(), m.clone()];

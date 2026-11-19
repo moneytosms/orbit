@@ -1,5 +1,6 @@
 pub mod filter_text;
 pub mod goal;
+pub mod next;
 pub mod order;
 pub mod page;
 pub mod parse;
@@ -150,6 +151,12 @@ pub struct Task {
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// `YYYY-MM-DD`; pinned to the top of What's next only on that day.
+    #[serde(default)]
+    pub pinned_on: Option<String>,
+    /// `YYYY-MM-DD`; hidden from What's next only on that day.
+    #[serde(default)]
+    pub not_today_on: Option<String>,
 }
 
 fn default_priority() -> u8 {
@@ -199,6 +206,15 @@ pub struct Settings {
     pub accent: String,
     #[serde(default)]
     pub start_view: String,
+    /// What's next deadline window in days; `None` = 3.
+    #[serde(default)]
+    pub next_deadline_days: Option<u32>,
+    /// What's next due window in days; `None` = 7.
+    #[serde(default)]
+    pub next_due_days: Option<u32>,
+    /// Whether undated P1 tasks show in What's next; `None` = true.
+    #[serde(default)]
+    pub next_undated_p1: Option<bool>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -494,6 +510,12 @@ pub enum Op {
         accent: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         start_view: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_deadline_days: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_due_days: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_undated_p1: Option<bool>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -566,6 +588,12 @@ pub enum Op {
     /// Custom views only: to the Trash.
     #[serde(rename = "view.delete")]
     ViewDelete { id: Uuid },
+    /// Pins a Task or Milestone to the top of What's next on `date` (null clears).
+    #[serde(rename = "item.pin")]
+    ItemPin { id: Uuid, date: Option<String> },
+    /// Hides a Task or Milestone from What's next on `date` (null clears).
+    #[serde(rename = "item.not_today")]
+    ItemNotToday { id: Uuid, date: Option<String> },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -635,7 +663,9 @@ impl Op {
             | Op::ViewUpdate { id, .. }
             | Op::ViewReset { id }
             | Op::ViewDelete { id }
-            | Op::LabelCreate { id, .. } => *id,
+            | Op::LabelCreate { id, .. }
+            | Op::ItemPin { id, .. }
+            | Op::ItemNotToday { id, .. } => *id,
             Op::SettingsUpdate { .. } => SETTINGS,
         }
     }
@@ -804,16 +834,24 @@ impl Op {
                 theme,
                 accent,
                 start_view,
+                next_deadline_days,
+                next_due_days,
+                next_undated_p1,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
                 ("start_view", start_view.is_some()),
+                ("next_deadline_days", next_deadline_days.is_some()),
+                ("next_due_days", next_due_days.is_some()),
+                ("next_undated_p1", next_undated_p1.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
             Op::TaskComplete { .. } => vec!["completed_at"],
+            Op::ItemPin { .. } => vec!["pinned_on", "not_today_on"],
+            Op::ItemNotToday { .. } => vec!["not_today_on", "pinned_on"],
         }
     }
 }
@@ -974,6 +1012,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     goal_id: None,
                     created_at: Some(cmd.hlc.wall),
                     trashed_at: None,
+                    pinned_on: None,
+                    not_today_on: None,
                 }))
             }
         }
@@ -1221,6 +1261,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     done: false,
                     order: order.clone(),
                     trashed_at: None,
+                    pinned_on: None,
+                    not_today_on: None,
                 }))
             }
         }
@@ -1304,10 +1346,45 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 }))
             }
         }
+        Op::ItemPin { date, .. } | Op::ItemNotToday { date, .. } => {
+            if date.as_deref().is_some_and(|d| !is_date(d)) {
+                return Err(ErrorCode::BadField);
+            }
+            let pin = matches!(&cmd.op, Op::ItemPin { .. });
+            // Setting one clears the other, so the later write wins.
+            let apply_to = |old_pin: Option<String>, old_not: Option<String>| match (pin, date) {
+                (true, Some(_)) => (date.clone(), None),
+                (true, None) => (None, old_not),
+                (false, Some(_)) => (None, date.clone()),
+                (false, None) => (old_pin, None),
+            };
+            match existing {
+                Some(Row::Task(t)) => {
+                    let (p, n) = apply_to(t.pinned_on.clone(), t.not_today_on.clone());
+                    Ok(Row::Task(Task {
+                        pinned_on: p,
+                        not_today_on: n,
+                        ..t
+                    }))
+                }
+                Some(Row::Milestone(m)) => {
+                    let (p, n) = apply_to(m.pinned_on.clone(), m.not_today_on.clone());
+                    Ok(Row::Milestone(Milestone {
+                        pinned_on: p,
+                        not_today_on: n,
+                        ..m
+                    }))
+                }
+                _ => Err(ErrorCode::NotFound),
+            }
+        }
         Op::SettingsUpdate {
             theme,
             accent,
             start_view,
+            next_deadline_days,
+            next_due_days,
+            next_undated_p1,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1317,6 +1394,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     theme: String::new(),
                     accent: String::new(),
                     start_view: String::new(),
+                    next_deadline_days: None,
+                    next_due_days: None,
+                    next_undated_p1: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1324,6 +1404,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 theme: theme.clone().unwrap_or(old.theme),
                 accent: accent.clone().unwrap_or(old.accent),
                 start_view: start_view.clone().unwrap_or(old.start_view),
+                next_deadline_days: next_deadline_days.or(old.next_deadline_days),
+                next_due_days: next_due_days.or(old.next_due_days),
+                next_undated_p1: next_undated_p1.or(old.next_undated_p1),
             }))
         }
     }
@@ -1603,6 +1686,7 @@ mod tests {
                 "title": "Buy milk", "completed_at": null, "order": "",
                 "description": "", "due": null, "deadline": null, "duration_min": null,
                 "priority": 4, "label_ids": [], "recurrence": null, "goal_id": null, "created_at": 1000, "trashed_at": null,
+                "pinned_on": null, "not_today_on": null,
             })
         );
     }
@@ -1850,8 +1934,10 @@ mod tests {
                 ("duration_min", 1000),
                 ("goal_id", 1000),
                 ("label_ids", 1000),
+                ("not_today_on", 1000),
                 ("order", 1000),
                 ("parent_id", 1000),
+                ("pinned_on", 1000),
                 ("priority", 1000),
                 ("recurrence", 1000),
                 ("title", 1000),
@@ -1920,6 +2006,8 @@ mod tests {
             goal_id: None,
             created_at: None,
             trashed_at: None,
+            pinned_on: None,
+            not_today_on: None,
         })
     }
 
@@ -2219,7 +2307,10 @@ mod tests {
                 id: SETTINGS,
                 theme: "dracula".into(),
                 accent: String::new(),
-                start_view: String::new()
+                start_view: String::new(),
+                next_deadline_days: None,
+                next_due_days: None,
+                next_undated_p1: None,
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();
@@ -2231,6 +2322,33 @@ mod tests {
         assert_eq!(
             up(serde_json::json!({ "theme": "x" })).op.target(),
             SETTINGS
+        );
+    }
+
+    #[test]
+    fn pin_and_not_today_clear_each_other_and_null_clears() {
+        let pin = |date: serde_json::Value, op: &str| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000d1",
+                op,
+                serde_json::json!({ "id": TASK, "date": date }),
+                2000,
+            )
+        };
+        let pinned = apply(Some(created()), &pin("2026-03-10".into(), "item.pin")).unwrap();
+        assert_eq!(task(&pinned).pinned_on.as_deref(), Some("2026-03-10"));
+        let hidden = apply(Some(pinned), &pin("2026-03-10".into(), "item.not_today")).unwrap();
+        assert_eq!(task(&hidden).pinned_on, None);
+        assert_eq!(task(&hidden).not_today_on.as_deref(), Some("2026-03-10"));
+        let cleared = apply(
+            Some(hidden),
+            &pin(serde_json::Value::Null, "item.not_today"),
+        )
+        .unwrap();
+        assert_eq!(task(&cleared).not_today_on, None);
+        assert_eq!(
+            apply(Some(cleared), &pin("nope".into(), "item.pin")),
+            Err(ErrorCode::BadField)
         );
     }
 }

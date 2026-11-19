@@ -75,6 +75,12 @@ pub struct Milestone {
     /// Unix ms when it went to the Trash.
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// `YYYY-MM-DD`; pinned to the top of What's next only on that day.
+    #[serde(default)]
+    pub pinned_on: Option<String>,
+    /// `YYYY-MM-DD`; hidden from What's next only on that day.
+    #[serde(default)]
+    pub not_today_on: Option<String>,
 }
 
 /// The Goal a Task counts towards: its own link, else its Project ancestor's.
@@ -206,6 +212,8 @@ mod tests {
             goal_id,
             created_at: None,
             trashed_at: None,
+            pinned_on: None,
+            not_today_on: None,
         })
     }
 
@@ -231,6 +239,8 @@ mod tests {
             done,
             order: String::new(),
             trashed_at: None,
+            pinned_on: None,
+            not_today_on: None,
         })
     }
 
