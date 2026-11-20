@@ -10,16 +10,19 @@
   import Settings from './lib/screens/Settings.svelte'
   import Trash from './lib/screens/Trash.svelte'
   import View from './lib/screens/View.svelte'
+  import Profile from './lib/screens/Profile.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, routes, type Screen } from './lib/routes'
   import {
     getSettings,
+    levelUp,
     onRejected,
     onSignedOut,
     start,
     tasksIn,
     tree,
+    stardust,
     updateSettings,
     views,
     VIEW_UPCOMING,
@@ -37,6 +40,7 @@
   let allViews = $state<ViewRow[]>([])
   let screen: Screen = $state(readScreen())
   let toast = $state('')
+  let version = $state(0)
   let hide: ReturnType<typeof setTimeout>
 
   onRejected((code) => {
@@ -75,6 +79,13 @@
     inboxCount = (await tasksIn(inbox_id())).length
     allViews = await views()
     void refreshNotifier()
+    version++
+    const sd = await stardust()
+    if (levelUp(sd.level.n)) {
+      toast = `Level up! You reached ${sd.level.name}.`
+      clearTimeout(hide)
+      hide = setTimeout(() => (toast = ''), 5000)
+    }
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
     const remote = await getSettings()
     if (remote && ((remote.theme && remote.theme !== getTheme()) || (remote.accent || null) !== getAccent())) {
@@ -153,6 +164,8 @@
         <Settings />
       {:else if screen.name === 'home'}
         <Next onchange={refresh} />
+      {:else if screen.name === 'profile'}
+        <Profile {version} />
       {:else}
         <Stub {title} />
       {/if}
