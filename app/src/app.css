@@ -39,7 +39,6 @@
   --shadow-1: 0 1px 2px rgba(45, 32, 18, 0.06), 0 1px 1px rgba(45, 32, 18, 0.03);
   --shadow-2: 0 14px 36px rgba(45, 32, 18, 0.14), 0 3px 8px rgba(45, 32, 18, 0.07);
   color-scheme: light;
-
 }
 
 [data-theme='dark'] {
@@ -178,4 +177,52 @@
 }
 [data-density='compact'] li.min-h-\[42px\] > span.py-2 {
   padding-block: 2px;
+}
+
+/* FullCalendar (Calendar layout): the classic theme's palette mapped to the Orbit tokens. */
+.orbit-cal {
+  --fc-classic-background: var(--surface);
+  --fc-classic-foreground: var(--text);
+  --fc-classic-border: var(--line);
+  --fc-classic-strong-border: var(--line);
+  --fc-classic-faint: var(--sunk);
+  --fc-classic-muted: var(--sunk);
+  --fc-classic-strong: var(--sunk);
+  --fc-classic-faint-foreground: var(--muted);
+  --fc-classic-muted-foreground: var(--muted);
+  --fc-classic-primary: var(--accent);
+  --fc-classic-primary-foreground: var(--bg);
+  --fc-classic-event: var(--accent);
+  --fc-classic-event-contrast: var(--bg);
+  --fc-classic-button: var(--surface);
+  --fc-classic-button-border: var(--line);
+  --fc-classic-button-strong: var(--accent-soft);
+  --fc-classic-button-strong-border: var(--line);
+  --fc-classic-button-foreground: var(--text);
+  --fc-classic-highlight: var(--accent-soft);
+  --fc-classic-today: var(--accent-soft);
+  --fc-classic-now: var(--danger);
+  font-size: 13px;
+}
+.orbit-cal .cal-deadline {
+  --fc-event-color: var(--danger);
+  --fc-event-contrast-color: var(--bg);
+}
+.orbit-cal .cal-goal,
+.orbit-cal .cal-milestone {
+  --fc-event-color: var(--warn);
+  --fc-event-contrast-color: var(--bg);
+}
+.orbit-cal .cal-routine {
+  --fc-event-color: var(--sunk);
+  --fc-event-contrast-color: var(--text);
+}
+.orbit-cal .cal-routine-done {
+  --fc-event-color: var(--ok);
+  --fc-event-contrast-color: var(--bg);
+}
+.orbit-cal .cal-routine-skipped,
+.orbit-cal .cal-done {
+  opacity: 0.55;
+  text-decoration: line-through;
 }

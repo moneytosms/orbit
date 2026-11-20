@@ -22,6 +22,8 @@
     views,
     VIEW_INBOX,
     VIEW_UPCOMING,
+    getWeekStart,
+    setWeekStart,
     type View,
   } from '$lib/sync'
   import {
@@ -126,6 +128,8 @@
   let notify = $state(notifyEnabled())
   let defaultReminder = $state(true)
   getDefaultReminder().then((v) => (defaultReminder = v))
+  let weekStart = $state('1')
+  getWeekStart().then((v) => (weekStart = String(v)))
   views().then((v) => (allViews = v))
   let nextDeadline = $state(3)
   let nextDue = $state(7)
@@ -395,6 +399,21 @@
         <Checkbox bind:checked={defaultReminder} onCheckedChange={(v) => setDefaultReminder(v === true)} />
         Remind at the due time of a Task with a time
       </Label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">Calendar</h2>
+    <div class="grid max-w-sm gap-3">
+      <select
+        bind:value={weekStart}
+        onchange={() => setWeekStart(Number(weekStart))}
+        aria-label="Week starts on"
+        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+      >
+        <option value="1">Week starts on Monday</option>
+        <option value="0">Week starts on Sunday</option>
+      </select>
     </div>
   </section>
 

@@ -21,6 +21,7 @@ import {
   routine_stats,
   whats_next,
   reminder_schedule,
+  routine_days,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
@@ -105,6 +106,7 @@ export type Settings = {
   next_due_days?: number | null
   next_undated_p1?: boolean | null
   default_reminder?: boolean | null
+  week_start?: number | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -1172,4 +1174,37 @@ export async function runFilter(node: Node): Promise<Row[]> {
   const byId = new Map(rows.map((r) => [r.id, r]))
   const groups: ViewGroup[] = JSON.parse(evaluate_view(JSON.stringify(view), JSON.stringify(rows), localToday()))
   return groups.flatMap((g) => g.ids.flatMap((i) => byId.get(i) ?? []))
+}
+
+/** The Calendar's first weekday (0 Sunday, 1 Monday); unset reads as Monday. */
+export async function getWeekStart(): Promise<number> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return row?.week_start ?? 1
+}
+export const setWeekStart = (week_start: number) => enqueue('settings.update', { week_start })
+
+/** Built-in Calendar View id, mirroring `VIEW_CALENDAR` in crates/orbit-core/src/view.rs. */
+export const VIEW_CALENDAR = '00000000-0000-7000-8000-000000000106'
+
+/** Moves a Task to `date`, at `time` (`HH:MM`) when given; a Task dropped on the all-day row loses its time. */
+export const moveTask = (id: string, date: string, time?: string | null) =>
+  updateTask(id, { due: time ? { date, time } : { date } })
+
+/** What the Calendar shows besides Tasks, between `from` and `to` (`YYYY-MM-DD`, inclusive): Routine days with their check-in state, Goals and Milestones. */
+export async function calendarData(from: string, to: string) {
+  const rows = await visibleRows()
+  const all = await allRows()
+  const states = new Map<string, CheckState>()
+  for (const r of all) if (r.kind === 'checkin' && !r.cleared) states.set(`${r.routine_id}|${r.date}`, r.state)
+  const routines = [] as { routine: Routine; days: { date: string; state: CheckState | 'due' }[] }[]
+  for (const r of rows) {
+    if (r.kind !== 'routine' || r.archived_at !== null) continue
+    const dates: string[] = JSON.parse(routine_days(JSON.stringify(all), r.id, from, to))
+    routines.push({ routine: r, days: dates.map((date) => ({ date, state: states.get(`${r.id}|${date}`) ?? 'due' })) })
+  }
+  return {
+    routines,
+    goals: rows.filter((r): r is Goal => r.kind === 'goal' && r.archived_at === null),
+    milestones: rows.filter((r): r is Milestone => r.kind === 'milestone'),
+  }
 }

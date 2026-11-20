@@ -12,6 +12,7 @@
   import FilterEditor from '$lib/FilterEditor.svelte'
   import Table from '$lib/Table.svelte'
   import Timeline from '$lib/Timeline.svelte'
+  import Calendar from '$lib/Calendar.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import {
     allGoals,
@@ -122,9 +123,12 @@
     ['board', 'Board'],
     ['table', 'Table'],
     ['timeline', 'Timeline'],
+    ['calendar', 'Calendar'],
   ]
   const layout = $derived(
-    view?.layout === 'board' || view?.layout === 'table' || view?.layout === 'timeline' ? view.layout : 'list',
+    view?.layout === 'board' || view?.layout === 'table' || view?.layout === 'timeline' || view?.layout === 'calendar'
+      ? view.layout
+      : 'list',
   )
   // Core groups by the fields above; Label is regrouped by the Board.
   const groupChoices = $derived(
@@ -407,7 +411,7 @@
 
 {#if !loaded}
   <p class="px-2 py-6 text-center text-muted">Loading view…</p>
-{:else if empty}
+{:else if empty && layout !== 'calendar'}
   <p class="px-2 py-6 text-center text-muted">Nothing matches this view.</p>
 {:else if layout === 'board'}
   <Board
@@ -441,6 +445,15 @@
       onchange()
     }}
     onopen={open}
+  />
+{:else if layout === 'calendar'}
+  <Calendar
+    rows={allRows}
+    onchange={async () => {
+      await load()
+      onchange()
+    }}
+    onopen={(id) => (openId = id)}
   />
 {:else}
   {#each groups as g (g.key)}

@@ -26,12 +26,18 @@ importers:
       '@tiptap/suggestion':
         specifier: ^3.34.0
         version: 3.34.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))(@tiptap/pm@3.34.0)
+      fullcalendar:
+        specifier: 7.1.5
+        version: 7.1.5(temporal-polyfill@1.0.8)
       svelte-dnd-action:
         specifier: ^0.9.80
         version: 0.9.80(svelte@5.57.3)
       svelte-tiptap:
         specifier: ^3.0.2
         version: 3.0.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))(@tiptap/extension-bubble-menu@3.34.0(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))(@tiptap/pm@3.34.0))(@tiptap/extension-floating-menu@3.34.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))(@tiptap/pm@3.34.0))(@tiptap/pm@3.34.0)(svelte@5.57.3)
+      temporal-polyfill:
+        specifier: 1.0.8
+        version: 1.0.8
     devDependencies:
       '@fontsource-variable/figtree':
         specifier: ^5.3.0
@@ -626,6 +632,17 @@ packages:
 
   '@fontsource-variable/figtree@5.3.0':
     resolution: {integrity: sha512-VRVodD7OiG7apQwE8/2fMjaqpY/a0qRJqL5HtYj8CKIVps+9amaFcdfKmDIf7iqYQx6iPLlArVXAfKeIZmVcNQ==}
+
+  '@full-ui/headless-calendar@7.1.5':
+    resolution: {integrity: sha512-kTSGhUM7NkdJFvv6Pu9WWQrLDUg9L/1l1DSOp/IoOEutH0n2AEu10wWXl37kgXHU1+3WpxDM7h+MXTaO++QH2A==}
+    peerDependencies:
+      temporal-polyfill: ^1.0.7
+
+  '@fullcalendar/core@7.1.5':
+    resolution: {integrity: sha512-adUp5YFeQmEJ5MAF0Qs3U0cNNvxQQ+dmAXiG5FFzrHULMkdB0ktnyTkcGcfM9ZlDlO4cxrRLXFiBwALJ13+Utg==}
+    peerDependencies:
+      '@full-ui/headless-calendar': 7.1.5
+      temporal-polyfill: ^1.0.7
 
   '@internationalized/date@3.12.4':
     resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
@@ -1604,6 +1621,11 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  fullcalendar@7.1.5:
+    resolution: {integrity: sha512-xWxQ6Mn2GhiwY663/dinfeUTMq7066tJfEdKy5Dxw8UoC1g/Dp3x6bnMapHrX4MaOgxyUsXEdUvMFB6PbZlHpg==}
+    peerDependencies:
+      temporal-polyfill: ^1.0.7
+
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
 
@@ -2040,6 +2062,14 @@ packages:
     resolution: {integrity: sha512-RVHEU9/Pp1Fnjr/MpAJsZoADukCKhfIi15OunEYiGktIkYLkPVvC1sioWolGDS7XByMTx9m/IGbro0Js13zhnQ==}
     engines: {node: ^10 || ^12 || >=14}
 
+  preact@10.29.8:
+    resolution: {integrity: sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==}
+    peerDependencies:
+      preact-render-to-string: '>=5'
+    peerDependenciesMeta:
+      preact-render-to-string:
+        optional: true
+
   prettier-plugin-svelte@3.5.2:
     resolution: {integrity: sha512-ItFouLvzSFE3ulNl4DKoWM3BGcbDCNVpIyy/Y3F2gC3aNiGLxtFUdffVqO5Z5hhYG+DFT5KULWaxmeFFpdbvaQ==}
     peerDependencies:
@@ -2330,6 +2360,15 @@ packages:
   temp-dir@2.0.0:
     resolution: {integrity: sha512-aoBAniQmmwtcKp/7BzsH8Cxzv8OL736p7v1ihGb5e9DJ9kTwGWHrQrVB5+lfVDzfGrdRzXch+ig7LHaY1JTOrg==}
     engines: {node: '>=8'}
+
+  temporal-polyfill@1.0.8:
+    resolution: {integrity: sha512-RCCGa0GddT099XG49ijdD0tDf86L8vfuZun1+JyJiO4Y2NP9PACQsG0OnvNPXwVLisdvhr/zqL2nhKQmXXx08A==}
+
+  temporal-spec@1.0.1:
+    resolution: {integrity: sha512-wxVoanmDeavXie1vu2JaQ3WIc3JZnWAOYFBsJyATaVsXsycKYUflGsyBmrRSnoCpZJpwPyr38VpgSUlQ8CbFxg==}
+
+  temporal-utils@1.0.4:
+    resolution: {integrity: sha512-4mAcgbWlaxe+gn23gk8g0iHxCVGVOhKzSCfF5HM3lfvH8BdT+/pBmH/R/E4CrIse+koUgs8ThkPzCLnui6Fi8w==}
 
   tempy@0.6.0:
     resolution: {integrity: sha512-G13vtMYPT/J8A4X2SjdtBTphZlrp1gKv6hZiOjw14RCWg6GbHuQBGtjlx75xLbYV/wEc0D7G5K4rxKP/cXk8Bw==}
@@ -3329,6 +3368,15 @@ snapshots:
 
   '@fontsource-variable/figtree@5.3.0': {}
 
+  '@full-ui/headless-calendar@7.1.5(temporal-polyfill@1.0.8)':
+    dependencies:
+      temporal-polyfill: 1.0.8
+
+  '@fullcalendar/core@7.1.5(@full-ui/headless-calendar@7.1.5(temporal-polyfill@1.0.8))(temporal-polyfill@1.0.8)':
+    dependencies:
+      '@full-ui/headless-calendar': 7.1.5(temporal-polyfill@1.0.8)
+      temporal-polyfill: 1.0.8
+
   '@internationalized/date@3.12.4':
     dependencies:
       '@swc/helpers': 0.5.24
@@ -4210,6 +4258,15 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  fullcalendar@7.1.5(temporal-polyfill@1.0.8):
+    dependencies:
+      '@full-ui/headless-calendar': 7.1.5(temporal-polyfill@1.0.8)
+      '@fullcalendar/core': 7.1.5(@full-ui/headless-calendar@7.1.5(temporal-polyfill@1.0.8))(temporal-polyfill@1.0.8)
+      preact: 10.29.8
+      temporal-polyfill: 1.0.8
+    transitivePeerDependencies:
+      - preact-render-to-string
+
   function-bind@1.1.2: {}
 
   function.prototype.name@1.2.0:
@@ -4608,6 +4665,8 @@ snapshots:
       nanoid: 3.3.20
       picocolors: 1.1.1
       source-map-js: 1.2.2
+
+  preact@10.29.8: {}
 
   prettier-plugin-svelte@3.5.2(prettier@3.10.1)(svelte@5.57.3):
     dependencies:
@@ -5032,6 +5091,15 @@ snapshots:
   tapable@2.3.4: {}
 
   temp-dir@2.0.0: {}
+
+  temporal-polyfill@1.0.8:
+    dependencies:
+      temporal-spec: 1.0.1
+      temporal-utils: 1.0.4
+
+  temporal-spec@1.0.1: {}
+
+  temporal-utils@1.0.4: {}
 
   tempy@0.6.0:
     dependencies:

@@ -317,3 +317,18 @@ impl Default for SearchIndex {
         Self::new()
     }
 }
+
+/// Dates in `from..=to` (`YYYY-MM-DD`) on which Routine `routine_id` is due, as a JSON array.
+#[wasm_bindgen]
+pub fn routine_days(
+    rows_json: &str,
+    routine_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let id: orbit_core::Uuid = routine_id.parse()?;
+    Ok(serde_json::to_string(&orbit_core::view::routine_days(
+        &rows, id, from, to,
+    ))?)
+}

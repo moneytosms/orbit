@@ -41,7 +41,9 @@
     "@tiptap/pm": "^3.34.0",
     "@tiptap/starter-kit": "^3.34.0",
     "@tiptap/suggestion": "^3.34.0",
+    "fullcalendar": "7.1.5",
     "svelte-dnd-action": "^0.9.80",
-    "svelte-tiptap": "^3.0.2"
+    "svelte-tiptap": "^3.0.2",
+    "temporal-polyfill": "1.0.8"
   }
 }

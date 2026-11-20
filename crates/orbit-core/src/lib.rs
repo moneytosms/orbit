@@ -238,6 +238,9 @@ pub struct Settings {
     /// A Task with a timed due gets an "at due time" reminder; `None` is on.
     #[serde(default)]
     pub default_reminder: Option<bool>,
+    /// First day of the Calendar week, 0 = Sunday, 1 = Monday; `None` = 1.
+    #[serde(default)]
+    pub week_start: Option<u8>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -560,6 +563,8 @@ pub enum Op {
         next_undated_p1: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_reminder: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        week_start: Option<u8>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -1053,6 +1058,7 @@ impl Op {
                 next_due_days,
                 next_undated_p1,
                 default_reminder,
+                week_start,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -1063,6 +1069,7 @@ impl Op {
                 ("next_due_days", next_due_days.is_some()),
                 ("next_undated_p1", next_undated_p1.is_some()),
                 ("default_reminder", default_reminder.is_some()),
+                ("week_start", week_start.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -1704,6 +1711,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             next_due_days,
             next_undated_p1,
             default_reminder,
+            week_start,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1719,6 +1727,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     next_due_days: None,
                     next_undated_p1: None,
                     default_reminder: None,
+                    week_start: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1732,6 +1741,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 next_due_days: next_due_days.or(old.next_due_days),
                 next_undated_p1: next_undated_p1.or(old.next_undated_p1),
                 default_reminder: default_reminder.or(old.default_reminder),
+                week_start: week_start.or(old.week_start),
             }))
         }
     }
@@ -2655,7 +2665,8 @@ mod tests {
                 next_deadline_days: None,
                 next_due_days: None,
                 next_undated_p1: None,
-                default_reminder: None
+                default_reminder: None,
+                week_start: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();
