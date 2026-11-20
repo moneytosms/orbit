@@ -106,6 +106,7 @@ class SyncWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
         if (r.optBoolean("signed_out")) { Store.clearToken(applicationContext); return Result.success() }
         if (r.has("error")) return Result.retry()
         WidgetRefresh.all(applicationContext)
+        ReminderScheduler.rearm(applicationContext)
         return Result.success()
     }
 }
