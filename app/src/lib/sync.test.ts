@@ -71,6 +71,9 @@ import {
   placeItem,
   setPhaseDone,
   roadmapSummary,
+  setPhaseGate,
+  setLinks,
+  gateChoices,
   updateArea,
 } from './sync'
 
@@ -820,4 +823,32 @@ test('turning vacation off keeps no range when it began today, and clears vacati
   expect(row?.vacation).toBe(false)
   expect(row?.vacation_from ?? null).toBeNull()
   expect(row?.vacations ?? []).toEqual([])
+})
+
+test('a Phase gated by an undone Milestone is locked and never current, and steps link', async () => {
+  await createArea('Work')
+  const work = (await tree()).find((x) => x.area.name === 'Work')!.area
+  const road = await createRoadmap(work.id, 'Plan')
+  const one = await createPhase(road, 'One')
+  const two = await createPhase(road, 'Two')
+  const goal = await createGoal(work.id, 'Ship')
+  const ms = await createMilestone(goal, 'Beta')
+  const a = await createTask('A', work.id)
+  const b = await createTask('B', work.id)
+  await placeItem(road, a, one)
+  await placeItem(road, b, two)
+  await setPhaseGate(one, ms)
+  expect((await gateChoices()).map((m) => m.id)).toContain(ms)
+  let phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases[0]).toMatchObject({ locked: true, current: false, gate_title: 'Beta' })
+  expect(phases[0].items.length).toBe(1)
+  expect(phases[1].current).toBe(true)
+  await setMilestoneDone(ms, true)
+  phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases[0]).toMatchObject({ locked: false, current: true })
+  await setLinks(road, a, one, [b])
+  phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases[0].items[0].links).toEqual([b])
+  await setPhaseGate(one, null)
+  expect((await roadmapSummary(road, '2026-01-01'))[0].gate_id).toBeNull()
 })

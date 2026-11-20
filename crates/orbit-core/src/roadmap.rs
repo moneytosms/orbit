@@ -43,6 +43,9 @@ pub struct Phase {
     pub archived_at: Option<u64>,
     #[serde(default)]
     pub trashed_at: Option<u64>,
+    /// A Milestone that has to be done before this Phase opens (a visual lock).
+    #[serde(default)]
+    pub gate_id: Option<Uuid>,
 }
 
 /// An item's place in a Roadmap. `phase_id` is `None` once it is taken out.
@@ -53,6 +56,9 @@ pub struct Placement {
     pub item_id: Uuid,
     #[serde(default)]
     pub phase_id: Option<Uuid>,
+    /// Items placed in the same Roadmap that this one points at (directed arrows).
+    #[serde(default)]
+    pub links: Vec<Uuid>,
 }
 
 /// The same Roadmap and item always give the same Placement id.
@@ -135,6 +141,7 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
                 completed_at: None,
                 archived_at: None,
                 trashed_at: None,
+                gate_id: None,
             }))
         }
         Op::PhaseUpdate {
@@ -142,6 +149,7 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
             order,
             start,
             end,
+            gate_id,
             ..
         } => {
             let Some(Row::Phase(old)) = existing else {
@@ -155,6 +163,7 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
                 order: order.clone().unwrap_or(old.order.clone()),
                 start: start.clone().unwrap_or(old.start.clone()),
                 end: end.clone().unwrap_or(old.end.clone()),
+                gate_id: gate_id.unwrap_or(old.gate_id),
                 ..old
             };
             check_dates(&p.start, &p.end)?;
@@ -175,6 +184,7 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
             roadmap_id,
             item_id,
             phase_id,
+            links,
         } => {
             if *id != placement_id(*roadmap_id, *item_id) {
                 return Err(ErrorCode::BadField);
@@ -185,9 +195,11 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
                     roadmap_id: *roadmap_id,
                     item_id: *item_id,
                     phase_id: *phase_id,
+                    links: links.clone().unwrap_or_default(),
                 })),
                 Some(Row::Placement(p)) => Ok(Row::Placement(Placement {
                     phase_id: *phase_id,
+                    links: links.clone().unwrap_or(p.links.clone()),
                     ..p
                 })),
                 Some(_) => Err(ErrorCode::BadField),
@@ -300,9 +312,21 @@ fn live_phases(rows: &[Row], roadmap_id: Uuid) -> Vec<&Phase> {
     phases
 }
 
+/// Whether the Phase's gate Milestone exists, is visible and isn't done yet.
+pub fn is_locked(p: &Phase, ids: &ById) -> bool {
+    p.gate_id.is_some_and(|g| match ids.get(&g) {
+        Some(r @ Row::Milestone(m)) => !m.done && !hidden(r, ids),
+        _ => false,
+    })
+}
+
 /// The Phase whose dates cover `today`, else the first unfinished one.
 pub fn current_phase(rows: &[Row], roadmap_id: Uuid, today: &str) -> Option<Uuid> {
-    let phases = live_phases(rows, roadmap_id);
+    let ids = by_id(rows);
+    let phases: Vec<&Phase> = live_phases(rows, roadmap_id)
+        .into_iter()
+        .filter(|p| !is_locked(p, &ids))
+        .collect();
     let covers = |p: &&&Phase| {
         (p.start.is_some() || p.end.is_some())
             && p.start.as_deref().is_none_or(|s| s <= today)
@@ -321,6 +345,8 @@ pub struct ItemSummary {
     pub kind: &'static str,
     pub title: String,
     pub progress: f64,
+    /// Ids of other items in the same Roadmap that this one points at.
+    pub links: Vec<Uuid>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -332,6 +358,9 @@ pub struct PhaseSummary {
     pub completed: bool,
     pub progress: f64,
     pub current: bool,
+    pub gate_id: Option<Uuid>,
+    pub gate_title: Option<String>,
+    pub locked: bool,
     pub items: Vec<ItemSummary>,
 }
 
@@ -344,6 +373,11 @@ pub struct Summary {
 pub fn summary(rows: &[Row], roadmap_id: Uuid, today: &str) -> Summary {
     let ids = by_id(rows);
     let current = current_phase(rows, roadmap_id, today);
+    let placed: std::collections::BTreeSet<Uuid> = live_phases(rows, roadmap_id)
+        .into_iter()
+        .flat_map(|p| phase_items(rows, p.id, &ids))
+        .map(|r| r.id())
+        .collect();
     let phases = live_phases(rows, roadmap_id)
         .into_iter()
         .map(|p| {
@@ -365,6 +399,20 @@ pub fn summary(rows: &[Row], roadmap_id: Uuid, today: &str) -> Summary {
                         _ => String::new(),
                     },
                     progress: item_progress(rows, r.id()),
+                    links: rows
+                        .iter()
+                        .find_map(|x| match x {
+                            Row::Placement(pl)
+                                if pl.roadmap_id == roadmap_id && pl.item_id == r.id() =>
+                            {
+                                Some(pl.links.clone())
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|l| *l != r.id() && placed.contains(l))
+                        .collect(),
                 })
                 .collect();
             let progress = if items.is_empty() {
@@ -380,6 +428,12 @@ pub fn summary(rows: &[Row], roadmap_id: Uuid, today: &str) -> Summary {
                 completed: p.completed_at.is_some(),
                 progress,
                 current: current == Some(p.id),
+                gate_id: p.gate_id,
+                gate_title: p.gate_id.and_then(|g| match ids.get(&g) {
+                    Some(Row::Milestone(m)) => Some(m.title.clone()),
+                    _ => None,
+                }),
+                locked: is_locked(p, &ids),
                 items,
             }
         })
@@ -464,6 +518,7 @@ mod tests {
             completed_at: done.then_some(1),
             archived_at: None,
             trashed_at: None,
+            gate_id: None,
         })
     }
 
@@ -473,6 +528,7 @@ mod tests {
             roadmap_id: uid(50),
             item_id: uid(item),
             phase_id: Some(uid(phase)),
+            links: vec![],
         })
     }
 
@@ -574,6 +630,7 @@ mod tests {
                 roadmap_id: uid(50),
                 item_id: uid(11),
                 phase_id: None,
+                links: None,
             },
             hlc: Hlc {
                 wall: 1,
@@ -627,5 +684,102 @@ mod tests {
             run("phase.name", "is_empty", serde_json::Value::Null),
             vec![uid(13)]
         );
+    }
+
+    fn cmd(op: Op) -> Command {
+        Command {
+            uuid: uid(98),
+            op,
+            hlc: Hlc {
+                wall: 5,
+                counter: 0,
+                device: uid(2),
+            },
+        }
+    }
+
+    fn gated(n: u128, order: &str, gate: u128) -> Row {
+        let Row::Phase(p) = phase(n, order, None, None, false) else {
+            unreachable!()
+        };
+        Row::Phase(Phase {
+            gate_id: Some(uid(gate)),
+            ..p
+        })
+    }
+
+    #[test]
+    fn a_phase_behind_an_open_gate_is_locked_and_never_current() {
+        let mut rows = vec![
+            phase(60, "a", None, None, true),
+            gated(61, "b", 20),
+            phase(62, "c", None, None, false),
+            milestone(20, false),
+        ];
+        assert_eq!(current_phase(&rows, uid(50), "2026-06-01"), Some(uid(62)));
+        let s = summary(&rows, uid(50), "2026-06-01");
+        assert!(!s.phases[0].locked && s.phases[1].locked);
+        assert_eq!(s.phases[1].gate_id, Some(uid(20)));
+        assert_eq!(s.phases[1].gate_title.as_deref(), Some("m"));
+        rows[3] = milestone(20, true);
+        assert_eq!(current_phase(&rows, uid(50), "2026-06-01"), Some(uid(61)));
+        assert!(!summary(&rows, uid(50), "2026-06-01").phases[1].locked);
+    }
+
+    #[test]
+    fn phase_update_sets_and_clears_the_gate() {
+        let row = phase(60, "a", None, None, false);
+        let set = Op::PhaseUpdate {
+            id: uid(60),
+            name: None,
+            order: None,
+            start: None,
+            end: None,
+            gate_id: Some(Some(uid(20))),
+        };
+        let Row::Phase(p) = apply(Some(row), &cmd(set)).unwrap() else {
+            panic!()
+        };
+        assert_eq!(p.gate_id, Some(uid(20)));
+        let clear: Op = serde_json::from_value(serde_json::json!(
+            { "type": "phase.update", "args": { "id": uid(60), "gate_id": null } }
+        ))
+        .unwrap();
+        let Row::Phase(q) = apply(Some(Row::Phase(p)), &cmd(clear)).unwrap() else {
+            panic!()
+        };
+        assert_eq!(q.gate_id, None);
+    }
+
+    #[test]
+    fn links_survive_a_move_and_unknown_ids_are_dropped() {
+        let set = |phase: u128, links: Option<Vec<Uuid>>| Op::PlacementSet {
+            id: placement_id(uid(50), uid(11)),
+            roadmap_id: uid(50),
+            item_id: uid(11),
+            phase_id: Some(uid(phase)),
+            links,
+        };
+        let Row::Placement(p) = apply(None, &cmd(set(60, Some(vec![uid(12), uid(99)])))).unwrap()
+        else {
+            panic!()
+        };
+        let Row::Placement(moved) = apply(Some(Row::Placement(p)), &cmd(set(61, None))).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(moved.phase_id, Some(uid(61)));
+        assert_eq!(moved.links, vec![uid(12), uid(99)]);
+        let rows = vec![
+            phase(60, "a", None, None, false),
+            phase(61, "b", None, None, false),
+            task(11, uid(1), false),
+            task(12, uid(1), false),
+            Row::Placement(moved),
+            place(60, 12),
+        ];
+        let s = summary(&rows, uid(50), "2026-06-01");
+        assert_eq!(s.phases[1].items[0].links, vec![uid(12)]);
+        assert!(s.phases[0].items[0].links.is_empty());
     }
 }

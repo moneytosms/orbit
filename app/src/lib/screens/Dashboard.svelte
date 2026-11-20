@@ -174,6 +174,8 @@
 
 <div bind:this={grid} class="grid gap-4 desk:grid-cols-12 desk:[grid-auto-rows:var(--row)]" style="--row: {ROW_PX}px">
   {#each shown as w (w.id)}
+    <!-- In edit mode a widget takes focus so arrow keys move it and Shift+arrows resize it. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
     <section
       aria-label={title(w)}
       tabindex={editing ? 0 : undefined}

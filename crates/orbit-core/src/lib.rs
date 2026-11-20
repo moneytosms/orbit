@@ -821,6 +821,12 @@ pub enum Op {
             skip_serializing_if = "Option::is_none"
         )]
         end: Option<Option<String>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        gate_id: Option<Option<Uuid>>,
     },
     #[serde(rename = "phase.complete")]
     PhaseComplete { id: Uuid },
@@ -834,6 +840,8 @@ pub enum Op {
         roadmap_id: Uuid,
         item_id: Uuid,
         phase_id: Option<Uuid>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        links: Option<Vec<Uuid>>,
     },
     #[serde(rename = "area.update")]
     AreaUpdate {
@@ -1190,19 +1198,27 @@ impl Op {
                 order,
                 start,
                 end,
+                gate_id,
                 ..
             } => [
                 ("name", name.is_some()),
                 ("order", order.is_some()),
                 ("start", start.is_some()),
                 ("end", end.is_some()),
+                ("gate_id", gate_id.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
             Op::PhaseComplete { .. } | Op::PhaseUncomplete { .. } => vec!["completed_at"],
-            Op::PlacementSet { .. } => vec!["phase_id"],
+            Op::PlacementSet { links, .. } => {
+                let mut f = vec!["phase_id"];
+                if links.is_some() {
+                    f.push("links");
+                }
+                f
+            }
             Op::AreaUpdate { name, .. } => {
                 if name.is_some() {
                     vec!["name"]
