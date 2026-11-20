@@ -138,7 +138,7 @@ orbit add "buy milk"
 orbit ls
 orbit done 1
 orbit sync
-orbit export                               # zip: items.json, Pages as .md, attachments
+orbit export orbit-export.zip              # items.json, Pages as .md, attachments
 orbit guide                                # short reference of commands and exit codes
 ```
 

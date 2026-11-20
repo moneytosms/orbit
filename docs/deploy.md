@@ -47,6 +47,7 @@ The Compose file is `deploy/compose.yaml`. It runs one `orbit` service, publishe
 ```sh
 git clone https://github.com/moneytosms/orbit.git
 cd orbit/deploy
+mkdir -p data && sudo chown 10001:10001 data   # the container runs as uid 10001
 docker compose up -d
 docker compose logs orbit
 ```
@@ -176,7 +177,8 @@ from the snapshot's folder into the data directory. The `orbit` service's entryp
 ## Export
 
 Settings has an export action that downloads `orbit-export.zip`: `items.json` with every row, each
-live page as `pages/<name>.md`, and the attachments it references under `blobs/`.
+live page as `pages/<name>.md`, and the attachments it references under `blobs/`. From the CLI:
+`orbit export orbit-export.zip`.
 
 The export is a readable copy of your data. To restore, use a snapshot (see above), not the export.
 
