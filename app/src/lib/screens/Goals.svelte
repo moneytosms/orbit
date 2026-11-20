@@ -1,5 +1,6 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
+  import Plus from '@lucide/svelte/icons/plus'
   import Target from '@lucide/svelte/icons/target'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
@@ -100,6 +101,10 @@
     await addEntry(id, n)
     await load()
   }
+  async function addSubGoal(goalId: string) {
+    await createGoal(goalId, 'New sub-goal')
+    await load()
+  }
   async function newPage(goalId: string) {
     const id = await createPage(goalId, 'Untitled')
     location.hash = `#/page/${id}`
@@ -127,6 +132,17 @@
           <span class="text-xs text-muted">by {dateText(goal.target_date)}</span>
         {/if}
         <Button variant="default" size="sm" onclick={() => completeGoal(goal.id).then(load)}>Complete</Button>
+        {#if !sub}
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Add sub-goal to {goal.name}"
+            onclick={() => addSubGoal(goal.id)}
+          >
+            <Plus />
+            Add sub-goal
+          </Button>
+        {/if}
         <Button
           variant="ghost"
           size="sm"
