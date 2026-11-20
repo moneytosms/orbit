@@ -58,7 +58,10 @@ async fn main() {
         return;
     }
     let addr = env::var("ORBIT_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into());
-    let (app, setup) = orbit_server::app(&data).expect("open data dir");
+    let (mut app, setup) = orbit_server::app(&data).expect("open data dir");
+    if let Ok(web) = env::var("ORBIT_WEB") {
+        app = orbit_server::with_web(app, &PathBuf::from(web));
+    }
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("bind ORBIT_ADDR");

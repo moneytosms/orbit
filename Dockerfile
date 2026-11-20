@@ -1,4 +1,14 @@
 # orbit-server image. Multi-arch via buildx (see scripts/release.sh).
+FROM rust:1-bookworm AS web
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
+ && npm i -g pnpm \
+ && rustup target add wasm32-unknown-unknown \
+ && cargo install --locked wasm-pack
+WORKDIR /src
+COPY . .
+RUN wasm-pack build crates/orbit-wasm --target web --out-dir ../../app/wasm --no-pack \
+ && pnpm -C app install --frozen-lockfile && pnpm -C app build
+
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
@@ -13,7 +23,8 @@ RUN apt-get update \
  && mkdir -p /data \
  && chown orbit:orbit /data
 COPY --from=build /orbit-server /usr/local/bin/orbit-server
-ENV ORBIT_DATA=/data ORBIT_ADDR=0.0.0.0:8080
+COPY --from=web /src/app/dist /web
+ENV ORBIT_DATA=/data ORBIT_ADDR=0.0.0.0:8080 ORBIT_WEB=/web
 USER orbit
 WORKDIR /data
 VOLUME ["/data"]

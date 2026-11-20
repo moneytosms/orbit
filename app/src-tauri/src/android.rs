@@ -79,7 +79,9 @@ pub fn builder() -> tauri::Builder<Wry> {
             // The bundled index.html is the Svelte app, which needs an Orbit server to talk to.
             // Off the setup thread: the Kotlin plugin answers on the main thread.
             let app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
+            tauri::async_runtime::spawn_blocking(move || {
+                // A navigation issued before the first page finishes loading is dropped.
+                std::thread::sleep(std::time::Duration::from_millis(1500));
                 let Some(w) = app.get_webview_window("main") else {
                     return;
                 };
@@ -87,7 +89,8 @@ pub fn builder() -> tauri::Builder<Wry> {
                 let server = server.as_ref().and_then(|v| v["server"].as_str());
                 let to = match server {
                     Some(s) if !s.is_empty() => s.parse().ok(),
-                    _ => w.url().ok().and_then(|u| u.join("/server.html").ok()),
+                    // The bundled assets origin on Android; `w.url()` is not a usable base this early.
+                    _ => "http://tauri.localhost/server.html".parse().ok(),
                 };
                 if let Some(to) = to {
                     let _ = w.navigate(to);

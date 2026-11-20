@@ -131,6 +131,13 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
     Ok((router, setup))
 }
 
+/// Serves the built web app from `dir` for every path the API does not claim; unknown paths get
+/// `index.html` so client-side routes load. The Android app loads the UI from the server.
+pub fn with_web(router: Router, dir: &Path) -> Router {
+    use tower_http::services::{ServeDir, ServeFile};
+    router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
+}
+
 async fn sync(
     State(st): State<St>,
     _: auth::Device,
