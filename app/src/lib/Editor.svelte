@@ -174,7 +174,7 @@
     min-height: 6rem;
     outline: none;
     font-size: 15px;
-    line-height: 1.55;
+    line-height: var(--lh, 1.55);
   }
   .editor :global(.editor-body > * + *) {
     margin-top: 0.5rem;

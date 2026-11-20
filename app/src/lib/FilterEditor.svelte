@@ -258,7 +258,7 @@
 <div
   role="dialog"
   aria-label="Filter"
-  class="absolute top-full left-0 z-30 mt-1 max-h-[70vh] w-[min(640px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-line bg-surface p-3 shadow-2"
+  class="absolute top-full left-0 z-30 mt-1 max-h-[calc(70vh/var(--zoom,1))] w-[min(640px,calc(100vw/var(--zoom,1)-2rem))] overflow-y-auto rounded-xl border border-line bg-surface p-3 shadow-2"
 >
   <div class="mb-2 flex gap-1" role="group" aria-label="Editor">
     <Button size="sm" variant={typed ? 'ghost' : 'on'} aria-pressed={!typed} onclick={() => show(false)}>Visual</Button>

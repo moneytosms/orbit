@@ -208,7 +208,7 @@
   onpointerdown={down}
   onwheel={wheel}
   onkeydown={key}
-  class="relative h-[calc(100vh-190px)] min-h-[460px] touch-none overflow-hidden rounded-2xl border border-line bg-bg outline-none focus-visible:ring-2 focus-visible:ring-accent {panning
+  class="relative h-[calc(100vh/var(--zoom,1)-190px)] min-h-[460px] touch-none overflow-hidden rounded-2xl border border-line bg-bg outline-none focus-visible:ring-2 focus-visible:ring-accent {panning
     ? 'cursor-grabbing'
     : 'cursor-grab'}"
   style="background-image: radial-gradient(color-mix(in srgb, var(--border-strong) 75%, transparent) 1px, transparent 1px); background-size: {22 *

@@ -362,7 +362,7 @@
       <div
         role="group"
         aria-label="Sort"
-        class="absolute top-full right-0 z-30 mt-1 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-3 shadow-2"
+        class="absolute top-full right-0 z-30 mt-1 w-[min(360px,calc(100vw/var(--zoom,1)-2rem))] rounded-xl border border-line bg-surface p-3 shadow-2"
       >
         {#each view.sorts as s, i (i)}
           <div class="mb-2 flex items-center gap-1.5">
@@ -392,7 +392,7 @@
       <div
         role="group"
         aria-label="Fields"
-        class="absolute top-full right-0 z-30 mt-1 w-[min(280px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-3 shadow-2"
+        class="absolute top-full right-0 z-30 mt-1 w-[min(280px,calc(100vw/var(--zoom,1)-2rem))] rounded-xl border border-line bg-surface p-3 shadow-2"
       >
         {#each fieldChoices as f (f)}
           <label class="flex items-center gap-2 py-1 text-sm capitalize">

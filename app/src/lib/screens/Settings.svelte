@@ -32,16 +32,26 @@
   import {
     getAccent,
     getDensity,
-    getFontSize,
+    getLeading,
+    getMotion,
+    getTextSize,
     getTheme,
+    getTypeface,
     paletteList,
     setAccent,
     setDensity,
-    setFontSize,
+    resetAppearance,
+    setLeading,
+    setMotion,
+    setTextSize,
     setTheme,
+    setTypeface,
     type Choice,
     type Density,
-    type FontSize,
+    type Leading,
+    type Motion,
+    type TextSize,
+    type Typeface,
     type PaletteInfo,
     type Strategy,
   } from '$lib/theme'
@@ -64,7 +74,37 @@
   const activeStrategy = $derived(choice.split(':')[2])
 
   let density: Density = $state(getDensity())
-  let fontSize: FontSize = $state(getFontSize())
+  let textSize: TextSize = $state(getTextSize())
+  let typeface: Typeface = $state(getTypeface())
+  let leading: Leading = $state(getLeading())
+  let motion: Motion = $state(getMotion())
+  const textSizes: [TextSize, string][] = [
+    ['90', 'Small'],
+    ['100', 'Default'],
+    ['115', 'Large'],
+    ['130', 'Larger'],
+    ['150', 'Largest'],
+  ]
+  const typefaces: [Typeface, string][] = [
+    ['figtree', 'Figtree'],
+    ['system', 'System UI'],
+    ['serif', 'Serif'],
+    ['mono', 'Mono'],
+  ]
+  const leadings: [Leading, string][] = [
+    ['compact', 'Compact'],
+    ['default', 'Default'],
+    ['relaxed', 'Relaxed'],
+  ]
+  const motions: [Motion, string][] = [
+    ['system', 'Follow system'],
+    ['on', 'On'],
+    ['off', 'Off'],
+  ]
+  const resetAll = () => {
+    resetAppearance()
+    ;[textSize, typeface, leading, motion] = [getTextSize(), getTypeface(), getLeading(), getMotion()]
+  }
   let accent: string | null = $state(getAccent())
   const cssAccent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c2552f'
 
@@ -305,13 +345,44 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
-        <span id="font-label">Font size</span>
-        <div class="flex gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="font-label">
-          {#each [['s', 'S'], ['m', 'M'], ['l', 'L']] as [value, label] (value)}
-            {@render tab(fontSize === value, () => setFontSize((fontSize = value as FontSize)), label)}
+      <div class="flex flex-wrap items-center gap-3">
+        <span id="size-label">Text size</span>
+        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="size-label">
+          {#each textSizes as [value, label] (value)}
+            {@render tab(textSize === value, () => setTextSize((textSize = value)), label)}
           {/each}
         </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <span id="face-label">Typeface</span>
+        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="face-label">
+          {#each typefaces as [value, label] (value)}
+            {@render tab(typeface === value, () => setTypeface((typeface = value)), label)}
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <span id="leading-label">Line spacing</span>
+        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="leading-label">
+          {#each leadings as [value, label] (value)}
+            {@render tab(leading === value, () => setLeading((leading = value)), label)}
+          {/each}
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <span id="motion-label">Reduce motion</span>
+        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="motion-label">
+          {#each motions as [value, label] (value)}
+            {@render tab(motion === value, () => setMotion((motion = value)), label)}
+          {/each}
+        </div>
+      </div>
+
+      <div>
+        <Button size="sm" onclick={resetAll}>Reset appearance</Button>
       </div>
     </div>
   </section>

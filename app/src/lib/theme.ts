@@ -1,5 +1,5 @@
 // Appearance, painted on <html>: an Orbit theme or a Monkeytype palette (inline tokens), plus accent,
-// density and font size. Everything is kept per browser in localStorage. Theme and accent also sync
+// density, text size, typeface, line spacing and motion. Everything is kept per browser in localStorage. Theme and accent also sync
 // through the Settings row: local changes go to `onAppearanceChange`, remote ones come in via `applyRemote`.
 import init, { theme_list, theme_tokens } from '../../wasm/orbit_wasm'
 
@@ -7,7 +7,14 @@ export type Theme = 'light' | 'dark' | 'system'
 export type Strategy = 'direct' | 'derived' | 'accent'
 export type Choice = Theme | `mt:${string}:${Strategy}`
 export type Density = 'comfortable' | 'compact'
-export type FontSize = 's' | 'm' | 'l'
+export const TEXT_SIZES = ['90', '100', '115', '130', '150'] as const
+export type TextSize = (typeof TEXT_SIZES)[number]
+export const TYPEFACES = ['figtree', 'system', 'serif', 'mono'] as const
+export type Typeface = (typeof TYPEFACES)[number]
+export const LEADINGS = ['compact', 'default', 'relaxed'] as const
+export type Leading = (typeof LEADINGS)[number]
+export const MOTIONS = ['system', 'on', 'off'] as const
+export type Motion = (typeof MOTIONS)[number]
 
 export type PaletteInfo = {
   name: string
@@ -18,8 +25,6 @@ export type PaletteInfo = {
   text: string
   main: string
 }
-
-const FONT_PX: Record<FontSize, string> = { s: '14px', m: '15px', l: '16px' }
 
 /** The synced part of the appearance. Empty theme: not set; empty accent: the theme's own. */
 export type Appearance = { theme?: string; accent?: string }
@@ -56,11 +61,21 @@ const media = (() => {
 let current: Choice = (stored('theme') as Choice | null) ?? 'system'
 let accent: string | null = stored('accent')
 let density: Density = stored('density') === 'compact' ? 'compact' : 'comfortable'
-let fontSize: FontSize = (['s', 'm', 'l'] as const).find((f) => f === stored('fontSize')) ?? 'm'
+// A stored value outside the list falls back to the default.
+const pickOf = <T extends string>(key: string, list: readonly T[], dflt: T): T =>
+  list.find((v) => v === stored(key)) ?? dflt
+let textSize = pickOf<TextSize>('textSize', TEXT_SIZES, '100')
+let typeface = pickOf<Typeface>('typeface', TYPEFACES, 'figtree')
+let leading = pickOf<Leading>('leading', LEADINGS, 'default')
+let motion = pickOf<Motion>('motion', MOTIONS, 'system')
 
 // The palette engine loads with the app's own init(); this is the same promise, so importing the module never loads wasm.
 let wasmReady: Promise<boolean> | undefined
-const loaded = () => (wasmReady ??= init().then(() => true, () => false))
+const loaded = () =>
+  (wasmReady ??= init().then(
+    () => true,
+    () => false,
+  ))
 
 /** Relative luminance of `#rgb` or `#rrggbb`, 0 to 1. */
 function luminance(hex: string): number {
@@ -94,7 +109,12 @@ function paint() {
   if (!root) return
   const style = root.style
   root.dataset.density = density
-  style.fontSize = FONT_PX[fontSize]
+  // zoom, not rem: the UI is full of px literals. Applied to <html> so fixed layers scale too.
+  style.zoom = textSize === '100' ? '' : String(+textSize / 100)
+  root.dataset.text = textSize
+  root.dataset.font = typeface
+  root.dataset.leading = leading
+  root.dataset.motion = motion
 
   if (!current.startsWith('mt:')) {
     clearTokens(style)
@@ -160,9 +180,37 @@ export function setDensity(d: Density) {
   paint()
 }
 
-export const getFontSize = (): FontSize => fontSize
-export function setFontSize(f: FontSize) {
-  fontSize = f
-  save('fontSize', f)
+export const getTextSize = (): TextSize => textSize
+export function setTextSize(v: TextSize) {
+  textSize = v
+  save('textSize', v)
+  paint()
+}
+
+export const getTypeface = (): Typeface => typeface
+export function setTypeface(v: Typeface) {
+  typeface = v
+  save('typeface', v)
+  paint()
+}
+
+export const getLeading = (): Leading => leading
+export function setLeading(v: Leading) {
+  leading = v
+  save('leading', v)
+  paint()
+}
+
+export const getMotion = (): Motion => motion
+export function setMotion(v: Motion) {
+  motion = v
+  save('motion', v)
+  paint()
+}
+
+/** Text size, typeface, line spacing and motion back to their defaults (not theme, accent or density). */
+export function resetAppearance() {
+  ;[textSize, typeface, leading, motion] = ['100', 'figtree', 'default', 'system']
+  for (const k of ['textSize', 'typeface', 'leading', 'motion']) save(k, null)
   paint()
 }

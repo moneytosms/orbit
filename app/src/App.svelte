@@ -227,7 +227,7 @@
 {#if toast}
   <p
     role="status"
-    class="fixed bottom-24 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
+    class="fixed bottom-24 left-1/2 z-50 max-w-[calc(90vw/var(--zoom,1))] -translate-x-1/2 rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
   >
     {toast}
   </p>
