@@ -1,0 +1,559 @@
+//! The commands. Each returns the human text and the `--json` body; `main` prints them.
+use crate::out::{Done, R, fail, internal, table, usage};
+use crate::refs;
+use orbit_client::{Client, Rejection, is_signed_out};
+use orbit_core::next::{Cfg, whats_next};
+use orbit_core::routine::{CheckState, checkin_id};
+use orbit_core::search::Index;
+use orbit_core::view::today_string;
+use orbit_core::{ErrorCode, Op, Row, Task, Uuid};
+use rusqlite::Connection;
+use serde_json::{Value, json};
+use std::error::Error;
+use std::io::{BufRead, IsTerminal, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Rows `ls`, `next` and `search` show before truncating, unless `--all`.
+const LIMIT: usize = 20;
+const SERVER_FILE: &str = "server";
+
+/// The user data dir: `ORBIT_DIR`, else `$XDG_DATA_HOME/orbit`, else `~/.local/share/orbit`.
+pub fn data_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("ORBIT_DIR") {
+        return PathBuf::from(dir);
+    }
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join("orbit")
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// The replica in the data dir, with the server URL saved by `login` (empty before it).
+struct Ctx {
+    client: Client,
+    dir: PathBuf,
+    url: String,
+}
+
+fn open() -> R<Ctx> {
+    let dir = data_dir();
+    std::fs::create_dir_all(&dir).map_err(internal)?;
+    let url = std::fs::read_to_string(dir.join(SERVER_FILE))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let db = Connection::open(dir.join("orbit.db")).map_err(internal)?;
+    let client = Client::open(db, &url).map_err(internal)?;
+    Ok(Ctx { client, dir, url })
+}
+
+fn runtime() -> R<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(internal)
+}
+
+fn short(id: Uuid) -> String {
+    id.to_string()[..8].to_string()
+}
+
+/// The wire name of a core rejection, as scripts see it.
+fn code_name(code: ErrorCode) -> &'static str {
+    match code {
+        ErrorCode::Exists => "exists",
+        ErrorCode::NotFound => "not_found",
+        ErrorCode::TitleRequired => "title_required",
+        ErrorCode::BadParent => "bad_parent",
+        ErrorCode::BadField => "bad_field",
+        ErrorCode::Archived => "archived",
+        ErrorCode::MissingBlob => "missing_blob",
+    }
+}
+
+fn password() -> R<String> {
+    if let Some(p) = std::env::var("ORBIT_PASSWORD")
+        .ok()
+        .filter(|p| !p.is_empty())
+    {
+        return Ok(p);
+    }
+    // Only a terminal gets a prompt; a pipe or a closed stdin is read as-is, never asked for.
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        eprint!("password: ");
+        std::io::stderr().flush().ok();
+    }
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line).map_err(internal)?;
+    let p = line.trim_end_matches(['\r', '\n']).to_string();
+    if p.is_empty() {
+        return Err(fail(
+            "password_required",
+            "no password given",
+            Some("set ORBIT_PASSWORD or pipe the password on stdin"),
+        ));
+    }
+    Ok(p)
+}
+
+fn login_error(e: Box<dyn Error + Send + Sync>) -> crate::out::Fail {
+    let msg = e.to_string();
+    match msg.as_str() {
+        "totp" => fail("totp", msg, Some("pass the current code with --totp")),
+        "credentials" => fail("credentials", msg, Some("check the password")),
+        "rate_limited" => fail("rate_limited", msg, Some("wait a while, then try again")),
+        _ => fail("login_failed", msg, Some("check the server URL")),
+    }
+}
+
+pub fn login(url: &str, totp: Option<&str>, name: &str) -> Done {
+    let url = url.trim().trim_end_matches('/');
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(usage(format!("`{url}` is not an http:// or https:// URL")));
+    }
+    let password = password()?;
+    let dir = data_dir();
+    std::fs::create_dir_all(&dir).map_err(internal)?;
+    let db = Connection::open(dir.join("orbit.db")).map_err(internal)?;
+    let mut client = Client::open(db, url).map_err(internal)?;
+    let device = runtime()?
+        .block_on(client.login(&password, totp, name, "cli"))
+        .map_err(login_error)?;
+    std::fs::write(dir.join(SERVER_FILE), url).map_err(internal)?;
+    Ok((
+        format!("logged in to {url} as device {}", short(device)),
+        json!({ "server": url, "device": device }),
+    ))
+}
+
+pub fn logout(yes: bool, dry_run: bool) -> Done {
+    let mut ctx = open()?;
+    if !ctx.client.is_signed_in().map_err(internal)? {
+        return Ok((
+            "not signed in".into(),
+            json!({ "signed_in": false, "changed": false, "dry_run": dry_run }),
+        ));
+    }
+    let pending = ctx.client.outbox_len().map_err(internal)?;
+    if pending > 0 && !yes && !dry_run {
+        return Err(fail(
+            "confirm",
+            format!("{pending} unsynced change(s) wait until you log in again"),
+            Some("pass --yes to log out anyway"),
+        ));
+    }
+    if dry_run {
+        return Ok((
+            "would log out".into(),
+            json!({ "signed_in": true, "changed": false, "dry_run": true, "unsynced": pending }),
+        ));
+    }
+    ctx.client.logout().map_err(internal)?;
+    Ok((
+        "logged out".into(),
+        json!({ "signed_in": false, "changed": true, "dry_run": false, "unsynced": pending }),
+    ))
+}
+
+pub fn sync() -> Done {
+    let mut ctx = open()?;
+    if ctx.url.is_empty() {
+        return Err(fail(
+            "no_server",
+            "not logged in to a server",
+            Some("run `orbit login <url>`"),
+        ));
+    }
+    if !ctx.client.is_signed_in().map_err(internal)? {
+        return Err(fail(
+            "signed_out",
+            "this device is signed out",
+            Some("run `orbit login <url>`"),
+        ));
+    }
+    let before = ctx.client.outbox_len().map_err(internal)?;
+    let rejected = runtime()?
+        .block_on(ctx.client.sync(now_ms()))
+        .map_err(|e| {
+            if is_signed_out(&*e) {
+                fail(
+                    "signed_out",
+                    "the server no longer accepts this device",
+                    Some("run `orbit login <url>`"),
+                )
+            } else {
+                fail(
+                    "network",
+                    e.to_string(),
+                    Some("changes stay queued; try again later"),
+                )
+            }
+        })?;
+    let after = ctx.client.outbox_len().map_err(internal)?;
+    let sent = before.saturating_sub(after);
+    let rejections: Vec<Value> = rejected.iter().map(rejection_json).collect();
+    let mut human = format!("synced {sent} change(s)");
+    for r in &rejected {
+        human.push_str(&format!(
+            "\nrejected {}: {}",
+            r.command.uuid,
+            code_name(r.code)
+        ));
+    }
+    Ok((human, json!({ "sent": sent, "rejected": rejections })))
+}
+
+fn rejection_json(r: &Rejection) -> Value {
+    let op = serde_json::to_value(&r.command.op).unwrap_or(Value::Null);
+    json!({ "uuid": r.command.uuid, "type": op["type"], "code": code_name(r.code) })
+}
+
+pub fn status() -> Done {
+    let ctx = open()?;
+    let signed_in = ctx.client.is_signed_in().map_err(internal)?;
+    let pending = ctx.client.outbox_len().map_err(internal)?;
+    let open_tasks = open_tasks(&ctx.client)?.len();
+    let server = (!ctx.url.is_empty()).then(|| ctx.url.clone());
+    let human = format!(
+        "server: {}\nsigned in: {}\nunsynced changes: {pending}\nopen tasks: {open_tasks}",
+        server.as_deref().unwrap_or("none"),
+        if signed_in { "yes" } else { "no" },
+    );
+    Ok((
+        human,
+        json!({ "server": server, "signed_in": signed_in, "unsynced": pending, "open_tasks": open_tasks }),
+    ))
+}
+
+/// Open (not done, not in the Trash) tasks, in list order.
+fn open_tasks(client: &Client) -> R<Vec<Task>> {
+    let mut tasks: Vec<Task> = client
+        .rows()
+        .map_err(internal)?
+        .into_iter()
+        .filter_map(|r| match r {
+            Row::Task(t) if t.completed_at.is_none() && t.trashed_at.is_none() => Some(t),
+            _ => None,
+        })
+        .collect();
+    tasks.sort_by(|a, b| (a.order.as_str(), a.id).cmp(&(b.order.as_str(), b.id)));
+    Ok(tasks)
+}
+
+fn detail(t: &Task) -> String {
+    let mut parts = vec![format!("P{}", t.priority)];
+    if let Some(due) = &t.due {
+        parts.push(match &due.time {
+            Some(time) => format!("due {} {time}", due.date),
+            None => format!("due {}", due.date),
+        });
+    }
+    if t.completed_at.is_some() {
+        parts.push("done".into());
+    }
+    parts.join(" ")
+}
+
+struct Entry {
+    id: Uuid,
+    title: String,
+    detail: String,
+}
+
+/// Prints a listing, saves it for ref lookups, and truncates to `LIMIT` unless `all`.
+fn present(dir: &Path, entries: Vec<Entry>, all: bool, empty: &str) -> Done {
+    let total = entries.len();
+    let shown = if all { total } else { total.min(LIMIT) };
+    let entries = &entries[..shown];
+    let ids: Vec<Uuid> = entries.iter().map(|e| e.id).collect();
+    refs::save_listing(dir, &ids)?;
+    let truncated = shown < total;
+    let mut human = if total == 0 {
+        empty.to_string()
+    } else {
+        let rows: Vec<Vec<String>> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                vec![
+                    (i + 1).to_string(),
+                    short(e.id),
+                    e.title.clone(),
+                    e.detail.clone(),
+                ]
+            })
+            .collect();
+        table(&["#", "ID", "TITLE", "DETAIL"], &rows)
+    };
+    let mut body = json!({
+        "items": entries.iter().enumerate().map(|(i, e)| json!({
+            "n": i + 1, "id": e.id, "title": e.title, "detail": e.detail
+        })).collect::<Vec<_>>(),
+        "total": total,
+        "shown": shown,
+        "truncated": truncated,
+    });
+    if truncated {
+        let hint = format!("showing {shown}/{total}, pass --all to see the rest");
+        human.push_str(&format!("\n{hint}"));
+        body["hint"] = json!(hint);
+    }
+    Ok((human, body))
+}
+
+fn task_entries(tasks: &[Task]) -> Vec<Entry> {
+    tasks
+        .iter()
+        .map(|t| Entry {
+            id: t.id,
+            title: t.title.clone(),
+            detail: detail(t),
+        })
+        .collect()
+}
+
+pub fn ls(all: bool) -> Done {
+    let ctx = open()?;
+    let tasks = open_tasks(&ctx.client)?;
+    present(&ctx.dir, task_entries(&tasks), all, "no tasks")
+}
+
+pub fn next(all: bool) -> Done {
+    let ctx = open()?;
+    let now = now_ms();
+    let rows = ctx.client.rows().map_err(internal)?;
+    let today = today_string((now / 86_400_000) as i64);
+    let hhmm = format!("{:02}:{:02}", (now / 3_600_000) % 24, (now / 60_000) % 60);
+    let entries = whats_next(&rows, &today, &hhmm, &Cfg::default())
+        .into_iter()
+        .map(|item| Entry {
+            id: item.id,
+            title: item.title,
+            detail: item.reason,
+        })
+        .collect();
+    present(&ctx.dir, entries, all, "nothing to do next")
+}
+
+pub fn search(words: &[String], all: bool) -> Done {
+    let query = words.join(" ");
+    if query.trim().is_empty() {
+        return Err(usage("search needs some words"));
+    }
+    let ctx = open()?;
+    let mut index = Index::new();
+    for row in ctx.client.rows().map_err(internal)? {
+        index.upsert(&row);
+    }
+    let mut entries = vec![];
+    for hit in index.query(&query, now_ms(), 10_000) {
+        if hit.kind != "task" {
+            continue;
+        }
+        if let Some(t) = ctx.client.task(hit.id).map_err(internal)? {
+            entries.push(Entry {
+                id: t.id,
+                title: t.title.clone(),
+                detail: detail(&t),
+            });
+        }
+    }
+    present(&ctx.dir, entries, all, &format!("no tasks match `{query}`"))
+}
+
+/// The Task a ref names, or a not_found failure.
+fn task_of(ctx: &Ctx, r: &str) -> R<Task> {
+    let id = refs::resolve(&ctx.dir, &ctx.client, r)?;
+    ctx.client.task(id).map_err(internal)?.ok_or_else(|| {
+        fail(
+            "not_a_task",
+            format!("`{r}` is not a task"),
+            Some("run `orbit ls` to see tasks"),
+        )
+    })
+}
+
+pub fn add(words: &[String], id: Option<&str>, dry_run: bool) -> Done {
+    let title = words.join(" ").trim().to_string();
+    if title.is_empty() {
+        return Err(fail(
+            "title_required",
+            "a task needs a title",
+            Some("orbit add \"buy milk\""),
+        ));
+    }
+    let id = match id {
+        Some(s) => Some(Uuid::parse_str(s).map_err(|_| usage(format!("`{s}` is not a UUID")))?),
+        None => None,
+    };
+    let mut ctx = open()?;
+    if let Some(id) = id {
+        // Idempotent: an id that already exists is the same task, so nothing is queued again.
+        if ctx.client.get_row(id).map_err(internal)?.is_some() {
+            return Ok((
+                format!("already added {}", short(id)),
+                json!({ "id": id, "title": title, "created": false, "dry_run": dry_run }),
+            ));
+        }
+    }
+    if dry_run {
+        return Ok((
+            format!("would add: {title}"),
+            json!({ "id": id, "title": title, "created": false, "dry_run": true }),
+        ));
+    }
+    let now = now_ms();
+    let id = match id {
+        Some(id) => {
+            ctx.client
+                .enqueue(
+                    Op::TaskCreate {
+                        id,
+                        title: title.clone(),
+                        parent_id: None,
+                        order: String::new(),
+                    },
+                    now,
+                )
+                .map_err(internal)?;
+            id
+        }
+        None => ctx.client.create_task(&title, now).map_err(internal)?,
+    };
+    Ok((
+        format!("added {}: {title}", short(id)),
+        json!({ "id": id, "title": title, "created": true, "dry_run": false }),
+    ))
+}
+
+pub fn done(r: &str, dry_run: bool) -> Done {
+    let mut ctx = open()?;
+    let task = task_of(&ctx, r)?;
+    if task.completed_at.is_some() {
+        return Ok((
+            format!("already done: {}", task.title),
+            json!({ "id": task.id, "title": task.title, "changed": false, "dry_run": dry_run }),
+        ));
+    }
+    if dry_run {
+        return Ok((
+            format!("would complete: {}", task.title),
+            json!({ "id": task.id, "title": task.title, "changed": false, "dry_run": true }),
+        ));
+    }
+    ctx.client
+        .complete_task(task.id, now_ms())
+        .map_err(internal)?;
+    Ok((
+        format!("done: {}", task.title),
+        json!({ "id": task.id, "title": task.title, "changed": true, "dry_run": false }),
+    ))
+}
+
+pub fn show(r: &str) -> Done {
+    let ctx = open()?;
+    let task = task_of(&ctx, r)?;
+    let status = if task.completed_at.is_some() {
+        "done"
+    } else {
+        "open"
+    };
+    let mut human = format!(
+        "{}\nid: {}\nstatus: {status}\npriority: P{}",
+        task.title, task.id, task.priority
+    );
+    if let Some(due) = &task.due {
+        human.push_str(&format!("\ndue: {}", due.date));
+    }
+    if !task.description.is_empty() {
+        human.push_str(&format!("\n\n{}", task.description));
+    }
+    let body = json!({ "task": serde_json::to_value(&task).map_err(internal)? });
+    Ok((human, body))
+}
+
+pub fn edit(r: &str, title: Option<&str>, description: Option<&str>, dry_run: bool) -> Done {
+    if title.is_none() && description.is_none() {
+        return Err(usage("nothing to edit: pass --title or --description"));
+    }
+    if title.is_some_and(|t| t.trim().is_empty()) {
+        return Err(fail("title_required", "a task needs a title", None));
+    }
+    let mut ctx = open()?;
+    let task = task_of(&ctx, r)?;
+    let mut patch = serde_json::Map::new();
+    if let Some(t) = title {
+        patch.insert("title".into(), json!(t));
+    }
+    if let Some(d) = description {
+        patch.insert("description".into(), json!(d));
+    }
+    if dry_run {
+        return Ok((
+            format!("would edit: {}", task.title),
+            json!({ "id": task.id, "changed": false, "dry_run": true }),
+        ));
+    }
+    ctx.client
+        .update_task(task.id, Value::Object(patch), now_ms())
+        .map_err(internal)?;
+    let human = format!("edited {}", short(task.id));
+    Ok((
+        human,
+        json!({ "id": task.id, "changed": true, "dry_run": false }),
+    ))
+}
+
+pub fn checkin(r: &str, date: Option<&str>, dry_run: bool) -> Done {
+    let mut ctx = open()?;
+    let id = refs::resolve(&ctx.dir, &ctx.client, r)?;
+    let routine = match ctx.client.get_row(id).map_err(internal)? {
+        Some(Row::Routine(routine)) => routine,
+        _ => {
+            return Err(fail(
+                "not_a_routine",
+                format!("`{r}` is not a routine"),
+                Some("check-ins apply to routines"),
+            ));
+        }
+    };
+    let date = match date {
+        Some(d) => d.to_string(),
+        None => today_string((now_ms() / 86_400_000) as i64),
+    };
+    let shaped = date.len() == 10
+        && date.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        });
+    if !shaped {
+        return Err(usage(format!("`{date}` is not a YYYY-MM-DD date")));
+    }
+    if dry_run {
+        return Ok((
+            format!("would check in {} for {date}", routine.name),
+            json!({ "routine": routine.id, "name": routine.name, "date": date, "changed": false, "dry_run": true }),
+        ));
+    }
+    let op = Op::CheckinSet {
+        id: checkin_id(routine.id, &date),
+        routine_id: routine.id,
+        date: date.clone(),
+        state: CheckState::Done,
+    };
+    ctx.client.enqueue(op, now_ms()).map_err(internal)?;
+    Ok((
+        format!("checked in {} for {date}", routine.name),
+        json!({ "routine": routine.id, "name": routine.name, "date": date, "changed": true, "dry_run": false }),
+    ))
+}
