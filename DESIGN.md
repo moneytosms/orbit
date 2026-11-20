@@ -269,7 +269,7 @@ Not applicable. Avatars and cover images are **TBD** (not in v1 scope).
 **`toast`**: ink background with paper text, 10px radius, `{shadow.2}`, optional accent-line **Undo** (P:340–341).
 
 ### Notion component patterns reused
-Sidebar tree with toggles · breadcrumb top bar · database view tabs (List/Board/Timeline) · filter and view-options popovers with property toggles · properties list · callout · inline mentions/links · backlinks. **Not yet built (TBD):** slash-command menu, toggle blocks, the `[[` / `@` inline picker (it's covered by [Calendar, drag-and-drop and mentions spike](https://github.com/moneytosms/orbit/issues/27)).
+Sidebar tree with toggles · breadcrumb top bar · database view tabs (List/Board/Timeline) · filter and view-options popovers with property toggles · properties list · callout · inline mentions/links · backlinks. **Not yet built (TBD):** slash-command menu, toggle blocks. The `[[` / `@` inline picker is built (`app/src/lib/Mention.ts`; see the [Calendar, drag-and-drop and mentions spike](https://github.com/moneytosms/orbit/issues/27)).
 
 ### Examples (illustrative)
 

@@ -29,6 +29,8 @@ The `release` recipe is provided by `release.just`; the justfile must contain `i
 | `ORBIT_KEYSTORE_PASSWORD` | keystore password |
 | `ORBIT_KEY_ALIAS` | signing key alias |
 | `ORBIT_KEY_PASSWORD` | signing key password |
+| `TAURI_SIGNING_PRIVATE_KEY` | updater minisign private key; signs the AppImage (`~/.config/orbit/updater.key`) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | updater key password |
 
 The android job fails if `ORBIT_KEYSTORE_B64` is empty, so a release is never debug-signed.
 
@@ -44,16 +46,17 @@ APK versioning: `versionName` is the semver; `versionCode` is `major*10000 + min
 Obtainium tracks the GitHub Release. Point it at the repo and keep the asset name pattern
 `Orbit-.*-android\.apk`, so it picks the APK by name.
 
-## Auto-updater (pending)
+## Auto-updater
 
-The Tauri updater is not wired yet. To enable it:
+The Linux AppImage updates itself with `tauri-plugin-updater`. `tauri.conf.json` sets
+`plugins.updater.pubkey` (the public half of the minisign key) and the endpoint
+`https://github.com/moneytosms/orbit/releases/latest/download/latest.json`, and
+`bundle.createUpdaterArtifacts` is `true`. The release workflow signs the AppImage and publishes
+`Orbit_<version>_amd64.AppImage.sig` and `latest.json` next to it. The APK has no updater; Obtainium covers it.
 
-1. Add `tauri-plugin-updater` to `app/src-tauri/Cargo.toml` and register it in `lib.rs`.
-2. Generate an updater key pair; put the public key in `tauri.conf.json` under `plugins.updater.pubkey`.
-3. Set `bundle.createUpdaterArtifacts` to `true` so the AppImage build emits the signed artifact and manifest.
-4. Store the private key as `TAURI_SIGNING_PRIVATE_KEY` (and its password) in CI secrets only. Never commit it.
-
-Until then, the AppImage and APK are released without updater manifests.
+The private key stays outside the repo at `~/.config/orbit/updater.key`. Never commit it. CI reads it from
+the `TAURI_SIGNING_PRIVATE_KEY` secret, and its password from `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. If the key
+is lost, installed copies cannot verify updates signed with a new key, so users would reinstall by hand.
 
 ## AUR (`orbit-bin`)
 
