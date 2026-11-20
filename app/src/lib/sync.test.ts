@@ -748,3 +748,23 @@ test('an Area renames through area.update', async () => {
   await updateArea(id, { name: 'After' })
   expect((await tree()).find((a) => a.area.id === id)?.area.name).toBe('After')
 })
+
+test('Stardust counts a P1 Task at 80 and a Milestone at 250; un-completing a Milestone removes it', async () => {
+  const { stardust, setMilestoneDone, createMilestone, setTargets } = await import('./sync')
+  const base = (await stardust()).total
+  const t = await createTask('stardust task', INBOX)
+  await setPriority(t, 1)
+  await completeTask(t)
+  expect((await stardust()).total).toBe(base + 80)
+  const area = (await tree())[0].area.id
+  const g = await createGoal(area, 'stardust goal')
+  const m = await createMilestone(g, 'stardust milestone')
+  await setMilestoneDone(m, true)
+  expect((await stardust()).total).toBe(base + 330)
+  await setMilestoneDone(m, false)
+  expect((await stardust()).total).toBe(base + 80)
+  await setTargets({ target_daily: 7 })
+  const s = await stardust()
+  expect(s.targets.daily).toBe(7)
+  expect(s.history).toHaveLength(30)
+})

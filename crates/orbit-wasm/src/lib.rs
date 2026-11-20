@@ -317,3 +317,17 @@ impl Default for SearchIndex {
         Self::new()
     }
 }
+
+/// `{total, level, history, targets}` for the Profile over `rows_json` (a Row array).
+/// `today` is `YYYY-MM-DD`; the offset is the zone's, in minutes east of UTC.
+#[wasm_bindgen]
+pub fn stardust_summary(
+    rows_json: &str,
+    today: &str,
+    utc_offset_min: i32,
+    day_start: &str,
+) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    let s = orbit_core::stardust::summary(&rows, today, utc_offset_min, day_start);
+    Ok(serde_json::to_string(&s)?)
+}

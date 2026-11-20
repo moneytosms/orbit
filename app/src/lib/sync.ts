@@ -21,6 +21,7 @@ import {
   routine_stats,
   whats_next,
   reminder_schedule,
+  stardust_summary,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
@@ -105,6 +106,10 @@ export type Settings = {
   next_due_days?: number | null
   next_undated_p1?: boolean | null
   default_reminder?: boolean | null
+  target_daily?: number | null
+  target_weekly?: number | null
+  days_off?: number[] | null
+  vacation?: boolean | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -1178,3 +1183,42 @@ export async function runFilter(node: Node): Promise<Row[]> {
 export const updateArea = (id: string, patch: { name?: string }) => enqueue('area.update', { id, ...patch })
 /** Every row that is not trashed or archived (nor under something that is). */
 export const visibleSnapshot = () => visibleRows()
+
+export type StardustLevel = { n: number; name: string; floor: number; next: number | null }
+export type StardustTargets = {
+  today_done: number
+  week_done: number
+  daily: number
+  weekly: number
+  streak: number
+  vacation: boolean
+  days_off: number[]
+}
+export type Stardust = {
+  total: number
+  level: StardustLevel
+  history: { day: string; points: number }[]
+  targets: StardustTargets
+}
+/** Stardust total, Level, 30-day history and target progress, derived from completion records. */
+export async function stardust(now = Date.now()): Promise<Stardust> {
+  const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  const off = zoneOffset(settings?.timezone ?? '', now)
+  const today = local_day(now, off, settings?.day_start || '00:00')
+  return JSON.parse(stardust_summary(JSON.stringify(await allRows()), today, off, settings?.day_start || '00:00'))
+}
+export const setTargets = (t: {
+  target_daily?: number
+  target_weekly?: number
+  days_off?: number[]
+  vacation?: boolean
+}) => enqueue('settings.update', t)
+
+const LEVEL_KEY = 'orbit.level'
+/** The Level to announce, once: set when the stored Level is lower; the first run only records. */
+export function levelUp(n: number): boolean {
+  const seen = Number(localStorage.getItem(LEVEL_KEY) ?? 0)
+  if (n === seen) return false
+  localStorage.setItem(LEVEL_KEY, String(Math.max(n, seen)))
+  return seen > 0 && n > seen
+}

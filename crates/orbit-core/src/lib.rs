@@ -10,6 +10,7 @@ pub mod reminder;
 pub mod roadmap;
 pub mod routine;
 pub mod search;
+pub mod stardust;
 pub mod theme;
 pub mod trash;
 pub mod view;
@@ -194,6 +195,9 @@ pub struct Completion {
     pub item_id: Uuid,
     /// Unix ms.
     pub at: u64,
+    /// Stardust it earned when logged; old records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub points: Option<u32>,
 }
 
 /// Left behind when a trashed row is purged, so clients drop their copy.
@@ -238,6 +242,18 @@ pub struct Settings {
     /// A Task with a timed due gets an "at due time" reminder; `None` is on.
     #[serde(default)]
     pub default_reminder: Option<bool>,
+    /// Completed Tasks wanted per day; `None` = 5.
+    #[serde(default)]
+    pub target_daily: Option<u32>,
+    /// Completed Tasks wanted per week; `None` = 25.
+    #[serde(default)]
+    pub target_weekly: Option<u32>,
+    /// Days off the targets, 0 = Monday .. 6 = Sunday.
+    #[serde(default)]
+    pub days_off: Option<Vec<u8>>,
+    /// While on, the target streak is not broken.
+    #[serde(default)]
+    pub vacation: Option<bool>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -560,6 +576,14 @@ pub enum Op {
         next_undated_p1: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_reminder: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_daily: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_weekly: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        days_off: Option<Vec<u8>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vacation: Option<bool>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -1060,6 +1084,10 @@ impl Op {
                 next_due_days,
                 next_undated_p1,
                 default_reminder,
+                target_daily,
+                target_weekly,
+                days_off,
+                vacation,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -1070,6 +1098,10 @@ impl Op {
                 ("next_due_days", next_due_days.is_some()),
                 ("next_undated_p1", next_undated_p1.is_some()),
                 ("default_reminder", default_reminder.is_some()),
+                ("target_daily", target_daily.is_some()),
+                ("target_weekly", target_weekly.is_some()),
+                ("days_off", days_off.is_some()),
+                ("vacation", vacation.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -1729,6 +1761,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             next_due_days,
             next_undated_p1,
             default_reminder,
+            target_daily,
+            target_weekly,
+            days_off,
+            vacation,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1744,6 +1780,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     next_due_days: None,
                     next_undated_p1: None,
                     default_reminder: None,
+                    target_daily: None,
+                    target_weekly: None,
+                    days_off: None,
+                    vacation: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1757,6 +1797,10 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 next_due_days: next_due_days.or(old.next_due_days),
                 next_undated_p1: next_undated_p1.or(old.next_undated_p1),
                 default_reminder: default_reminder.or(old.default_reminder),
+                target_daily: target_daily.or(old.target_daily),
+                target_weekly: target_weekly.or(old.target_weekly),
+                days_off: days_off.clone().or(old.days_off),
+                vacation: vacation.or(old.vacation),
             }))
         }
     }
@@ -1875,6 +1919,7 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
         id: completion_id(t.id, cmd.uuid),
         item_id: t.id,
         at,
+        points: Some(stardust::task_points(t.priority)),
     };
     if let Some(rec) = &t.recurrence {
         let today = match &cmd.op {
@@ -1906,20 +1951,23 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
 /// The completion record `cmd` logs when applied to `old`, for a Task, Goal or Milestone.
 pub fn completion_for(old: &Row, cmd: &Command) -> Option<Completion> {
     let at = cmd.hlc.wall;
-    let log = |item_id| Completion {
+    let log = |item_id, points| Completion {
         id: completion_id(item_id, cmd.uuid),
         item_id,
         at,
+        points: Some(points),
     };
     match (&cmd.op, old) {
         (Op::TaskComplete { .. }, Row::Task(t)) => complete_effects(t.clone(), cmd).1,
-        (Op::GoalComplete { .. }, Row::Goal(g)) if g.completed_at.is_none() => Some(log(g.id)),
+        (Op::GoalComplete { .. }, Row::Goal(g)) if g.completed_at.is_none() => {
+            Some(log(g.id, stardust::GOAL))
+        }
         (
             Op::MilestoneUpdate {
                 done: Some(true), ..
             },
             Row::Milestone(m),
-        ) if !m.done => Some(log(m.id)),
+        ) if !m.done => Some(log(m.id, stardust::MILESTONE)),
         _ => None,
     }
 }
@@ -2680,7 +2728,11 @@ mod tests {
                 next_deadline_days: None,
                 next_due_days: None,
                 next_undated_p1: None,
-                default_reminder: None
+                default_reminder: None,
+                target_daily: None,
+                target_weekly: None,
+                days_off: None,
+                vacation: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();
