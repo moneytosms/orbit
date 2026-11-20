@@ -206,6 +206,17 @@ impl Client {
         Ok(())
     }
 
+    /// True once a Device has logged in or been given a token.
+    pub fn is_signed_in(&self) -> Result<bool> {
+        Ok(meta(&self.db, "auth")?.is_some())
+    }
+
+    /// Forgets the auth token so syncs stop authorizing. Rows and the outbox stay for the next login.
+    pub fn logout(&mut self) -> Result<()> {
+        self.db.execute("DELETE FROM meta WHERE key = 'auth'", [])?;
+        Ok(())
+    }
+
     pub fn outbox_len(&self) -> Result<usize> {
         let n: i64 = self
             .db
