@@ -8,6 +8,7 @@
   import { Input } from '$lib/components/ui/input'
   import Banner from '$lib/Banner.svelte'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
+  import Backlinks from '$lib/Backlinks.svelte'
   import { areaStats, openCounts, roadmapsIn, upNextIn, type AreaStats } from '$lib/area'
   import {
     createGoal,
@@ -263,5 +264,7 @@
         </ul>
       {/if}
     </div>
+
+    <Backlinks id={area.area.id} />
   </div>
 {/if}

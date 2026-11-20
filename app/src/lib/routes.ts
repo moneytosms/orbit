@@ -24,7 +24,7 @@ export type Route = keyof typeof routes
 
 export const readRoute = (): Route => {
   const r = location.hash.replace(/^#\/?/, '')
-  return r in routes ? (r as Route) : 'inbox'
+  return r in routes ? (r as Route) : 'home'
 }
 
 /** The screen on screen: a fixed route, or a Project, Area, Page, View or Roadmap by id. */
