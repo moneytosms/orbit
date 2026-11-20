@@ -2,3 +2,9 @@
 .claude/worktrees/
 target/
 /data/
+
+# extra sizes `cargo tauri icon` emits that nothing bundles
+app/src-tauri/icons/ios/
+app/src-tauri/icons/Square*Logo.png
+app/src-tauri/icons/StoreLogo.png
+app/src-tauri/icons/64x64.png
