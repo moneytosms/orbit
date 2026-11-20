@@ -798,3 +798,26 @@ test('the Calendar view is built in, and calendarData lists Routine days with ch
   await moveTask(t, '2026-01-05', '14:00')
   expect((await getTask(t))?.due).toEqual({ date: '2026-01-05', time: '14:00' })
 })
+
+test('the dashboard layout is the default until set, then synced as one field', async () => {
+  const { getDashboard, setDashboard } = await import('./sync')
+  const d = await getDashboard()
+  expect(d.map((w) => w.kind)).toContain('glance')
+  await setDashboard(d.map((w) => (w.kind === 'glance' ? { ...w, hidden: true } : w)))
+  expect((await getDashboard()).find((w) => w.kind === 'glance')?.hidden).toBe(true)
+})
+
+test('turning vacation off keeps no range when it began today, and clears vacation_from', async () => {
+  const { setVacation, localDay } = await import('./sync')
+  const settings = () =>
+    tx(['rows'], (s) => req<Record<string, unknown> | undefined>(s('rows').get('00000000-0000-7000-8000-000000000002')))
+  await setVacation(true)
+  let row = await settings()
+  expect(row?.vacation).toBe(true)
+  expect(row?.vacation_from).toBe(await localDay())
+  await setVacation(false)
+  row = await settings()
+  expect(row?.vacation).toBe(false)
+  expect(row?.vacation_from ?? null).toBeNull()
+  expect(row?.vacations ?? []).toEqual([])
+})

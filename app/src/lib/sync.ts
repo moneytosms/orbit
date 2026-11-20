@@ -27,6 +27,7 @@ import {
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
+import { defaultLayout } from './dashboard'
 
 export type Due = { date: string; time?: string | null }
 export type Recurrence = { rule: string; from_completion: boolean }
@@ -112,6 +113,9 @@ export type Settings = {
   days_off?: number[] | null
   vacation?: boolean | null
   week_start?: number | null
+  dashboard?: DashboardWidget[] | null
+  vacation_from?: string | null
+  vacations?: [string, string][] | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -1256,4 +1260,37 @@ export async function calendarData(from: string, to: string) {
     goals: rows.filter((r): r is Goal => r.kind === 'goal' && r.archived_at === null),
     milestones: rows.filter((r): r is Milestone => r.kind === 'milestone'),
   }
+}
+
+/** A Home dashboard widget; the layout is one synced Settings field. */
+export type DashboardWidget = {
+  id: string
+  kind: string
+  view_id?: string | null
+  x: number
+  y: number
+  w: number
+  h: number
+  hidden: boolean
+}
+/** The dashboard layout; the default one while the setting is unset. */
+export async function getDashboard(): Promise<DashboardWidget[]> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return row?.dashboard ?? defaultLayout()
+}
+export const setDashboard = (dashboard: DashboardWidget[]) => enqueue('settings.update', { dashboard })
+
+/** Turns vacation on from today, or off, keeping the finished range for the target streak. */
+export async function setVacation(on: boolean): Promise<void> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  const today = await localDay()
+  if (on) return void (await enqueue('settings.update', { vacation: true, vacation_from: today }))
+  const from = row?.vacation_from
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  const patch: { vacation: boolean; vacation_from: string; vacations?: [string, string][] } = {
+    vacation: false,
+    vacation_from: '',
+  }
+  if (from && from <= yesterday) patch.vacations = [...(row?.vacations ?? []), [from, yesterday]]
+  await enqueue('settings.update', patch)
 }

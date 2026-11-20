@@ -257,6 +257,30 @@ pub struct Settings {
     /// First day of the Calendar week, 0 = Sunday, 1 = Monday; `None` = 1.
     #[serde(default)]
     pub week_start: Option<u8>,
+    /// Home dashboard widgets; `None` = the default layout.
+    #[serde(default)]
+    pub dashboard: Option<Vec<Widget>>,
+    /// First day of the vacation in progress (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub vacation_from: Option<String>,
+    /// Finished vacations as closed date ranges.
+    #[serde(default)]
+    pub vacations: Option<Vec<[String; 2]>>,
+}
+
+/// One Home dashboard widget on the fixed-row grid.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Widget {
+    pub id: String,
+    pub kind: String,
+    #[serde(default)]
+    pub view_id: Option<Uuid>,
+    pub x: u8,
+    pub y: u8,
+    pub w: u8,
+    pub h: u8,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -588,6 +612,13 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         vacation: Option<bool>,
         week_start: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dashboard: Option<Vec<Widget>>,
+        /// Empty clears it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vacation_from: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        vacations: Option<Vec<[String; 2]>>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -1093,6 +1124,9 @@ impl Op {
                 days_off,
                 vacation,
                 week_start,
+                dashboard,
+                vacation_from,
+                vacations,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -1108,6 +1142,9 @@ impl Op {
                 ("days_off", days_off.is_some()),
                 ("vacation", vacation.is_some()),
                 ("week_start", week_start.is_some()),
+                ("dashboard", dashboard.is_some()),
+                ("vacation_from", vacation_from.is_some()),
+                ("vacations", vacations.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -1772,6 +1809,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             days_off,
             vacation,
             week_start,
+            dashboard,
+            vacation_from,
+            vacations,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1792,6 +1832,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     days_off: None,
                     vacation: None,
                     week_start: None,
+                    dashboard: None,
+                    vacation_from: None,
+                    vacations: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1810,6 +1853,13 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 days_off: days_off.clone().or(old.days_off),
                 vacation: vacation.or(old.vacation),
                 week_start: week_start.or(old.week_start),
+                dashboard: dashboard.clone().or(old.dashboard),
+                vacation_from: match vacation_from {
+                    Some(d) if d.is_empty() => None,
+                    Some(d) => Some(d.clone()),
+                    None => old.vacation_from,
+                },
+                vacations: vacations.clone().or(old.vacations),
             }))
         }
     }
@@ -2742,7 +2792,10 @@ mod tests {
                 target_weekly: None,
                 days_off: None,
                 vacation: None,
-                week_start: None
+                week_start: None,
+                dashboard: None,
+                vacation_from: None,
+                vacations: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

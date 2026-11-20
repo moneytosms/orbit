@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { setTargets, stardust, type Stardust } from '$lib/sync'
+  import { setTargets, setVacation, stardust, type Stardust } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
   let data = $state<Stardust>()
@@ -101,11 +101,7 @@
       {/each}
     </div>
     <label class="mt-2 flex items-center gap-1.5">
-      <input
-        type="checkbox"
-        checked={data.targets.vacation}
-        onchange={(e) => setTargets({ vacation: e.currentTarget.checked })}
-      />
+      <input type="checkbox" checked={data.targets.vacation} onchange={(e) => setVacation(e.currentTarget.checked)} />
       Vacation
     </label>
   </section>

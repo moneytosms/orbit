@@ -236,6 +236,17 @@ pub fn target_status(
         .and_then(|s| s.days_off.clone())
         .unwrap_or_default();
     let vacation = settings.and_then(|s| s.vacation).unwrap_or(false);
+    let vacation_from = settings
+        .and_then(|s| s.vacation_from.as_deref())
+        .and_then(parse_ymd);
+    let ranges: Vec<(i64, i64)> = settings
+        .and_then(|s| s.vacations.as_ref())
+        .map(|v| {
+            v.iter()
+                .filter_map(|[a, b]| Some((parse_ymd(a)?, parse_ymd(b)?)))
+                .collect()
+        })
+        .unwrap_or_default();
     let mut per_day: HashMap<i64, u32> = HashMap::new();
     for a in awards(rows, utc_offset_min, day_start) {
         if a.task
@@ -268,9 +279,11 @@ pub fn target_status(
     while d >= first {
         let done = per_day.get(&d).copied().unwrap_or(0);
         let off = days_off.contains(&(weekday(d) as u8));
+        let away = ranges.iter().any(|&(a, b)| (a..=b).contains(&d))
+            || (vacation && vacation_from.is_some_and(|f| d >= f));
         if done >= daily && !off {
             targets.streak += 1;
-        } else if off || (d == t && (vacation || done < daily)) {
+        } else if off || away || (d == t && (vacation || done < daily)) {
             // Skipped: off, on vacation, or today not yet hit.
         } else {
             break;
@@ -386,6 +399,9 @@ mod tests {
             days_off: None,
             vacation: None,
             week_start: None,
+            dashboard: None,
+            vacation_from: None,
+            vacations: None,
         };
         f(&mut s);
         s
@@ -549,6 +565,25 @@ mod tests {
         // Without it, today unhit is simply not yet a miss either.
         let s = target_status(&rows, None, 0, "", "2026-03-10");
         assert_eq!(s.streak, 0);
+        // A finished vacation (the 7th to the 9th) does not break the streak.
+        let past = settings(|s| {
+            s.target_daily = Some(1);
+            s.vacations = Some(vec![["2026-03-07".into(), "2026-03-09".into()]]);
+        });
+        let rows = day_rows(&[(0, 1), (4, 1), (5, 1)]);
+        let s = target_status(&rows, Some(&past), 0, "", "2026-03-10");
+        assert_eq!(s.streak, 3);
+        let no_range = settings(|s| s.target_daily = Some(1));
+        let s = target_status(&rows, Some(&no_range), 0, "", "2026-03-10");
+        assert_eq!(s.streak, 1);
+        // One in progress skips days from its start on.
+        let on = settings(|s| {
+            s.target_daily = Some(1);
+            s.vacation = Some(true);
+            s.vacation_from = Some("2026-03-07".into());
+        });
+        let s = target_status(&rows, Some(&on), 0, "", "2026-03-10");
+        assert_eq!(s.streak, 3);
     }
 
     #[test]
