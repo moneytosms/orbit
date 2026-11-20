@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Repeat from '@lucide/svelte/icons/repeat'
   import { Button } from '$lib/components/ui/button'
   import RoutineSheet from '$lib/RoutineSheet.svelte'
   import {
@@ -152,7 +154,14 @@
       </div>
     </article>
   {:else}
-    <p class="text-muted">No routines yet.</p>
+    <Empty
+      icon={Repeat}
+      text={areas.length
+        ? 'Routines are habits you tick off each day and build streaks on.'
+        : 'Create an Area first, then add routines to it.'}
+      label={areas.length ? 'New routine' : undefined}
+      onclick={() => edit()}
+    />
   {/each}
 
   {#if archived.length}

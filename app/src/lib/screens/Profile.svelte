@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { badgeShelf, getGamification, setTargets, setVacation, stardust, type Shelf, type Stardust } from '$lib/sync'
+  import { badgeShelf, getGamification, stardust, type Shelf, type Stardust } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
   let data = $state<Stardust>()
@@ -21,13 +21,6 @@
     return Math.min(1, (data.total - floor) / (next - floor))
   })
   const max = $derived(Math.max(1, ...(data?.history.map((h) => h.points) ?? [])))
-  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const num = (e: Event) => Math.max(1, Math.floor(Number((e.target as HTMLInputElement).value) || 1))
-  const toggleOff = (d: number) => {
-    if (!data) return
-    const off = data.targets.days_off
-    setTargets({ days_off: off.includes(d) ? off.filter((x) => x !== d) : [...off, d].sort() })
-  }
 </script>
 
 <h1 class="page-title">Profile</h1>
@@ -75,41 +68,10 @@
     <p>Today: {data.targets.today_done} / {data.targets.daily}</p>
     <p>This week: {data.targets.week_done} / {data.targets.weekly}</p>
     <p>Target streak: {data.targets.streak} {data.targets.streak === 1 ? 'day' : 'days'}</p>
-    <div class="mt-2 flex flex-wrap items-center gap-3">
-      <label class="flex items-center gap-1.5">
-        Daily
-        <input
-          type="number"
-          min="1"
-          class="w-16 rounded border px-1.5 py-0.5"
-          value={data.targets.daily}
-          onchange={(e) => setTargets({ target_daily: num(e) })}
-        />
-      </label>
-      <label class="flex items-center gap-1.5">
-        Weekly
-        <input
-          type="number"
-          min="1"
-          class="w-16 rounded border px-1.5 py-0.5"
-          value={data.targets.weekly}
-          onchange={(e) => setTargets({ target_weekly: num(e) })}
-        />
-      </label>
-    </div>
-    <div class="mt-2 flex flex-wrap items-center gap-3">
-      <span>Days off</span>
-      {#each DAYS as name, d (d)}
-        <label class="flex items-center gap-1">
-          <input type="checkbox" checked={data.targets.days_off.includes(d)} onchange={() => toggleOff(d)} />
-          {name}
-        </label>
-      {/each}
-    </div>
-    <label class="mt-2 flex items-center gap-1.5">
-      <input type="checkbox" checked={data.targets.vacation} onchange={(e) => setVacation(e.currentTarget.checked)} />
-      Vacation
-    </label>
+    <p class="mt-2 text-muted">
+      {data.targets.vacation ? 'Vacation is on. ' : ''}Change targets, days off and vacation in
+      <a class="link" href="#/settings">Settings</a>.
+    </p>
   </section>
 
   {#if gamification && shelf}

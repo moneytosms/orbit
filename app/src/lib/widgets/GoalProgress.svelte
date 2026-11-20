@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Target from '@lucide/svelte/icons/target'
   import { goalProgress, goals } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
@@ -21,7 +23,7 @@
 </script>
 
 {#if loaded && items.length === 0}
-  <p class="text-muted">No active goals.</p>
+  <Empty icon={Target} text="Goals show your progress toward something you want." label="Add a goal" href="#/goals" />
 {/if}
 <ul class="grid gap-2">
   {#each items as g (g.id)}

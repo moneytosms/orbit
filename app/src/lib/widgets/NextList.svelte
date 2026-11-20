@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import CircleCheck from '@lucide/svelte/icons/circle-check'
   import Check from '@lucide/svelte/icons/check'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import { completeTask, setMilestoneDone, whatsNext, type NextItem } from '$lib/sync'
@@ -30,7 +32,12 @@
 </script>
 
 {#if loaded && items.length === 0}
-  <p class="text-muted">Nothing needs you right now.</p>
+  <Empty
+    icon={CircleCheck}
+    text="Nothing needs you right now. Overdue and soon-due tasks show up here."
+    label="Add a task"
+    href="#/inbox"
+  />
 {/if}
 <ul class="grid gap-0.5">
   {#each items as i (i.id)}

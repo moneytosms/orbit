@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import CircleCheck from '@lucide/svelte/icons/circle-check'
   import Check from '@lucide/svelte/icons/check'
   import EyeOff from '@lucide/svelte/icons/eye-off'
   import Pin from '@lucide/svelte/icons/pin'
@@ -46,7 +48,12 @@
 
 <h1 class="page-title">What's next</h1>
 {#if loaded && items.length === 0}
-  <p class="text-muted">Nothing needs you right now.</p>
+  <Empty
+    icon={CircleCheck}
+    text="Nothing needs you right now. Overdue and soon-due tasks show up here."
+    label="Add a task"
+    href="#/inbox"
+  />
 {/if}
 <ul class="grid gap-0.5">
   {#each items as i (i.id)}

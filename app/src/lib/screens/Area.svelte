@@ -1,4 +1,8 @@
 <script lang="ts">
+  import CircleCheck from '@lucide/svelte/icons/circle-check'
+  import FileText from '@lucide/svelte/icons/file-text'
+  import Empty from '$lib/Empty.svelte'
+  import FolderKanban from '@lucide/svelte/icons/folder-kanban'
   import type { Snippet } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -175,7 +179,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="text-sm text-muted">Nothing needs you here right now.</p>
+        <Empty icon={CircleCheck} text="Nothing needs you here right now." />
       {/if}
     </section>
 
@@ -196,7 +200,10 @@
           {/each}
         </ul>
       {:else}
-        <p class="text-sm text-muted">No projects yet.</p>
+        <Empty
+          icon={FolderKanban}
+          text="Projects group the tasks for one outcome in this Area. Add one from the sidebar."
+        />
       {/if}
     </section>
 
@@ -244,7 +251,14 @@
           {#each pageList as p (p.id)}
             <li><a href="#/page/{p.id}" class="text-sm underline">{p.title}</a></li>
           {:else}
-            <li class="text-sm text-muted">No pages yet.</li>
+            <li>
+              <Empty
+                icon={FileText}
+                text="Pages hold notes and docs for this Area."
+                label="New page"
+                onclick={newPage}
+              />
+            </li>
           {/each}
         </ul>
       {/if}

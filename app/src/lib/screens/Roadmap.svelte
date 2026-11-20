@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Map from '@lucide/svelte/icons/map'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -143,7 +145,12 @@
     {/each}
   </ul>
   {#if loaded && !list.length}
-    <p class="px-2.5 py-3 text-sm text-muted">No roadmaps yet. Add one to plan work in phases.</p>
+    <Empty
+      icon={Map}
+      text="Roadmaps plan work in phases toward a goal. Add one below."
+      label="Start from 30-day plan"
+      onclick={() => (building = true)}
+    />
   {/if}
   <form onsubmit={addRoadmap} class="mt-3 flex flex-wrap gap-2">
     <Input bind:value={newName} placeholder="New roadmap" aria-label="New roadmap" class="min-w-0 flex-1" />

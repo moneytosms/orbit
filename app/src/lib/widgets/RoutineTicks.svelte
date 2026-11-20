@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Repeat from '@lucide/svelte/icons/repeat'
   import { checkIn, clearCheckIn, localDay, routines, routineStats, type DayState, type Routine } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
@@ -29,7 +31,12 @@
 </script>
 
 {#if loaded && entries.length === 0}
-  <p class="text-muted">No routines due today.</p>
+  <Empty
+    icon={Repeat}
+    text="No routines due today. Routines you add show up here to tick off."
+    label="Routines"
+    href="#/routines"
+  />
 {/if}
 <ul class="grid gap-0.5">
   {#each entries as e (e.routine.id)}

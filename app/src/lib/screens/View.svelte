@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import SearchX from '@lucide/svelte/icons/search-x'
   import AlertTriangle from '@lucide/svelte/icons/alert-triangle'
   import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down'
   import CalendarDays from '@lucide/svelte/icons/calendar-days'
@@ -412,7 +414,7 @@
 {#if !loaded}
   <p class="px-2 py-6 text-center text-muted">Loading view…</p>
 {:else if empty && layout !== 'calendar'}
-  <p class="px-2 py-6 text-center text-muted">Nothing matches this view.</p>
+  <Empty icon={SearchX} text="Nothing matches this view yet. Adjust its filter to see more." />
 {:else if layout === 'board'}
   <Board
     groupBy={view?.group_by ?? null}

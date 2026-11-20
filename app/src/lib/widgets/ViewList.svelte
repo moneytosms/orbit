@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import ListChecks from '@lucide/svelte/icons/list-checks'
   import { runView, type Row } from '$lib/sync'
 
   let { viewId, version = 0, limit = 8 }: { viewId: string; version?: number; limit?: number } = $props()
@@ -18,7 +20,7 @@
 </script>
 
 {#if loaded && rows.length === 0}
-  <p class="text-muted">Nothing here.</p>
+  <Empty icon={ListChecks} text="This view has no items yet." label="Add a task" href="#/inbox" />
 {/if}
 <ul class="grid gap-0.5">
   {#each rows as r (r.id)}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Target from '@lucide/svelte/icons/target'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
   import { Input } from '$lib/components/ui/input'
@@ -272,7 +274,10 @@
       </section>
     {/if}
   {:else}
-    <p class="text-sm text-muted">Create an Area first, then add goals to it.</p>
+    <Empty
+      icon={Target}
+      text="Goals track progress toward something you want. Create an Area first, then add goals to it."
+    />
   {/each}
 </div>
 

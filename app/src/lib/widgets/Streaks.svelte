@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Empty from '$lib/Empty.svelte'
+  import Flame from '@lucide/svelte/icons/flame'
   import { routines, routineStats } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
@@ -21,7 +23,12 @@
 </script>
 
 {#if loaded && items.length === 0}
-  <p class="text-muted">No routines yet.</p>
+  <Empty
+    icon={Flame}
+    text="Streaks count the days in a row you keep a routine."
+    label="New routine"
+    href="#/routines"
+  />
 {/if}
 <ul class="grid gap-0.5">
   {#each items as r (r.id)}

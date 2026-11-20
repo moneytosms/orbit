@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Archive from '@lucide/svelte/icons/archive'
+  import Empty from '$lib/Empty.svelte'
+  import Trash2 from '@lucide/svelte/icons/trash-2'
   import { Button } from '$lib/components/ui/button'
   import { archived, restoreItem, trashed, unarchiveItem, type Trashed } from '$lib/sync'
 
@@ -49,7 +52,7 @@
         >
       </div>
     {:else}
-      <p class="text-sm text-muted">Nothing in the Trash.</p>
+      <Empty icon={Trash2} text="Deleted items wait here for 30 days before they are gone for good." />
     {/each}
   </section>
   <section class="panel" aria-label="Archived">
@@ -63,7 +66,7 @@
         </Button>
       </div>
     {:else}
-      <p class="text-sm text-muted">Nothing archived.</p>
+      <Empty icon={Archive} text="Archived Projects and Routines are kept out of the way here until you need them." />
     {/each}
   </section>
 </div>

@@ -3,6 +3,8 @@
   import Smartphone from '@lucide/svelte/icons/smartphone'
   import Globe from '@lucide/svelte/icons/globe'
   import Terminal from '@lucide/svelte/icons/terminal'
+  import ChevronRight from '@lucide/svelte/icons/chevron-right'
+  import MonitorSmartphone from '@lucide/svelte/icons/monitor-smartphone'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
   import { Input } from '$lib/components/ui/input'
@@ -27,6 +29,10 @@
     VIEW_UPCOMING,
     getWeekStart,
     setWeekStart,
+    setTargets,
+    setVacation,
+    stardust,
+    type StardustTargets,
     type View,
   } from '$lib/sync'
   import {
@@ -172,6 +178,30 @@
   let defaultReminder = $state(true)
   getDefaultReminder().then((v) => (defaultReminder = v))
   let gamification = $state(true)
+  let targets = $state<StardustTargets>()
+  const loadTargets = () => stardust().then((d) => (targets = d.targets))
+  loadTargets()
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const goal = (e: Event) => Math.max(1, Math.floor(Number((e.target as HTMLInputElement).value) || 1))
+  const saveTargets = (t: Parameters<typeof setTargets>[0]) => setTargets(t).then(loadTargets)
+  const toggleOff = (d: number) => {
+    const off = targets?.days_off ?? []
+    saveTargets({ days_off: off.includes(d) ? off.filter((x) => x !== d) : [...off, d].sort() })
+  }
+  const sections = [
+    ['appearance', 'Appearance'],
+    ['reminders', 'Reminders'],
+    ['general', 'Day and calendar'],
+    ['account', 'Account and devices'],
+    ['targets', 'Productivity'],
+    ['data', 'Data'],
+    ['advanced', 'Advanced'],
+  ]
+  const jump = (id: string) => {
+    const el = document.getElementById(id)
+    if (el instanceof HTMLDetailsElement) el.open = true
+    el?.scrollIntoView({ block: 'start' })
+  }
   getGamification().then((v) => (gamification = v))
   let weekStart = $state('1')
   getWeekStart().then((v) => (weekStart = String(v)))
@@ -279,311 +309,431 @@
   </button>
 {/snippet}
 
+<!-- One setting: label and one-line helper on the left, control on the right. -->
+{#snippet row(label: string, help: string, control: import('svelte').Snippet, labelId?: string)}
+  <div
+    class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line py-3 first:pt-0 last:border-0 last:pb-0"
+  >
+    <div class="min-w-0 flex-1 basis-56">
+      <div id={labelId} class="font-medium">{label}</div>
+      <div class="text-[12.5px] text-muted">{help}</div>
+    </div>
+    {@render control()}
+  </div>
+{/snippet}
+
+{#snippet seg(labelId: string, items: [string, string][], current: string, onpick: (v: string) => void)}
+  <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby={labelId}>
+    {#each items as [value, label] (value)}
+      {@render tab(current === value, () => onpick(value), label)}
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet summaryRow(title: string, hint: string)}
+  <summary class="flex cursor-pointer list-none items-center gap-2 py-1 font-medium [&::-webkit-details-marker]:hidden">
+    <ChevronRight size={16} class="shrink-0 text-icon transition-transform group-open:rotate-90" />
+    {title}
+    <span class="hidden font-normal text-muted sm:inline">{hint}</span>
+  </summary>
+{/snippet}
+
 <h1 class="page-title">Settings</h1>
-<div class="flex flex-col gap-4">
-  {#if freeMb !== undefined}
-    <div role="alert" class="rounded-2xl border border-line bg-warn-soft p-4 text-warn-text">
-      Server disk is nearly full: {freeMb} MB free. Back up and free space.
-    </div>
-  {/if}
+<div class="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-start lg:gap-6">
+  <nav aria-label="Settings sections" class="sticky top-4 hidden flex-col gap-0.5 lg:flex">
+    {#each sections as [id, label] (id)}
+      <button
+        type="button"
+        onclick={() => jump(id)}
+        class="h-8 rounded-[7px] px-2.5 text-left text-muted hover:bg-hover hover:text-text"
+      >
+        {label}
+      </button>
+    {/each}
+  </nav>
 
-  <section class="panel">
-    <h2 class="panel-title">Appearance</h2>
-
-    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Featured</h3>
-    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Featured themes">
-      {#each orbit as [value, label] (value)}
-        {@render tab(choice === value, () => pick(value), label)}
-      {/each}
-      {#each featured as p (p.name)}
-        {@render swatchTab(p, p.offered[0])}
-      {/each}
-    </div>
-
-    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">More themes</h3>
-    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="More themes">
-      {#each palettes as p (p.name)}
-        {@render swatchTab(p, p.offered[0])}
-      {/each}
-    </div>
-
-    <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Direct</h3>
-    <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Direct themes">
-      {#each direct as p (p.name)}
-        {@render swatchTab(p, 'direct')}
-      {/each}
-    </div>
-
-    {#if active}
-      <h3 class="mb-1.5 text-[12.5px] font-medium text-muted">Mapping for {active.name.replaceAll('_', ' ')}</h3>
-      <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Mapping">
-        {#each active.offered as s (s)}
-          {@render tab(activeStrategy === s, () => pick(mt(active.name, s)), strategyLabel[s])}
-        {/each}
+  <div class="flex min-w-0 flex-col gap-4">
+    {#if freeMb !== undefined}
+      <div role="alert" class="rounded-2xl border border-line bg-warn-soft p-4 text-warn-text">
+        Server disk is nearly full: {freeMb} MB free. Back up and free space.
       </div>
     {/if}
 
-    <div class="flex flex-col gap-3">
-      <div class="flex items-center gap-3">
-        <Label for="accent">Accent</Label>
-        <input
-          id="accent"
-          type="color"
-          value={accent ?? cssAccent()}
-          oninput={(e) => setAccent((accent = e.currentTarget.value))}
-          class="size-8 cursor-pointer rounded-md border border-line bg-surface p-0.5"
-        />
-        <Button size="sm" disabled={accent === null} onclick={() => setAccent((accent = null))}>Reset accent</Button>
-      </div>
+    <section id="appearance" class="panel scroll-mt-4">
+      <h2 class="panel-title">Appearance</h2>
 
-      <div class="flex items-center gap-3">
-        <span id="density-label">Density</span>
-        <div class="flex gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="density-label">
-          {#each [['comfortable', 'Comfortable'], ['compact', 'Compact']] as [value, label] (value)}
-            {@render tab(density === value, () => setDensity((density = value as Density)), label)}
-          {/each}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <span id="size-label">Text size</span>
-        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="size-label">
-          {#each textSizes as [value, label] (value)}
-            {@render tab(textSize === value, () => setTextSize((textSize = value)), label)}
-          {/each}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <span id="face-label">Typeface</span>
-        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="face-label">
-          {#each typefaces as [value, label] (value)}
-            {@render tab(typeface === value, () => setTypeface((typeface = value)), label)}
-          {/each}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <span id="leading-label">Line spacing</span>
-        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="leading-label">
-          {#each leadings as [value, label] (value)}
-            {@render tab(leading === value, () => setLeading((leading = value)), label)}
-          {/each}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <span id="motion-label">Reduce motion</span>
-        <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-labelledby="motion-label">
-          {#each motions as [value, label] (value)}
-            {@render tab(motion === value, () => setMotion((motion = value)), label)}
-          {/each}
-        </div>
-      </div>
-
-      <div>
-        <Button size="sm" onclick={resetAll}>Reset appearance</Button>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2 class="panel-title">Start view</h2>
-    <p class="mb-3 text-muted">Where Orbit opens when you launch it.</p>
-    <select
-      bind:value={startView}
-      onchange={() => setStartView(startView)}
-      aria-label="Start view"
-      class="h-[34px] w-full max-w-sm rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-    >
-      <option value="">Inbox</option>
-      <option value="upcoming">Upcoming</option>
-      <option value="goals">Goals</option>
-      {#each startOptions as v (v.id)}
-        <option value="view:{v.id}">{v.name}</option>
-      {/each}
-    </select>
-  </section>
-
-  <section class="panel">
-    <h2 class="panel-title">Day</h2>
-    <p class="mb-3 text-muted">Routines roll over to a new day at the Day start, in this timezone.</p>
-    <div class="grid max-w-sm gap-3">
-      <select
-        bind:value={timezone}
-        onchange={() => setTimezone(timezone)}
-        aria-label="Timezone"
-        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-      >
-        <option value="">This device</option>
-        {#each zones as z (z)}
-          <option value={z}>{z}</option>
+      <div class="mb-4 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Theme">
+        {#each orbit as [value, label] (value)}
+          {@render tab(choice === value, () => pick(value), label)}
         {/each}
-      </select>
-      <input
-        type="time"
-        bind:value={dayStart}
-        onchange={() => dayStart && setDayStart(dayStart)}
-        aria-label="Day start"
-        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-      />
-    </div>
-  </section>
+        {#each featured as p (p.name)}
+          {@render swatchTab(p, p.offered[0])}
+        {/each}
+      </div>
 
-  <section class="panel">
-    <h2 class="panel-title">What's next</h2>
-    <div class="grid max-w-sm gap-3">
-      <Label class="flex items-center justify-between gap-3">
-        Deadline window (days)
-        <Input
-          type="number"
-          min="0"
-          class="w-24"
-          bind:value={nextDeadline}
-          onchange={() => setNextSettings({ deadline_days: days(nextDeadline) })}
-        />
-      </Label>
-      <Label class="flex items-center justify-between gap-3">
-        Due window (days)
-        <Input
-          type="number"
-          min="0"
-          class="w-24"
-          bind:value={nextDue}
-          onchange={() => setNextSettings({ due_days: days(nextDue) })}
-        />
-      </Label>
-      <Label class="flex items-center gap-2">
-        <Checkbox
-          checked={nextP1}
-          aria-label="Include undated P1 tasks"
-          onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
-        />
-        Include undated P1 tasks
-      </Label>
-    </div>
-  </section>
+      {#snippet accentControl()}
+        <div class="flex items-center gap-2">
+          <input
+            id="accent"
+            type="color"
+            aria-label="Accent"
+            value={accent ?? cssAccent()}
+            oninput={(e) => setAccent((accent = e.currentTarget.value))}
+            class="size-8 cursor-pointer rounded-md border border-line bg-surface p-0.5"
+          />
+          <Button size="sm" disabled={accent === null} onclick={() => setAccent((accent = null))}>Reset</Button>
+        </div>
+      {/snippet}
+      {#snippet sizeControl()}
+        {@render seg('size-label', textSizes, textSize, (v) => setTextSize((textSize = v as TextSize)))}
+      {/snippet}
+      {#snippet densityControl()}
+        {@render seg(
+          'density-label',
+          [
+            ['comfortable', 'Comfortable'],
+            ['compact', 'Compact'],
+          ],
+          density,
+          (v) => setDensity((density = v as Density)),
+        )}
+      {/snippet}
+      {@render row('Text size', 'Scales all text in Orbit.', sizeControl, 'size-label')}
+      {@render row('Accent colour', 'Used for the main action, selection and Today.', accentControl)}
+      {@render row('Density', 'How much room rows get.', densityControl, 'density-label')}
 
-  <section class="panel">
-    <h2 class="panel-title">Reminders</h2>
-    <div class="flex max-w-sm flex-col gap-3">
-      <Label class="font-normal">
-        <Checkbox bind:checked={notify} onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))} />
-        Notify on this device
-      </Label>
-      <Label class="font-normal">
-        <Checkbox bind:checked={defaultReminder} onCheckedChange={(v) => setDefaultReminder(v === true)} />
-        Remind at the due time of a Task with a time
-      </Label>
-      <Label class="font-normal">
-        <Checkbox bind:checked={gamification} onCheckedChange={(v) => setGamification(v === true)} />
-        Gamification: Stardust, Levels, Badges and Patches
-      </Label>
-    </div>
-  </section>
+      <details class="group pt-3">
+        {@render summaryRow('More themes', `${palettes.length} palettes`)}
+        <div class="mt-3 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="More themes">
+          {#each palettes as p (p.name)}
+            {@render swatchTab(p, p.offered[0])}
+          {/each}
+        </div>
 
-  <section class="panel">
-    <h2 class="panel-title">Calendar</h2>
-    <div class="grid max-w-sm gap-3">
-      <select
-        bind:value={weekStart}
-        onchange={() => setWeekStart(Number(weekStart))}
-        aria-label="Week starts on"
-        class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-      >
-        <option value="1">Week starts on Monday</option>
-        <option value="0">Week starts on Sunday</option>
-      </select>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2 class="panel-title">Export</h2>
-    <p class="mb-3 text-muted">Download every item as a zip of JSON.</p>
-    <Button class="self-start" disabled={exporting} onclick={exportAll}>Export everything</Button>
-    {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
-  </section>
-
-  <TodoistImport />
-
-  <section class="panel">
-    <h2 class="panel-title">Devices <span class="font-normal text-muted">{list.length || ''}</span></h2>
-    {#if listError}<p class="text-muted">{listError}</p>{/if}
-    <ul>
-      {#each list as d (d.id)}
-        {@const Icon = icon(d.platform)}
-        <li class="flex min-h-[42px] items-center gap-3 border-b border-line py-2 last:border-0">
-          <Icon size={16} class="shrink-0 text-icon" />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <span class="truncate font-medium">{d.name}</span>
-              {#if d.current}<span class="chip bg-accent-soft text-accent-text">This device</span>{/if}
-            </div>
-            <div class="text-[12.5px] text-muted">
-              {d.platform} · added {when(d.created)} · last seen {when(d.last_seen)}
-            </div>
+        <details class="group mt-3">
+          {@render summaryRow('Direct themes', 'Exact palette colours, no adjustment')}
+          <div
+            class="mt-3 flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]"
+            role="group"
+            aria-label="Direct themes"
+          >
+            {#each direct as p (p.name)}
+              {@render swatchTab(p, 'direct')}
+            {/each}
           </div>
-          {#if !d.current}
-            <Button size="sm" variant="destructive" onclick={() => revoke(d.id)}>Revoke</Button>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-    <form onsubmit={createToken} class="mt-3 flex gap-2">
-      <Input bind:value={tokenName} placeholder="Token name, e.g. Backup script" aria-label="Token name" required />
-      <Button type="submit">Create token</Button>
-    </form>
-    {#if newToken}
-      <div class="mt-3 rounded-lg bg-warn-soft p-3 text-warn-text">
-        <p>Copy this token now; it won't be shown again. Send it as <code>Authorization: Bearer …</code></p>
-        <code class="mt-2 block rounded-xs bg-surface p-2 break-all text-text select-all">{newToken}</code>
-      </div>
-    {/if}
-  </section>
+        </details>
 
-  <section class="panel">
-    <h2 class="panel-title">Password</h2>
-    <form onsubmit={changePassword} class="flex max-w-sm flex-col gap-3">
-      <div class="flex flex-col gap-1.5">
-        <Label for="current">Current password</Label>
-        <Input id="current" type="password" bind:value={current} autocomplete="current-password" required />
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <Label for="new">New password</Label>
-        <Input id="new" type="password" bind:value={next} autocomplete="new-password" required />
-      </div>
-      <Label class="font-normal"><Checkbox bind:checked={others} /> Sign out other devices</Label>
-      {#if pwMsg}<p role="status" class="text-muted">{pwMsg}</p>{/if}
-      <Button type="submit" class="self-start">Change password</Button>
-    </form>
-  </section>
+        {#if active}
+          <h3 class="mt-3 mb-1.5 text-[12.5px] font-medium text-muted">
+            Mapping for {active.name.replaceAll('_', ' ')}
+          </h3>
+          <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Mapping">
+            {#each active.offered as s (s)}
+              {@render tab(activeStrategy === s, () => pick(mt(active.name, s)), strategyLabel[s])}
+            {/each}
+          </div>
+        {/if}
+      </details>
 
-  <section class="panel">
-    <h2 class="panel-title">Two-step login</h2>
-    {#if enroll}
-      <form onsubmit={confirmTotp} class="flex max-w-sm flex-col gap-3">
-        <p class="text-muted">
-          Add this key to your authenticator app, or <a class="link" href={enroll.url}>open it there</a>, then enter the
-          code it shows.
-        </p>
-        <code class="rounded-xs bg-sunk p-2 tracking-wider break-all select-all">{enroll.secret}</code>
-        <Input bind:value={totpCode} inputmode="numeric" autocomplete="one-time-code" aria-label="Code" required />
-        <Button type="submit" variant="primary" class="self-start">Turn on</Button>
-      </form>
-    {:else}
-      <form onsubmit={startTotp} class="flex max-w-sm flex-col gap-3">
-        <p class="text-muted">Ask for a code from an authenticator app after the password.</p>
-        <Input
-          type="password"
-          bind:value={totpPassword}
-          placeholder="Current password"
-          aria-label="Current password"
-          autocomplete="current-password"
-          required
+      <details class="group mt-3 border-t border-line pt-3">
+        {@render summaryRow('Typography and motion', 'Typeface, line spacing, reduce motion')}
+        <div class="mt-3">
+          {#snippet faceControl()}
+            {@render seg('face-label', typefaces, typeface, (v) => setTypeface((typeface = v as Typeface)))}
+          {/snippet}
+          {#snippet leadingControl()}
+            {@render seg('leading-label', leadings, leading, (v) => setLeading((leading = v as Leading)))}
+          {/snippet}
+          {#snippet motionControl()}
+            {@render seg('motion-label', motions, motion, (v) => setMotion((motion = v as Motion)))}
+          {/snippet}
+          {@render row('Typeface', 'The font used across the app.', faceControl, 'face-label')}
+          {@render row('Line spacing', 'Space between lines of text.', leadingControl, 'leading-label')}
+          {@render row(
+            'Reduce motion',
+            'Follow the system, or force animations on or off.',
+            motionControl,
+            'motion-label',
+          )}
+          <div class="pt-3"><Button size="sm" onclick={resetAll}>Reset appearance</Button></div>
+        </div>
+      </details>
+    </section>
+
+    <section id="reminders" class="panel scroll-mt-4">
+      <h2 class="panel-title">Reminders</h2>
+      {#snippet notifyControl()}
+        <Checkbox
+          bind:checked={notify}
+          aria-label="Notify on this device"
+          onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))}
         />
-        <Button type="submit" class="self-start">Set up authenticator</Button>
-      </form>
-    {/if}
-    {#if totpMsg}<p role="status" class="mt-2 text-muted">{totpMsg}</p>{/if}
-  </section>
+      {/snippet}
+      {#snippet reminderControl()}
+        <Checkbox
+          bind:checked={defaultReminder}
+          aria-label="Remind at the due time"
+          onCheckedChange={(v) => setDefaultReminder(v === true)}
+        />
+      {/snippet}
+      {@render row('Notify on this device', 'Show system notifications for reminders here.', notifyControl)}
+      {@render row('Remind at the due time', 'Tasks with a time get a reminder when it arrives.', reminderControl)}
+    </section>
+
+    <section id="general" class="panel scroll-mt-4">
+      <h2 class="panel-title">Day and calendar</h2>
+      {#snippet startControl()}
+        <select
+          bind:value={startView}
+          onchange={() => setStartView(startView)}
+          aria-label="Start view"
+          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        >
+          <option value="">Inbox</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="goals">Goals</option>
+          {#each startOptions as v (v.id)}
+            <option value="view:{v.id}">{v.name}</option>
+          {/each}
+        </select>
+      {/snippet}
+      {#snippet weekControl()}
+        <select
+          bind:value={weekStart}
+          onchange={() => setWeekStart(Number(weekStart))}
+          aria-label="Week starts on"
+          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        >
+          <option value="1">Monday</option>
+          <option value="0">Sunday</option>
+        </select>
+      {/snippet}
+      {#snippet dayControl()}
+        <input
+          type="time"
+          bind:value={dayStart}
+          onchange={() => dayStart && setDayStart(dayStart)}
+          aria-label="Day start"
+          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        />
+      {/snippet}
+      {#snippet zoneControl()}
+        <select
+          bind:value={timezone}
+          onchange={() => setTimezone(timezone)}
+          aria-label="Timezone"
+          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        >
+          <option value="">This device</option>
+          {#each zones as z (z)}
+            <option value={z}>{z}</option>
+          {/each}
+        </select>
+      {/snippet}
+      {@render row('Start view', 'Where Orbit opens when you launch it.', startControl)}
+      {@render row('Week starts on', 'First day of the Calendar week.', weekControl)}
+      {@render row('Day starts at', 'Routines roll over to a new day at this time.', dayControl)}
+      {@render row('Timezone', 'Days and due times are read in this zone.', zoneControl)}
+    </section>
+
+    <section id="account" class="panel scroll-mt-4">
+      <h2 class="panel-title">Account and devices <span class="font-normal text-muted">{list.length || ''}</span></h2>
+      {#if listError}<p class="text-muted">{listError}</p>{/if}
+      <ul>
+        {#each list as d (d.id)}
+          {@const Icon = icon(d.platform)}
+          <li class="flex min-h-[42px] items-center gap-3 border-b border-line py-2 last:border-0">
+            <Icon size={16} class="shrink-0 text-icon" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="truncate font-medium">{d.name}</span>
+                {#if d.current}<span class="chip bg-accent-soft text-accent-text">This device</span>{/if}
+              </div>
+              <div class="text-[12.5px] text-muted">
+                {d.platform} · added {when(d.created)} · last seen {when(d.last_seen)}
+              </div>
+            </div>
+            {#if !d.current}
+              <Button size="sm" variant="destructive" onclick={() => revoke(d.id)}>Revoke</Button>
+            {/if}
+          </li>
+        {:else}
+          {#if !listError}
+            <li class="flex flex-col items-center gap-2 px-3 py-4 text-center text-muted">
+              <MonitorSmartphone size={20} class="text-icon" />
+              <span>Devices signed in to your account appear here.</span>
+            </li>
+          {/if}
+        {/each}
+      </ul>
+
+      <details class="group mt-3 border-t border-line pt-3">
+        {@render summaryRow('API token', 'For scripts and the CLI')}
+        <form onsubmit={createToken} class="mt-3 flex gap-2">
+          <Input bind:value={tokenName} placeholder="Token name, e.g. Backup script" aria-label="Token name" required />
+          <Button type="submit">Create token</Button>
+        </form>
+        {#if newToken}
+          <div class="mt-3 rounded-lg bg-warn-soft p-3 text-warn-text">
+            <p>Copy this token now; it won't be shown again. Send it as <code>Authorization: Bearer …</code></p>
+            <code class="mt-2 block rounded-xs bg-surface p-2 break-all text-text select-all">{newToken}</code>
+          </div>
+        {/if}
+      </details>
+
+      <details class="group mt-3 border-t border-line pt-3">
+        {@render summaryRow('Change password', '')}
+        <form onsubmit={changePassword} class="mt-3 flex max-w-sm flex-col gap-3">
+          <div class="flex flex-col gap-1.5">
+            <Label for="current">Current password</Label>
+            <Input id="current" type="password" bind:value={current} autocomplete="current-password" required />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <Label for="new">New password</Label>
+            <Input id="new" type="password" bind:value={next} autocomplete="new-password" required />
+          </div>
+          <Label class="font-normal"><Checkbox bind:checked={others} /> Sign out other devices</Label>
+          {#if pwMsg}<p role="status" class="text-muted">{pwMsg}</p>{/if}
+          <Button type="submit" class="self-start">Change password</Button>
+        </form>
+      </details>
+
+      <details class="group mt-3 border-t border-line pt-3">
+        {@render summaryRow('Two-step login', 'Authenticator app code at sign-in')}
+        {#if enroll}
+          <form onsubmit={confirmTotp} class="mt-3 flex max-w-sm flex-col gap-3">
+            <p class="text-muted">
+              Add this key to your authenticator app, or <a class="link" href={enroll.url}>open it there</a>, then enter
+              the code it shows.
+            </p>
+            <code class="rounded-xs bg-sunk p-2 tracking-wider break-all select-all">{enroll.secret}</code>
+            <Input bind:value={totpCode} inputmode="numeric" autocomplete="one-time-code" aria-label="Code" required />
+            <Button type="submit" variant="primary" class="self-start">Turn on</Button>
+          </form>
+        {:else}
+          <form onsubmit={startTotp} class="mt-3 flex max-w-sm flex-col gap-3">
+            <p class="text-muted">Ask for a code from an authenticator app after the password.</p>
+            <Input
+              type="password"
+              bind:value={totpPassword}
+              placeholder="Current password"
+              aria-label="Current password"
+              autocomplete="current-password"
+              required
+            />
+            <Button type="submit" class="self-start">Set up authenticator</Button>
+          </form>
+        {/if}
+        {#if totpMsg}<p role="status" class="mt-2 text-muted">{totpMsg}</p>{/if}
+      </details>
+    </section>
+
+    <section id="targets" class="panel scroll-mt-4">
+      <h2 class="panel-title">Productivity</h2>
+      {#snippet gamControl()}
+        <Checkbox
+          bind:checked={gamification}
+          aria-label="Gamification"
+          onCheckedChange={(v) => setGamification(v === true)}
+        />
+      {/snippet}
+      {@render row('Gamification', 'Stardust, Levels, Badges and Patches.', gamControl)}
+      {#if targets}
+        {#snippet dailyControl()}
+          <Input
+            type="number"
+            min="1"
+            class="w-24"
+            aria-label="Daily target"
+            value={targets?.daily}
+            onchange={(e) => saveTargets({ target_daily: goal(e) })}
+          />
+        {/snippet}
+        {#snippet weeklyControl()}
+          <Input
+            type="number"
+            min="1"
+            class="w-24"
+            aria-label="Weekly target"
+            value={targets?.weekly}
+            onchange={(e) => saveTargets({ target_weekly: goal(e) })}
+          />
+        {/snippet}
+        {#snippet offControl()}
+          <div class="flex flex-wrap gap-x-3 gap-y-1">
+            {#each DAYS as name, d (d)}
+              <Label class="font-normal">
+                <Checkbox checked={targets?.days_off.includes(d)} onCheckedChange={() => toggleOff(d)} />
+                {name}
+              </Label>
+            {/each}
+          </div>
+        {/snippet}
+        {#snippet vacationControl()}
+          <Checkbox
+            checked={targets?.vacation}
+            aria-label="Vacation"
+            onCheckedChange={(v) => setVacation(v === true).then(loadTargets)}
+          />
+        {/snippet}
+        {@render row('Daily target', 'Tasks to finish each day.', dailyControl)}
+        {@render row('Weekly target', 'Tasks to finish each week.', weeklyControl)}
+        {@render row('Days off', 'Days that never break the streak.', offControl)}
+        {@render row('Vacation', 'Pause the target streak until you turn this off.', vacationControl)}
+      {/if}
+    </section>
+
+    <section id="data" class="panel scroll-mt-4">
+      <h2 class="panel-title">Data</h2>
+      {#snippet exportControl()}
+        <Button disabled={exporting} onclick={exportAll}>Export everything</Button>
+      {/snippet}
+      {@render row('Export', 'Download every item as a zip of JSON. Keep it as a backup.', exportControl)}
+      {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
+    </section>
+
+    <TodoistImport />
+
+    <details id="advanced" class="group panel scroll-mt-4">
+      <summary
+        class="flex cursor-pointer list-none items-center gap-2 text-base font-semibold [&::-webkit-details-marker]:hidden"
+      >
+        <ChevronRight size={16} class="shrink-0 text-icon transition-transform group-open:rotate-90" />
+        Advanced
+        <span class="text-sm font-normal text-muted">What's next windows</span>
+      </summary>
+      <div class="mt-3">
+        {#snippet deadlineControl()}
+          <Input
+            type="number"
+            min="0"
+            class="w-24"
+            aria-label="Deadline window in days"
+            bind:value={nextDeadline}
+            onchange={() => setNextSettings({ deadline_days: days(nextDeadline) })}
+          />
+        {/snippet}
+        {#snippet dueControl()}
+          <Input
+            type="number"
+            min="0"
+            class="w-24"
+            aria-label="Due window in days"
+            bind:value={nextDue}
+            onchange={() => setNextSettings({ due_days: days(nextDue) })}
+          />
+        {/snippet}
+        {#snippet p1Control()}
+          <Checkbox
+            checked={nextP1}
+            aria-label="Include undated P1 tasks"
+            onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
+          />
+        {/snippet}
+        {@render row('Deadline window', 'Days ahead a deadline counts as next.', deadlineControl)}
+        {@render row('Due window', 'Days ahead a due date counts as next.', dueControl)}
+        {@render row('Undated P1 tasks', "Include P1 tasks with no date in What's next.", p1Control)}
+      </div>
+    </details>
+  </div>
 </div>
