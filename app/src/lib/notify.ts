@@ -135,7 +135,7 @@ export function startNotifier() {
   })
   const q = new URLSearchParams(location.search)
   if (q.has('notify')) {
-    void handleAction(q.get('notify')!, q.get('task') ?? undefined)
+    void handleAction(q.get('notify')!, q.get('task') ?? undefined, q.get('routine') ?? undefined)
     history.replaceState(null, '', location.pathname + location.hash)
   }
   void refreshNotifier()
