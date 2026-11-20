@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #71 Goal widget provider info. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_goal"
+    android:minWidth="180dp"
+    android:minHeight="180dp"
+    android:updatePeriodMillis="0"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:configure="dev.orbit.app.GoalConfigActivity"
+    android:description="@string/goal_widget_description" />

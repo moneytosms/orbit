@@ -60,6 +60,11 @@
         </receiver>
         <!-- #70 -->
         <receiver android:name=".QuickAddWidgetProvider" android:exported="false">
+        <!-- #71 -->
+        <receiver
+            android:name=".RoutinesWidgetProvider"
+            android:label="@string/routines_widget_label"
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -68,6 +73,12 @@
                 android:resource="@xml/widget_quick_add_info" />
         </receiver>
         <receiver android:name=".ListWidgetProvider" android:exported="false">
+                android:resource="@xml/widget_routines_info" />
+        </receiver>
+        <receiver
+            android:name=".GoalWidgetProvider"
+            android:label="@string/goal_widget_label"
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -89,6 +100,18 @@
             android:exported="true"
             android:label="@string/list_config_title"
             android:theme="@style/Theme.Material3.DayNight.Dialog">
+                android:resource="@xml/widget_goal_info" />
+        </receiver>
+        <activity
+            android:name=".RoutinesConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".GoalConfigActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>

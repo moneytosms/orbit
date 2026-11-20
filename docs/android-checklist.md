@@ -41,3 +41,16 @@ Add the Quick add and Task list widgets to the home screen.
 6. **Refresh timing.** Change a task in Orbit, then check the widget within 15 minutes (the periodic refresh) or sooner after a sync. Day start is covered by the same 15-minute refresh, so the widget may show yesterday's Today list for up to 15 minutes after midnight.
 7. **Resize.** Resize the Quick add widget from 1 to 5 cells wide, and the Task list in both directions. Expect no clipped controls.
 8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. The accent is the system accent on Android 12+ and a fixed blue below.
+## #71 Routines and Goal widgets
+
+Add each widget from the launcher's widget picker. Routines needs Android 12 (API 31) or later for the list.
+
+1. **Routines list.** Add the Routines widget. Expect today's unchecked Routines, each with its streak in muted text. A Routine already checked today is absent.
+2. **Check-in and undo.** Tap a Routine. Expect its name struck through and an "Undo" label. Tap it again within 2 s: it returns unchanged, and no check-in is recorded. Let the 2 s pass instead: the Routine leaves the list and `checkin` shows it as done for today.
+3. **All done.** Check in every Routine for today. Expect the "All done today" empty state.
+4. **Area filter.** Add a second Routines widget, pick one Area in its setup. Expect only that Area's Routines.
+5. **Goal card.** Add the Goal widget, pick one Goal. Expect its name, a progress bar with a percentage, and a target date when it has one. Tap it: Orbit opens.
+6. **Goal list.** Add another Goal widget and pick "All Goals (list)". Expect each Goal with a bar and a percentage. Tap one: Orbit opens on that Goal.
+7. **Behind pace.** A Goal behind its pace shows the "Behind" label in both the card and the list.
+8. **Refresh.** Change a Routine or Goal in Orbit or sync from another device. Expect both widgets to update after the next sync.
+9. **Removed Goal.** Delete the Goal shown in a card widget. Expect "This Goal is gone" after the next refresh.
