@@ -1,5 +1,14 @@
 {
   "identifier": "default",
-  "windows": ["main"],
-  "permissions": ["core:default", "notification:default"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "allow-set-token",
+    "allow-clear-token",
+    "allow-has-token",
+    "allow-set-server"
+  ]
 }

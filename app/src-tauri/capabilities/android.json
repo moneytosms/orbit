@@ -1,7 +1,24 @@
 {
   "identifier": "android-remote",
-  "windows": ["main"],
-  "platforms": ["android"],
-  "remote": { "urls": ["http://*", "https://*"] },
-  "permissions": ["core:default"]
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "android"
+  ],
+  "remote": {
+    "urls": [
+      "http://*",
+      "https://*",
+      "http://*:*",
+      "https://*:*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "allow-set-token",
+    "allow-clear-token",
+    "allow-has-token",
+    "allow-set-server"
+  ]
 }
