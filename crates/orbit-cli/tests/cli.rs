@@ -40,14 +40,20 @@ fn orbit(dir: &Path, args: &[&str]) -> Out {
 }
 
 /// A server with its user already set up, on its own thread. Returns its URL and data dir.
+/// Its Todoist is an address nothing listens on.
 fn server() -> (String, tempfile::TempDir) {
+    server_at("http://127.0.0.1:1")
+}
+
+fn server_at(todoist: &str) -> (String, tempfile::TempDir) {
+    let todoist = todoist.to_string();
     let data = tempfile::tempdir().unwrap();
     let path = data.path().to_path_buf();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let (app, code) = orbit_server::app(&path).unwrap();
+            let (app, code) = orbit_server::app_with(&path, &todoist).unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let url = format!("http://{}", listener.local_addr().unwrap());
             let app = app.into_make_service_with_connect_info::<SocketAddr>();
@@ -304,4 +310,71 @@ fn sync_without_login_explains_itself() {
         o.json()["error"],
         json!({ "code": "no_server", "message": "not logged in to a server", "hint": "run `orbit login <url>`" })
     );
+}
+
+/// A Todoist with one project, one task and nothing else.
+fn fake_todoist() -> String {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let app = axum::Router::new().fallback(|uri: axum::http::Uri| async move {
+                axum::Json(match uri.path() {
+                    "/projects" => json!({ "results": [{ "id": "p1", "name": "Home" }] }),
+                    "/tasks" => json!({ "results": [{ "id": "t1", "project_id": "p1", "content": "Fix tap" }] }),
+                    _ => json!({ "results": [] }),
+                })
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            tx.send(format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    });
+    rx.recv().unwrap()
+}
+
+#[test]
+fn import_todoist_previews_then_imports_with_yes() {
+    let (url, _data) = server_at(&fake_todoist());
+    let d = tempfile::tempdir().unwrap();
+    assert_eq!(orbit(d.path(), &["login", &url]).code, 0);
+    let run = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_orbit"))
+            .args(args)
+            .env("ORBIT_DIR", d.path())
+            .env("ORBIT_SESSION", "test")
+            .env("ORBIT_TODOIST_TOKEN", "fake-token")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        Out {
+            code: out.status.code().unwrap(),
+            stdout: String::from_utf8(out.stdout).unwrap(),
+            stderr: String::from_utf8(out.stderr).unwrap(),
+        }
+    };
+    let o = run(&[
+        "--json",
+        "import",
+        "todoist",
+        "--map",
+        "p1=project:Life/Tap",
+    ]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let preview = o.json();
+    assert_eq!(preview["committed"], false);
+    assert_eq!(preview["preview"]["projects"][0]["kind"], "project");
+    assert_eq!(preview["preview"]["projects"][0]["area"], "Life");
+    assert_eq!(orbit(d.path(), &["--json", "sync"]).json()["sent"], 0);
+    assert_eq!(orbit(d.path(), &["--json", "ls"]).json()["total"], 0);
+
+    let o = run(&["--json", "import", "todoist", "--yes"]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_eq!(o.json()["report"]["tasks"], 1);
+    orbit(d.path(), &["sync"]);
+    let ls = orbit(d.path(), &["--json", "ls"]).json();
+    assert_eq!(ls["items"][0]["title"], "Fix tap");
+
+    let o = run(&["import", "todoist", "--map", "nonsense"]);
+    assert_eq!(o.code, 2);
 }

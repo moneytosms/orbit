@@ -74,19 +74,31 @@ pub(crate) async fn put(
     if hex::encode(Sha256::digest(&body)) != hash {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let target = path(&st.data, &hash);
+    store(&st.data, &hash, &body)
+        .map(|created| {
+            if created {
+                StatusCode::CREATED
+            } else {
+                StatusCode::OK
+            }
+        })
+        .map_err(|e| {
+            eprintln!("blob put failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+/// Writes a blob whose `hash` is already checked. True if it was new.
+pub(crate) fn store(data: &Path, hash: &str, bytes: &[u8]) -> std::io::Result<bool> {
+    let target = path(data, hash);
     if target.is_file() {
-        return Ok(StatusCode::OK);
+        return Ok(false);
     }
-    let fail = |e: std::io::Error| {
-        eprintln!("blob put failed: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    };
-    fs::create_dir_all(target.parent().unwrap()).map_err(fail)?;
+    fs::create_dir_all(target.parent().unwrap())?;
     let tmp = target.with_extension("part");
-    fs::write(&tmp, &body).map_err(fail)?;
-    fs::rename(&tmp, &target).map_err(fail)?;
-    Ok(StatusCode::CREATED)
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, &target)?;
+    Ok(true)
 }
 
 pub(crate) async fn get(

@@ -8,6 +8,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as auth from '$lib/auth'
+  import TodoistImport from '$lib/TodoistImport.svelte'
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
   import {
     getDaySettings,
@@ -431,6 +432,8 @@
     <Button class="self-start" disabled={exporting} onclick={exportAll}>Export everything</Button>
     {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
   </section>
+
+  <TodoistImport />
 
   <section class="panel">
     <h2 class="panel-title">Devices <span class="font-normal text-muted">{list.length || ''}</span></h2>

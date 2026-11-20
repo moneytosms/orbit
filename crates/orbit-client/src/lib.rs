@@ -224,6 +224,34 @@ impl Client {
         Ok(n as usize)
     }
 
+    /// Calls a server endpoint as this Device (POST with `body`, else GET) and returns its JSON body
+    /// (`Null` if none). Other than a 401 (see `is_signed_out`), a failure is the server's `error`
+    /// code or the HTTP status.
+    pub async fn call(
+        &self,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}{path}", self.url);
+        let mut req = match &body {
+            Some(body) => self.http.post(url).json(body),
+            None => self.http.get(url),
+        };
+        if let Some(token) = meta(&self.db, "auth")? {
+            req = req.bearer_auth(token);
+        }
+        let res = req.send().await?;
+        if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(res.error_for_status().unwrap_err().into());
+        }
+        let status = res.status();
+        let body: serde_json::Value = res.json().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(body["error"].as_str().unwrap_or(status.as_str()).into());
+        }
+        Ok(body)
+    }
+
     /// Sends the outbox in batches of 100 and merges each delta. On a network or HTTP error
     /// (401, 426, ...) the outbox stays queued and the error is returned.
     pub async fn sync(&mut self, now_ms: u64) -> Result<Vec<Rejection>> {
