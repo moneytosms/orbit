@@ -254,6 +254,9 @@ pub struct Settings {
     /// While on, the target streak is not broken.
     #[serde(default)]
     pub vacation: Option<bool>,
+    /// First day of the Calendar week, 0 = Sunday, 1 = Monday; `None` = 1.
+    #[serde(default)]
+    pub week_start: Option<u8>,
 }
 
 /// A synced record, as stored by the server and sent in deltas.
@@ -584,6 +587,7 @@ pub enum Op {
         days_off: Option<Vec<u8>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         vacation: Option<bool>,
+        week_start: Option<u8>,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -1088,6 +1092,7 @@ impl Op {
                 target_weekly,
                 days_off,
                 vacation,
+                week_start,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -1102,6 +1107,7 @@ impl Op {
                 ("target_weekly", target_weekly.is_some()),
                 ("days_off", days_off.is_some()),
                 ("vacation", vacation.is_some()),
+                ("week_start", week_start.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -1765,6 +1771,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             target_weekly,
             days_off,
             vacation,
+            week_start,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1784,6 +1791,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     target_weekly: None,
                     days_off: None,
                     vacation: None,
+                    week_start: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1801,6 +1809,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 target_weekly: target_weekly.or(old.target_weekly),
                 days_off: days_off.clone().or(old.days_off),
                 vacation: vacation.or(old.vacation),
+                week_start: week_start.or(old.week_start),
             }))
         }
     }
@@ -2732,7 +2741,8 @@ mod tests {
                 target_daily: None,
                 target_weekly: None,
                 days_off: None,
-                vacation: None
+                vacation: None,
+                week_start: None
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

@@ -768,3 +768,33 @@ test('Stardust counts a P1 Task at 80 and a Milestone at 250; un-completing a Mi
   expect(s.targets.daily).toBe(7)
   expect(s.history).toHaveLength(30)
 })
+
+test('week start defaults to Monday and syncs as a setting', async () => {
+  const { getWeekStart, setWeekStart } = await import('./sync')
+  expect(await getWeekStart()).toBe(1)
+  await setWeekStart(0)
+  expect(await getWeekStart()).toBe(0)
+})
+
+test('the Calendar view is built in, and calendarData lists Routine days with check-in state', async () => {
+  const { views, VIEW_CALENDAR, calendarData, createRoutine, checkIn, moveTask, getTask, localDay, tree, createArea } =
+    await import('./sync')
+  expect((await views()).find((v) => v.id === VIEW_CALENDAR)?.layout).toBe('calendar')
+  await createArea('Calendar')
+  const area = (await tree()).find((x) => x.area.name === 'Calendar')!.area
+  const id = await createRoutine(area.id, {
+    name: 'Stretch',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: null,
+    goal_id: null,
+  })
+  const today = await localDay()
+  await checkIn(id, today, 'done')
+  const { routines } = await calendarData(today, today)
+  const mine = routines.find((r) => r.routine.id === id)!
+  expect(mine.days).toEqual([{ date: today, state: 'done' }])
+  const t = await createTask('drag me', INBOX)
+  await moveTask(t, '2026-01-05', '14:00')
+  expect((await getTask(t))?.due).toEqual({ date: '2026-01-05', time: '14:00' })
+})

@@ -385,6 +385,7 @@ mod tests {
             target_weekly: None,
             days_off: None,
             vacation: None,
+            week_start: None,
         };
         f(&mut s);
         s

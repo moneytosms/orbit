@@ -138,6 +138,7 @@ pub const VIEW_UPCOMING: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_
 pub const VIEW_SLIPPING: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0103);
 pub const VIEW_RECENT: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0104);
 pub const VIEW_HORIZON: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0105);
+pub const VIEW_CALENDAR: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_0106);
 
 fn cond(path: &str, op: CondOp, value: Value) -> Node {
     Node::Cond {
@@ -261,6 +262,27 @@ pub fn builtins() -> Vec<View> {
                 None,
                 false,
                 "5",
+            )
+        },
+        View {
+            layout: "calendar".into(),
+            ..builtin(
+                VIEW_CALENDAR,
+                "calendar",
+                "Calendar",
+                "calendar",
+                ViewKind::Task,
+                Node::Group {
+                    all: false,
+                    children: vec![
+                        cond("due", CondOp::Before, json!("+36500d")),
+                        cond("deadline", CondOp::Before, json!("+36500d")),
+                    ],
+                },
+                sort("due", false),
+                None,
+                false,
+                "6",
             )
         },
     ]
@@ -862,6 +884,20 @@ pub fn today_string(days: i64) -> String {
     fmt_date(days)
 }
 
+/// The dates in `from..=to` on which Routine `routine_id` is due (unpaused, inside its length), for the Calendar.
+pub fn routine_days(rows: &[Row], routine_id: Uuid, from: &str, to: &str) -> Vec<String> {
+    let Some(Row::Routine(r)) = rows.iter().find(|r| r.id() == routine_id) else {
+        return vec![];
+    };
+    let (Some(a), Some(b)) = (parse_ymd(from), parse_ymd(to)) else {
+        return vec![];
+    };
+    (a..=b.min(a + 366))
+        .filter(|d| crate::routine::due_on(r, *d))
+        .map(fmt_date)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1285,14 +1321,45 @@ mod tests {
     }
 
     #[test]
+    fn calendar_builtin_and_routine_days() {
+        let c = builtins()
+            .into_iter()
+            .find(|v| v.id == VIEW_CALENDAR)
+            .unwrap();
+        assert_eq!((c.kind, c.layout.as_str()), (ViewKind::Task, "calendar"));
+        let r = crate::routine::Routine {
+            id: Uuid::from_u128(1),
+            parent_id: Uuid::from_u128(2),
+            name: "R".into(),
+            schedule: crate::routine::Schedule::Every { n: 2 },
+            start: "2026-03-02".into(),
+            length_days: Some(5),
+            time: None,
+            goal_id: None,
+            reminder: None,
+            pauses: vec![],
+            order: String::new(),
+            created_at: None,
+            trashed_at: None,
+            archived_at: None,
+        };
+        let rows = vec![Row::Routine(r)];
+        assert_eq!(
+            routine_days(&rows, Uuid::from_u128(1), "2026-03-01", "2026-03-31"),
+            ["2026-03-02", "2026-03-04", "2026-03-06"]
+        );
+        assert!(routine_days(&rows, Uuid::from_u128(9), "2026-03-01", "2026-03-31").is_empty());
+    }
+
+    #[test]
     fn builtins_are_pinned_with_stable_distinct_ids() {
         let b = builtins();
-        assert_eq!(b.len(), 5);
+        assert_eq!(b.len(), 6);
         assert!(b.iter().all(|v| v.pinned && v.builtin.is_some()));
         let mut seen: Vec<Uuid> = b.iter().map(|v| v.id).collect();
         seen.sort();
         seen.dedup();
-        assert_eq!(seen.len(), 5);
+        assert_eq!(seen.len(), 6);
         let h = b.iter().find(|v| v.id == VIEW_HORIZON).unwrap();
         assert_eq!((h.kind, h.layout.as_str()), (ViewKind::Goal, "timeline"));
         assert_eq!(
