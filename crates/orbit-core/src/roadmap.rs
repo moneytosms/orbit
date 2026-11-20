@@ -347,6 +347,44 @@ pub struct ItemSummary {
     pub progress: f64,
     /// Ids of other items in the same Roadmap that this one points at.
     pub links: Vec<Uuid>,
+    /// A Task's due date (else its deadline) or a Milestone's date.
+    pub date: Option<String>,
+    /// A Goal's start and target date.
+    pub start: Option<String>,
+    pub end: Option<String>,
+    /// The item is dated, its Phase is dated, and the two don't overlap.
+    pub outside: bool,
+}
+
+/// The `(start, end)` days an item occupies: `(date, date)` for a point, the Goal's range, or none.
+fn item_range(
+    date: &Option<String>,
+    start: &Option<String>,
+    end: &Option<String>,
+) -> Option<(String, String)> {
+    match (date, start, end) {
+        (Some(d), _, _) => Some((d.clone(), d.clone())),
+        (_, Some(s), Some(e)) => Some((s.clone(), e.clone())),
+        (_, Some(d), None) | (_, None, Some(d)) => Some((d.clone(), d.clone())),
+        _ => None,
+    }
+}
+
+/// Whether a dated item falls outside a dated Phase's range (open ends never exclude).
+pub fn is_outside(
+    date: &Option<String>,
+    start: &Option<String>,
+    end: &Option<String>,
+    phase: &Phase,
+) -> bool {
+    if phase.start.is_none() && phase.end.is_none() {
+        return false;
+    }
+    let Some((a, b)) = item_range(date, start, end) else {
+        return false;
+    };
+    phase.start.as_deref().is_some_and(|s| b.as_str() < s)
+        || phase.end.as_deref().is_some_and(|e| a.as_str() > e)
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -383,36 +421,56 @@ pub fn summary(rows: &[Row], roadmap_id: Uuid, today: &str) -> Summary {
         .map(|p| {
             let items: Vec<ItemSummary> = phase_items(rows, p.id, &ids)
                 .into_iter()
-                .map(|r| ItemSummary {
-                    id: r.id(),
-                    kind: match r {
-                        Row::Goal(_) => "goal",
-                        Row::Project(_) => "project",
-                        Row::Milestone(_) => "milestone",
-                        _ => "task",
-                    },
-                    title: match r {
-                        Row::Goal(g) => g.name.clone(),
-                        Row::Project(p) => p.name.clone(),
-                        Row::Milestone(m) => m.title.clone(),
-                        Row::Task(t) => t.title.clone(),
-                        _ => String::new(),
-                    },
-                    progress: item_progress(rows, r.id()),
-                    links: rows
-                        .iter()
-                        .find_map(|x| match x {
-                            Row::Placement(pl)
-                                if pl.roadmap_id == roadmap_id && pl.item_id == r.id() =>
-                            {
-                                Some(pl.links.clone())
-                            }
-                            _ => None,
-                        })
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|l| *l != r.id() && placed.contains(l))
-                        .collect(),
+                .map(|r| {
+                    let (date, start, end) = match r {
+                        Row::Task(t) => (
+                            t.due
+                                .as_ref()
+                                .map(|d| d.date.clone())
+                                .or(t.deadline.clone()),
+                            None,
+                            None,
+                        ),
+                        Row::Milestone(m) => (m.date.clone(), None, None),
+                        Row::Goal(g) => (None, g.start.clone(), g.target_date.clone()),
+                        _ => (None, None, None),
+                    };
+                    let outside = is_outside(&date, &start, &end, p);
+                    ItemSummary {
+                        id: r.id(),
+                        kind: match r {
+                            Row::Goal(_) => "goal",
+                            Row::Project(_) => "project",
+                            Row::Milestone(_) => "milestone",
+                            _ => "task",
+                        },
+                        title: match r {
+                            Row::Goal(g) => g.name.clone(),
+                            Row::Project(p) => p.name.clone(),
+                            Row::Milestone(m) => m.title.clone(),
+                            Row::Task(t) => t.title.clone(),
+                            _ => String::new(),
+                        },
+                        progress: item_progress(rows, r.id()),
+                        links: rows
+                            .iter()
+                            .find_map(|x| match x {
+                                Row::Placement(pl)
+                                    if pl.roadmap_id == roadmap_id && pl.item_id == r.id() =>
+                                {
+                                    Some(pl.links.clone())
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|l| *l != r.id() && placed.contains(l))
+                            .collect(),
+                        date,
+                        start,
+                        end,
+                        outside,
+                    }
                 })
                 .collect();
             let progress = if items.is_empty() {
@@ -781,5 +839,73 @@ mod tests {
         let s = summary(&rows, uid(50), "2026-06-01");
         assert_eq!(s.phases[1].items[0].links, vec![uid(12)]);
         assert!(s.phases[0].items[0].links.is_empty());
+    }
+
+    #[test]
+    fn items_dated_outside_their_phase_are_flagged() {
+        let ph = |s: Option<&str>, e: Option<&str>| {
+            let Row::Phase(p) = phase(60, "a", s, e, false) else {
+                unreachable!()
+            };
+            p
+        };
+        let d = |s: &str| Some(s.to_string());
+        let none = None;
+        let p = ph(Some("2026-02-01"), Some("2026-02-28"));
+        assert!(!is_outside(&d("2026-02-10"), &none, &none, &p));
+        assert!(is_outside(&d("2026-03-01"), &none, &none, &p));
+        assert!(is_outside(&d("2026-01-31"), &none, &none, &p));
+        assert!(!is_outside(&d("2026-02-28"), &none, &none, &p));
+        // Ranges overlap or not.
+        assert!(!is_outside(&none, &d("2026-01-20"), &d("2026-02-02"), &p));
+        assert!(is_outside(&none, &d("2026-03-02"), &d("2026-04-02"), &p));
+        // Undated item or undated Phase is never outside.
+        assert!(!is_outside(&none, &none, &none, &p));
+        assert!(!is_outside(&d("2030-01-01"), &none, &none, &ph(None, None)));
+        // Open-ended Phase.
+        assert!(is_outside(
+            &d("2026-01-01"),
+            &none,
+            &none,
+            &ph(Some("2026-02-01"), None)
+        ));
+        assert!(!is_outside(
+            &d("2030-01-01"),
+            &none,
+            &none,
+            &ph(Some("2026-02-01"), None)
+        ));
+    }
+
+    #[test]
+    fn summary_carries_item_dates_and_the_outside_flag() {
+        let mut t = task(11, uid(1), false);
+        if let Row::Task(t) = &mut t {
+            t.due = Some(crate::Due {
+                date: "2026-03-05".into(),
+                time: None,
+            });
+        }
+        let mut u = task(12, uid(1), false);
+        if let Row::Task(u) = &mut u {
+            u.deadline = Some("2026-02-05".into());
+        }
+        let rows = vec![
+            phase(60, "a", Some("2026-02-01"), Some("2026-02-28"), false),
+            t,
+            u,
+            task(13, uid(1), false),
+            place(60, 11),
+            place(60, 12),
+            place(60, 13),
+        ];
+        let items = &summary(&rows, uid(50), "2026-02-10").phases[0].items;
+        let by = |n: u128| items.iter().find(|i| i.id == uid(n)).unwrap();
+        assert_eq!(by(11).date.as_deref(), Some("2026-03-05"));
+        assert!(by(11).outside);
+        assert_eq!(by(12).date.as_deref(), Some("2026-02-05"));
+        assert!(!by(12).outside);
+        assert_eq!(by(13).date, None);
+        assert!(!by(13).outside);
     }
 }

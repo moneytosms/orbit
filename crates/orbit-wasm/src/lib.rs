@@ -346,3 +346,13 @@ pub fn routine_days(
         &rows, id, from, to,
     ))?)
 }
+
+/// Parses a Mermaid gantt or flowchart into a plan: `{"ok": Plan}` or `{"error": {line, message}}`.
+#[wasm_bindgen]
+pub fn parse_mermaid(text: &str) -> Result<String, JsError> {
+    let v = match orbit_core::mermaid::parse(text) {
+        Ok(plan) => serde_json::json!({ "ok": plan }),
+        Err(e) => serde_json::json!({ "error": e }),
+    };
+    Ok(serde_json::to_string(&v)?)
+}

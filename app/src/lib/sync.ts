@@ -23,6 +23,7 @@ import {
   reminder_schedule,
   stardust_summary,
   routine_days,
+  parse_mermaid,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
@@ -256,6 +257,10 @@ export type PhaseSummary = {
     title: string
     progress: number
     links: string[]
+    date?: string | null
+    start?: string | null
+    end?: string | null
+    outside?: boolean
   }[]
 }
 export type CheckState = 'done' | 'skipped'
@@ -1328,4 +1333,54 @@ export async function gateChoices(): Promise<{ id: string; title: string; done: 
   return (await visibleRows())
     .filter((r): r is Milestone => r.kind === 'milestone')
     .map((m) => ({ id: m.id, title: m.title, done: m.done }))
+}
+
+export type MermaidItem = {
+  key: string
+  title: string
+  start: string
+  end: string
+  milestone: boolean
+  done: boolean
+  links: string[]
+}
+export type MermaidPhase = { name: string; start: string | null; end: string | null; items: MermaidItem[] }
+export type MermaidPlan = { title: string | null; phases: MermaidPhase[] }
+export type MermaidResult = { ok: MermaidPlan } | { error: { line: number; message: string } }
+/** Parses Mermaid gantt or flowchart text in core; returns the plan or the error line. */
+export const parseMermaid = (text: string): MermaidResult => JSON.parse(parse_mermaid(text))
+/** Creates Phases and items from a parsed plan inside a Roadmap, placing each item in its Phase. */
+export async function importMermaid(roadmapId: string, plan: MermaidPlan): Promise<void> {
+  const rows = await visibleRows()
+  const roadmap = rows.find((r): r is Roadmap => r.kind === 'roadmap' && r.id === roadmapId)
+  if (!roadmap) throw new Error('Roadmap not found')
+  const owner = rows.find((r) => r.id === roadmap.parent_id)
+  const goal = owner?.kind === 'goal' ? owner : undefined
+  let area = roadmap.parent_id
+  if (goal) {
+    let cur: Row | undefined = goal
+    while (cur?.kind === 'goal') cur = rows.find((r) => r.id === (cur as Goal).parent_id)
+    area = cur?.id ?? goal.parent_id
+  }
+  const ids = new Map<string, string>()
+  const placed: { id: string; phase: string; links: string[] }[] = []
+  for (const phase of plan.phases) {
+    const phaseId = await createPhase(roadmapId, phase.name, phase.start, phase.end)
+    for (const item of phase.items) {
+      let id: string
+      if (item.milestone && goal) id = await createMilestone(goal.id, item.title, item.end || item.start)
+      else {
+        id = await createTask(item.title, area)
+        await updateTask(id, { due: { date: item.end || item.start }, ...(goal ? { goal_id: goal.id } : {}) })
+        if (item.done) await completeTask(id)
+      }
+      await placeItem(roadmapId, id, phaseId)
+      ids.set(item.key, id)
+      placed.push({ id, phase: phaseId, links: item.links })
+    }
+  }
+  for (const p of placed) {
+    const links = p.links.flatMap((k) => ids.get(k) ?? [])
+    if (links.length) await setLinks(roadmapId, p.id, p.phase, links)
+  }
 }

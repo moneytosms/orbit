@@ -2,6 +2,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
   import { Input } from '$lib/components/ui/input'
+  import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import {
     addEntry,
     archiveItem,
@@ -27,6 +28,8 @@
   type View = { goal: Goal; pct: number; behind: boolean; milestones: Milestone[]; pages: Page[] }
   let views = $state(new Map<string, View>())
   let list = $state<Goal[]>([])
+  let building = $state<Goal | null>(null)
+  let buildOpen = $state(false)
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
   $effect(() => {
@@ -122,6 +125,17 @@
           <span class="text-xs text-muted">by {dateText(goal.target_date)}</span>
         {/if}
         <Button variant="default" size="sm" onclick={() => completeGoal(goal.id).then(load)}>Complete</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="New roadmap for {goal.name}"
+          onclick={() => {
+            building = goal
+            buildOpen = true
+          }}
+        >
+          New roadmap
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -261,3 +275,11 @@
     <p class="text-sm text-muted">Create an Area first, then add goals to it.</p>
   {/each}
 </div>
+
+<RoadmapBuilder
+  bind:open={buildOpen}
+  onchange={load}
+  {areas}
+  ownerId={building?.id ?? ''}
+  ownerName={building?.name ?? ''}
+/>

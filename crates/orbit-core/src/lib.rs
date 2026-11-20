@@ -1,6 +1,7 @@
 pub mod filter_text;
 pub mod goal;
 pub mod link;
+pub mod mermaid;
 pub mod next;
 pub mod order;
 pub mod page;
