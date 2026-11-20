@@ -1,6 +1,7 @@
 <script lang="ts">
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
+  import Banner from './lib/Banner.svelte'
   import Area from './lib/screens/Area.svelte'
   import Goals from './lib/screens/Goals.svelte'
   import Roadmap from './lib/screens/Roadmap.svelte'
@@ -28,6 +29,7 @@
     tasksIn,
     tree,
     stardust,
+    updateProject,
     updateSettings,
     views,
     VIEW_UPCOMING,
@@ -177,6 +179,21 @@
           </Area>
         {/key}
       {:else if parent}
+        {#if screen.name === 'project'}
+          {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === screen.id)}
+          {#if proj}
+            {#key proj.id}
+              <Banner
+                icon={proj.icon}
+                cover={proj.cover}
+                onsave={async (patch) => {
+                  await updateProject(proj.id, patch)
+                  refresh()
+                }}
+              />
+            {/key}
+          {/if}
+        {/if}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}
         <Goals {areas} />

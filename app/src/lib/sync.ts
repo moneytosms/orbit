@@ -74,6 +74,10 @@ export type Area = {
   kind: 'area'
   id: string
   name: string
+  /** An emoji, or "". */
+  icon: string
+  /** "", "#rrggbb" or "blob:<hash>". */
+  cover: string
   order: string
   trashed_at: number | null
   archived_at: number | null
@@ -83,6 +87,8 @@ export type Project = {
   id: string
   parent_id: string
   name: string
+  icon: string
+  cover: string
   order: string
   goal_id: string | null
   touched_at: number | null
@@ -400,8 +406,10 @@ const localToday = () => {
 }
 /** Completes a Task; a recurring one moves to its next due instead, counted from this device's local date. */
 export const completeTask = (id: string) => enqueue('task.complete', { id, today: localToday() })
-export const updateProject = (id: string, patch: { goal_id: string | null }) =>
-  enqueue('project.update', { id, ...patch })
+export const updateProject = (
+  id: string,
+  patch: { goal_id?: string | null; name?: string; color?: string; icon?: string; cover?: string },
+) => enqueue('project.update', { id, ...patch })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
 export const getTask = (id: string) => {
   lastTask = id
@@ -1218,8 +1226,9 @@ export async function runFilter(node: Node): Promise<Row[]> {
   return groups.flatMap((g) => g.ids.flatMap((i) => byId.get(i) ?? []))
 }
 
-/** Renames an Area. */
-export const updateArea = (id: string, patch: { name?: string }) => enqueue('area.update', { id, ...patch })
+/** Renames an Area or sets its colour, icon or cover. */
+export const updateArea = (id: string, patch: { name?: string; color?: string; icon?: string; cover?: string }) =>
+  enqueue('area.update', { id, ...patch })
 /** Every row that is not trashed or archived (nor under something that is). */
 export const visibleSnapshot = () => visibleRows()
 

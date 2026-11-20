@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import Banner from '$lib/Banner.svelte'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import { areaStats, openCounts, roadmapsIn, upNextIn, type AreaStats } from '$lib/area'
   import {
@@ -107,6 +108,14 @@
 </script>
 
 {#if area}
+  <Banner
+    icon={area.area.icon}
+    cover={area.area.cover}
+    onsave={async (patch) => {
+      await updateArea(id, patch)
+      onchange()
+    }}
+  />
   <input
     aria-label="Area name"
     value={area.area.name}

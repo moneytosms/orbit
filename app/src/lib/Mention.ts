@@ -126,6 +126,10 @@ export const OrbitLink = Mention.extend<OrbitLinkOptions>({
     const label = String(token.text ?? '').replace(/\\([\\[\]])/g, '$1')
     return helpers.createNode('orbitLink', { id, label, mentionSuggestionChar: '@' })
   },
+  // The stock one reads `options.suggestions`, which our addOptions drops, and throws on every text input.
+  renderText({ node }) {
+    return String(node.attrs.label ?? '')
+  },
   renderMarkdown(node) {
     return `[${escapeLabel(String(node.attrs?.label ?? ''))}](orbit:${node.attrs?.id})`
   },

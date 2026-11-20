@@ -195,7 +195,7 @@
               aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
               class="flex h-8 items-center rounded-[7px] px-2.5 font-medium hover:bg-hover aria-[current=page]:bg-press"
             >
-              {a.area.name}
+              {#if a.area.icon}<span aria-hidden="true" class="mr-1.5">{a.area.icon}</span>{/if}{a.area.name}
             </a>
           </DropTarget>
           {#each a.projects.slice(0, 4) as p (p.id)}
@@ -205,7 +205,7 @@
                 aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
                 class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
               >
-                {p.name}
+                {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
               </a>
             </DropTarget>
           {/each}
@@ -338,49 +338,56 @@
   </div>
 </div>
 
+{#snippet tab(t: Route | 'browse')}
+  {#if t === 'browse'}
+    <button
+      type="button"
+      onclick={openPalette}
+      class="flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
+    >
+      <Search size={20} class="text-icon" /> Search
+    </button>
+    <button
+      type="button"
+      onclick={() => (drawer = true)}
+      class="flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
+    >
+      <LayoutGrid size={20} class="text-icon" /> Browse
+    </button>
+  {:else}
+    {@const Icon = routes[t].icon}
+    <a
+      href="#/{t}"
+      aria-current={screen.name === t ? 'page' : undefined}
+      class="group flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted aria-[current=page]:text-accent-text"
+    >
+      <Icon size={20} class="text-icon group-aria-[current=page]:text-accent" />
+      {routes[t].label}
+    </a>
+  {/if}
+{/snippet}
+
+<!-- Equal-width sides keep the New task button on the bar's centre line, however many tabs each side holds. -->
 <nav
   aria-label="Tabs"
-  class="fixed inset-x-0 bottom-0 grid h-[72px] grid-flow-col auto-cols-fr border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
+  class="fixed inset-x-0 bottom-0 grid h-[72px] grid-cols-[1fr_auto_1fr] border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
 >
-  {#each tabs as t (t)}
-    {#if t === 'add'}
-      <div class="grid place-items-center">
-        <button
-          type="button"
-          aria-label="New task"
-          onclick={newTask}
-          class="grid size-12 place-items-center rounded-[15px] bg-accent text-accent-ink shadow-[0_4px_12px_rgba(0,0,0,.18)]"
-        >
-          <Plus size={22} />
-        </button>
-      </div>
-    {:else if t === 'browse'}
-      <button
-        type="button"
-        onclick={openPalette}
-        class="flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
-      >
-        <Search size={20} class="text-icon" /> Search
-      </button>
-      <button
-        type="button"
-        onclick={() => (drawer = true)}
-        class="flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
-      >
-        <LayoutGrid size={20} class="text-icon" /> Browse
-      </button>
-    {:else}
-      {@const Icon = routes[t].icon}
-      <a
-        href="#/{t}"
-        aria-current={screen.name === t ? 'page' : undefined}
-        class="group flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted aria-[current=page]:text-accent-text"
-      >
-        <Icon size={20} class="text-icon group-aria-[current=page]:text-accent" />
-        {routes[t].label}
-      </a>
-    {/if}
-  {/each}
+  <div class="flex">
+    {#each tabs.slice(0, tabs.indexOf('add')) as t (t)}{@render tab(t as Route)}{/each}
+  </div>
+  <div class="grid place-items-center px-3">
+    <button
+      type="button"
+      aria-label="New task"
+      onclick={newTask}
+      class="grid size-12 place-items-center rounded-[15px] bg-accent text-accent-ink shadow-[0_4px_12px_rgba(0,0,0,.18)]"
+    >
+      <Plus size={22} />
+    </button>
+  </div>
+  <div class="flex">
+    {#each tabs.slice(tabs.indexOf('add') + 1) as t (t)}{@render tab(t as Route | 'browse')}{/each}
+  </div>
 </nav>
 
 <Sheet.Root bind:open={drawer}>

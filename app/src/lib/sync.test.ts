@@ -75,6 +75,7 @@ import {
   setLinks,
   gateChoices,
   updateArea,
+  updateProject,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -750,6 +751,18 @@ test('an Area renames through area.update', async () => {
   const id = (await tree()).find((a) => a.area.name === 'Before')!.area.id
   await updateArea(id, { name: 'After' })
   expect((await tree()).find((a) => a.area.id === id)?.area.name).toBe('After')
+})
+
+test('an Area and a Project take an icon and a cover', async () => {
+  await createArea('Deco')
+  const a = (await tree()).find((a) => a.area.name === 'Deco')!.area.id
+  await createProject(a, 'Deco project')
+  const p = (await tree()).find((x) => x.area.id === a)!.projects[0].id
+  await updateArea(a, { icon: '🌱', cover: '#c2552f' })
+  await updateProject(p, { icon: '🚀', cover: '' })
+  const t = (await tree()).find((x) => x.area.id === a)!
+  expect([t.area.icon, t.area.cover]).toEqual(['🌱', '#c2552f'])
+  expect([t.projects[0].icon, t.projects[0].cover]).toEqual(['🚀', ''])
 })
 
 test('Stardust counts a P1 Task at 80 and a Milestone at 250; un-completing a Milestone removes it', async () => {
