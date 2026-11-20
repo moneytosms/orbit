@@ -50,7 +50,7 @@ async fn no_token_returns_a_full_snapshot_with_inbox() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "", "trashed_at": null, "archived_at": null }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "color": "", "order": "", "trashed_at": null, "archived_at": null }])
     );
     assert_eq!(res["statuses"], json!({}));
     assert!(res["token"].as_u64().unwrap() > 0);
@@ -180,7 +180,7 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
     let (_, res) = sync(&app, json!({ "v": 1, "token": 40, "commands": [] })).await;
     assert_eq!(
         res["delta"],
-        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "order": "", "trashed_at": null, "archived_at": null }])
+        json!([{ "kind": "area", "id": INBOX, "name": "Inbox", "color": "", "order": "", "trashed_at": null, "archived_at": null }])
     );
     assert_eq!(res["token"], 1);
 }

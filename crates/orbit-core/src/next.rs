@@ -288,6 +288,7 @@ mod tests {
 
     fn area() -> Row {
         Row::Area(Area {
+            color: String::new(),
             id: uid(1),
             name: "Home".into(),
             order: String::new(),
@@ -472,6 +473,7 @@ mod tests {
         let rows = vec![
             area(),
             Row::Project(Project {
+                color: String::new(),
                 id: uid(2),
                 parent_id: uid(1),
                 name: "Proj".into(),

@@ -99,6 +99,7 @@ impl Client {
         let id = new_id(now_ms, &random()?);
         self.enqueue(
             Op::AreaCreate {
+                color: String::new(),
                 id,
                 name: name.into(),
                 order: order.into(),

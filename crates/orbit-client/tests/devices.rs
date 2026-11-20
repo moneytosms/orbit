@@ -228,6 +228,7 @@ async fn offline_creates_under_a_project_trashed_meanwhile_follow_it_into_trash(
     let project = orbit_core::new_id(now, &[1; 10]);
     a.enqueue(
         Op::ProjectCreate {
+            color: String::new(),
             id: project,
             parent_id: area,
             name: "P".into(),

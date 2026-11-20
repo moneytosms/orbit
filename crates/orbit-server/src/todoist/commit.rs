@@ -18,14 +18,41 @@ use std::{
 /// The Device id of every command the import emits.
 const IMPORT_DEVICE: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_00a1);
 pub const RECURRENCE_LABEL: &str = "imported-recurrence";
-const DROPPED: [&str; 6] = [
+const DROPPED: [&str; 5] = [
     "saved filters",
     "karma (Stardust starts at 0)",
     "completed and archived items",
     "collaborators and assignees",
     "location reminders",
-    "colours (Orbit has no colour field yet)",
 ];
+
+/// Todoist's named palette as `#rrggbb`; an unknown name is no colour.
+fn hex(name: &str) -> String {
+    let h = match name {
+        "berry_red" => "b8255f",
+        "red" => "db4035",
+        "orange" => "ff9933",
+        "yellow" => "fad000",
+        "olive_green" => "afb83b",
+        "lime_green" => "7ecc49",
+        "green" => "299438",
+        "mint_green" => "6accbc",
+        "teal" => "158fad",
+        "sky_blue" => "14aaf5",
+        "light_blue" => "96c3eb",
+        "blue" => "4073ff",
+        "grape" => "884dff",
+        "violet" => "af38eb",
+        "lavender" => "eb96eb",
+        "magenta" => "e05194",
+        "salmon" => "ff8d85",
+        "charcoal" => "808080",
+        "grey" => "b8b8b8",
+        "taupe" => "ccac93",
+        _ => return String::new(),
+    };
+    format!("#{h}")
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -313,7 +340,7 @@ pub fn run(
 
     // Labels merged by name.
     let mut label_id =
-        |e: &mut Emit, r: &mut Report, name: &str| -> rusqlite::Result<Option<Uuid>> {
+        |e: &mut Emit, r: &mut Report, name: &str, color: &str| -> rusqlite::Result<Option<Uuid>> {
             if let Some(id) = labels.get(&name.to_lowercase()) {
                 return Ok(Some(*id));
             }
@@ -321,6 +348,7 @@ pub fn run(
             if !e.send(
                 id,
                 Op::LabelCreate {
+                    color: hex(color),
                     id,
                     name: name.into(),
                 },
@@ -332,12 +360,14 @@ pub fn run(
             r.labels += 1;
             Ok(Some(id))
         };
-    for name in s
+    let task_labels = s.tasks.iter().flat_map(|t| &t.labels);
+    for (name, color) in s
         .labels
         .iter()
-        .chain(s.tasks.iter().flat_map(|t| &t.labels))
+        .map(|l| (l.name.as_str(), l.color.as_str()))
+        .chain(task_labels.map(|n| (n.as_str(), "")))
     {
-        label_id(&mut e, &mut r, name)?;
+        label_id(&mut e, &mut r, name, color)?;
     }
 
     // Projects: where each Todoist project's tasks land, `None` parent being the Inbox.
@@ -348,6 +378,19 @@ pub fn run(
         .filter_map(|p| plans.get(&p.id))
         .collect();
     order.sort_by_key(|p| p.kind != Kind::Area);
+    let colors: HashMap<&str, &str> = s
+        .projects
+        .iter()
+        .map(|p| (p.id.as_str(), p.color.as_str()))
+        .collect();
+    // An Area takes the colour of its top-level Todoist project, a Project its own.
+    let color_of = |p: &Plan, want: Kind| {
+        if p.kind == want {
+            colors.get(p.id.as_str()).copied().unwrap_or("")
+        } else {
+            ""
+        }
+    };
     for p in order {
         if p.kind == Kind::Inbox {
             in_inbox.insert(&p.id);
@@ -362,6 +405,7 @@ pub fn run(
                 if !e.send(
                     id,
                     Op::AreaCreate {
+                        color: hex(color_of(p, Kind::Area)),
                         id,
                         name: p.area.clone(),
                         order,
@@ -393,6 +437,7 @@ pub fn run(
                 if !e.send(
                     id,
                     Op::ProjectCreate {
+                        color: hex(color_of(p, Kind::Project)),
                         id,
                         parent_id: area,
                         name: p.name.clone(),
@@ -547,7 +592,7 @@ pub fn run(
 
         let mut label_ids = Vec::new();
         for name in &t.labels {
-            label_ids.extend(label_id(&mut e, &mut r, name)?);
+            label_ids.extend(label_id(&mut e, &mut r, name, "")?);
         }
         let mut description = t.description.clone();
         let mut recurrence = None;
@@ -567,7 +612,7 @@ pub fn run(
                     description = format!("{description}\n\nOriginal recurrence: {text}")
                         .trim()
                         .to_string();
-                    label_ids.extend(label_id(&mut e, &mut r, RECURRENCE_LABEL)?);
+                    label_ids.extend(label_id(&mut e, &mut r, RECURRENCE_LABEL, "")?);
                     r.issues.push(format!(
                         "recurrence {text:?} of task {:?} not understood: kept as a dated Task",
                         t.content

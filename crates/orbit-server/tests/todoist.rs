@@ -58,8 +58,8 @@ async fn fake(State(seen): State<Arc<Seen>>, uri: Uri, headers: HeaderMap) -> Re
     match uri.path() {
         "/projects" => Json(json!({ "results": [
             { "id": "pi", "name": "Inbox", "inbox_project": true, "child_order": 0 },
-            { "id": "pw", "name": "Work", "child_order": 1 },
-            { "id": "pweb", "name": "Website", "parent_id": "pw", "child_order": 1 },
+            { "id": "pw", "name": "Work", "color": "blue", "child_order": 1 },
+            { "id": "pweb", "name": "Website", "color": "teal", "parent_id": "pw", "child_order": 1 },
             { "id": "plaunch", "name": "Launch", "parent_id": "pweb", "child_order": 1 },
         ], "next_cursor": null }))
         .into_response(),
@@ -346,6 +346,10 @@ async fn previews_the_mapping_then_commits_and_reruns_create_only() {
 
     // Labels merge by name, ignoring case; the Todoist-only label is new.
     assert_eq!(all.iter().filter(|r| r["kind"] == "label").count(), 3);
+    // Todoist's named colours arrive as hex.
+    assert_eq!(of(&all, "label", "name", "Errands")["color"], "#b8255f");
+    assert_eq!(of(&all, "area", "name", "Work")["color"], "#4073ff");
+    assert_eq!(of(&all, "project", "name", "Website")["color"], "#158fad");
     let page = of(&all, "page", "title", "Todoist comments");
     assert_eq!(page["parent_id"], project["id"]);
     assert!(page["body"].as_str().unwrap().contains("Kickoff notes"));

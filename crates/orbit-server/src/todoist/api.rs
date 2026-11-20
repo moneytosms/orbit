@@ -21,6 +21,8 @@ pub struct Project {
     pub child_order: i64,
     #[serde(default)]
     pub inbox_project: bool,
+    #[serde(default)]
+    pub color: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -138,7 +140,7 @@ pub struct Snapshot {
     pub projects: Vec<Project>,
     pub sections: Vec<Section>,
     pub tasks: Vec<Task>,
-    pub labels: Vec<String>,
+    pub labels: Vec<Label>,
     pub reminders: Vec<Reminder>,
     /// By task id.
     pub task_comments: HashMap<String, Vec<Comment>>,
@@ -316,12 +318,7 @@ pub async fn fetch(
             .into_iter()
             .filter(|t| !t.checked)
             .collect(),
-        labels: t
-            .list::<Label>("/labels", &[])
-            .await?
-            .into_iter()
-            .map(|l| l.name)
-            .collect(),
+        labels: t.list::<Label>("/labels", &[]).await?,
         // Plan-dependent: a plan without reminders may answer with an error, which is not fatal.
         reminders: t
             .list::<Reminder>("/reminders", &[])
@@ -345,7 +342,9 @@ pub async fn fetch(
     Ok(s)
 }
 
-#[derive(Deserialize)]
-struct Label {
-    name: String,
+#[derive(Deserialize, Clone)]
+pub struct Label {
+    pub name: String,
+    #[serde(default)]
+    pub color: String,
 }

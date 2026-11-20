@@ -77,6 +77,9 @@ pub const SETTINGS: Uuid = Uuid::from_u128(0x0000_0000_0000_7000_8000_0000_0000_
 pub struct Area {
     pub id: Uuid,
     pub name: String,
+    /// `#rrggbb`, or empty for none.
+    #[serde(default)]
+    pub color: String,
     /// Fractional index among siblings (see `order`).
     #[serde(default)]
     pub order: String,
@@ -94,6 +97,9 @@ pub struct Project {
     /// The Area it lives in.
     pub parent_id: Uuid,
     pub name: String,
+    /// `#rrggbb`, or empty for none.
+    #[serde(default)]
+    pub color: String,
     #[serde(default)]
     pub order: String,
     /// The Goal its Tasks count towards unless they link another.
@@ -216,6 +222,9 @@ pub struct Purged {
 pub struct Label {
     pub id: Uuid,
     pub name: String,
+    /// `#rrggbb`, or empty for none.
+    #[serde(default)]
+    pub color: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -363,6 +372,7 @@ impl Row {
 
     pub fn inbox() -> Row {
         Row::Area(Area {
+            color: String::new(),
             id: INBOX,
             name: "Inbox".into(),
             order: String::new(),
@@ -388,6 +398,8 @@ pub enum Op {
         id: Uuid,
         name: String,
         #[serde(default)]
+        color: String,
+        #[serde(default)]
         order: String,
     },
     #[serde(rename = "project.create")]
@@ -395,6 +407,8 @@ pub enum Op {
         id: Uuid,
         parent_id: Uuid,
         name: String,
+        #[serde(default)]
+        color: String,
         #[serde(default)]
         order: String,
     },
@@ -590,7 +604,12 @@ pub enum Op {
         today: Option<String>,
     },
     #[serde(rename = "label.create")]
-    LabelCreate { id: Uuid, name: String },
+    LabelCreate {
+        id: Uuid,
+        name: String,
+        #[serde(default)]
+        color: String,
+    },
     /// Creates the Settings row if missing; only the fields present change.
     #[serde(rename = "settings.update")]
     SettingsUpdate {
@@ -1321,19 +1340,33 @@ pub struct SyncResponse {
     pub full: bool,
 }
 
+/// Empty, or `#rrggbb`.
+fn is_color(c: &str) -> bool {
+    c.is_empty()
+        || (c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 /// Applies one command to the row it targets. Server and client prediction share this.
 pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
     match &cmd.op {
-        Op::AreaCreate { id, name, order } => {
+        Op::AreaCreate {
+            id,
+            name,
+            color,
+            order,
+        } => {
             let name = name.trim();
             if existing.is_some() {
                 Err(ErrorCode::Exists)
             } else if name.is_empty() {
                 Err(ErrorCode::TitleRequired)
+            } else if !is_color(color) {
+                Err(ErrorCode::BadField)
             } else {
                 Ok(Row::Area(Area {
                     id: *id,
                     name: name.into(),
+                    color: color.clone(),
                     order: order.clone(),
                     trashed_at: None,
                     archived_at: None,
@@ -1344,6 +1377,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             id,
             parent_id,
             name,
+            color,
             order,
         } => {
             let name = name.trim();
@@ -1351,11 +1385,14 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 Err(ErrorCode::Exists)
             } else if name.is_empty() {
                 Err(ErrorCode::TitleRequired)
+            } else if !is_color(color) {
+                Err(ErrorCode::BadField)
             } else {
                 Ok(Row::Project(Project {
                     id: *id,
                     parent_id: *parent_id,
                     name: name.into(),
+                    color: color.clone(),
                     order: order.clone(),
                     goal_id: None,
                     trashed_at: None,
@@ -1807,16 +1844,19 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             })),
             _ => Err(ErrorCode::NotFound),
         },
-        Op::LabelCreate { id, name } => {
+        Op::LabelCreate { id, name, color } => {
             let name = name.trim();
             if existing.is_some() {
                 Err(ErrorCode::Exists)
             } else if name.is_empty() {
                 Err(ErrorCode::TitleRequired)
+            } else if !is_color(color) {
+                Err(ErrorCode::BadField)
             } else {
                 Ok(Row::Label(Label {
                     id: *id,
                     name: name.into(),
+                    color: color.clone(),
                 }))
             }
         }
@@ -2199,6 +2239,26 @@ mod tests {
     }
 
     #[test]
+    fn colour_is_kept_when_hex_and_rejected_otherwise() {
+        let area = |color: &str| {
+            let c = cmd(
+                "01900000-0000-7000-8000-0000000000c2",
+                "area.create",
+                serde_json::json!({ "id": TASK, "name": "Home", "color": color }),
+                1000,
+            );
+            apply(None, &c)
+        };
+        let Ok(Row::Area(a)) = area("#4073ff") else {
+            panic!("hex colour rejected")
+        };
+        assert_eq!(a.color, "#4073ff");
+        assert!(matches!(area(""), Ok(Row::Area(a)) if a.color.is_empty()));
+        assert_eq!(area("blue").unwrap_err(), ErrorCode::BadField);
+        assert_eq!(area("#4073f").unwrap_err(), ErrorCode::BadField);
+    }
+
+    #[test]
     fn task_create_puts_an_open_task_in_inbox() {
         let create = cmd(
             "01900000-0000-7000-8000-0000000000c1",
@@ -2493,6 +2553,7 @@ mod tests {
 
     fn area(n: u128) -> Row {
         Row::Area(Area {
+            color: String::new(),
             id: uid(n),
             name: "A".into(),
             order: "a".into(),
@@ -2502,6 +2563,7 @@ mod tests {
     }
     fn project(n: u128, parent: Uuid) -> Row {
         Row::Project(Project {
+            color: String::new(),
             id: uid(n),
             parent_id: parent,
             name: "P".into(),
@@ -2816,6 +2878,7 @@ mod tests {
         assert_eq!(
             row,
             Row::Label(Label {
+                color: String::new(),
                 id: uid(8),
                 name: "errand".into()
             })

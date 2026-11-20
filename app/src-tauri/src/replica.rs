@@ -747,6 +747,7 @@ mod tests {
         with(d, "", |c| {
             c.enqueue(
                 Op::LabelCreate {
+                    color: String::new(),
                     id: Uuid::from_u128(7),
                     name: "errands".into(),
                 },
@@ -799,6 +800,7 @@ mod tests {
         seed(
             d,
             Op::AreaCreate {
+                color: String::new(),
                 id: uid(10),
                 name: "Home".into(),
                 order: String::new(),
@@ -807,6 +809,7 @@ mod tests {
         seed(
             d,
             Op::ProjectCreate {
+                color: String::new(),
                 id: uid(11),
                 parent_id: uid(10),
                 name: "Garden".into(),
@@ -816,6 +819,7 @@ mod tests {
         seed(
             d,
             Op::ProjectCreate {
+                color: String::new(),
                 id: uid(12),
                 parent_id: uid(10),
                 name: "Kitchen".into(),
@@ -863,6 +867,7 @@ mod tests {
         seed(
             d,
             Op::LabelCreate {
+                color: String::new(),
                 id: uid(30),
                 name: "chores".into(),
             },

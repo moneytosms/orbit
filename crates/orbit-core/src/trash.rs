@@ -176,6 +176,7 @@ mod tests {
 
     fn area(n: u128) -> Row {
         Row::Area(Area {
+            color: String::new(),
             id: uid(n),
             name: "A".into(),
             order: String::new(),
@@ -186,6 +187,7 @@ mod tests {
 
     fn project(n: u128, parent: Uuid) -> Row {
         Row::Project(Project {
+            color: String::new(),
             id: uid(n),
             parent_id: parent,
             name: "P".into(),
@@ -244,6 +246,7 @@ mod tests {
         let inbox = op("item.delete", serde_json::json!({"id": INBOX}), 5);
         assert_eq!(apply(Some(Row::inbox()), &inbox), Err(ErrorCode::BadField));
         let label = Row::Label(crate::Label {
+            color: String::new(),
             id: uid(1),
             name: "x".into(),
         });
