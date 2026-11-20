@@ -731,3 +731,12 @@ test('a Roadmap Phase holds items from any Area, moves them by reference and com
   await setPhaseDone(two, false)
   expect((await roadmapSummary(road, '2026-01-01'))[1].completed).toBe(false)
 })
+
+test('the rows hook reports a local write', async () => {
+  const { onRowsChanged } = await import('./sync')
+  const seen: string[] = []
+  onRowsChanged((rows) => seen.push(...rows.map((r) => r.id)))
+  const t = await createTask('hooked', INBOX)
+  expect(seen).toContain(t)
+  onRowsChanged(() => {})
+})
