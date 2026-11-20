@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import RoadmapCanvas from '$lib/RoadmapCanvas.svelte'
   import {
     archiveItem,
     createPhase,
@@ -24,7 +25,7 @@
   let roadmap = $state<Roadmap | undefined>()
   let phases = $state<PhaseSummary[]>([])
   let choices = $state<{ id: string; kind: string; title: string }[]>([])
-  let mode = $state<'list' | 'board'>('list')
+  let mode = $state<'canvas' | 'list' | 'board'>('canvas')
   let loaded = $state(false)
   let newName = $state('')
   let newPhase = $state('')
@@ -150,6 +151,8 @@
     />
   {/key}
   <div class="mb-3 hidden gap-1 desk:flex" role="group" aria-label="Layout">
+    <Button variant={mode === 'canvas' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'canvas')}>Canvas</Button
+    >
     <Button variant={mode === 'list' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'list')}>List</Button>
     <Button variant={mode === 'board' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'board')}>Board</Button>
   </div>
@@ -159,11 +162,13 @@
       <h2 class="flex-1 truncate font-semibold">
         {p.name}
         {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[11.5px] font-normal">Current</span>{/if}
+        {#if p.locked}<span class="ml-1 rounded-sm bg-sunk px-1.5 text-[11.5px] font-normal">Locked</span>{/if}
       </h2>
       <span class="text-[12.5px] text-muted">{pct(p.progress)}</span>
       <Button variant="ghost" size="sm" onclick={() => toggle(p)}>{p.completed ? 'Reopen' : 'Complete'}</Button>
     </div>
     {#if span(p)}<p class="text-[12.5px] text-muted">{span(p)}</p>{/if}
+    {#if p.gate_title}<p class="text-[12.5px] text-muted">After {p.gate_title}</p>{/if}
     {@render bar(p.progress)}
   {/snippet}
 
@@ -181,7 +186,13 @@
     </select>
   {/snippet}
 
-  <div class={mode === 'board' ? 'desk:hidden' : ''}>
+  {#if mode === 'canvas'}
+    <div class="hidden desk:block">
+      <RoadmapCanvas {id} {phases} {unplaced} onplace={place} onchange={load} />
+    </div>
+  {/if}
+
+  <div class={mode === 'list' ? '' : 'desk:hidden'}>
     <div class="flex flex-col gap-4">
       {#each phases as p (p.id)}
         <section class="flex flex-col gap-1.5 rounded-lg border border-line p-3" aria-label={p.name}>
@@ -241,8 +252,8 @@
     </div>
   {/if}
 
-  {#if unplaced.length && mode === 'list'}
-    <section class="mt-4">
+  {#if unplaced.length && mode !== 'board'}
+    <section class="mt-4 {mode === 'canvas' ? 'desk:hidden' : ''}">
       <h2 class="pb-1 text-[12.5px] font-semibold text-muted">Add to a phase</h2>
       <ul class="flex flex-col gap-1">
         {#each unplaced as c (c.id)}

@@ -222,11 +222,19 @@ export type Phase = {
   order: string
   start: string | null
   end: string | null
+  gate_id: string | null
   completed_at: number | null
   archived_at: number | null
   trashed_at: number | null
 }
-export type Placement = { kind: 'placement'; id: string; roadmap_id: string; item_id: string; phase_id: string | null }
+export type Placement = {
+  kind: 'placement'
+  id: string
+  roadmap_id: string
+  item_id: string
+  phase_id: string | null
+  links: string[]
+}
 export type PhaseSummary = {
   id: string
   name: string
@@ -235,7 +243,16 @@ export type PhaseSummary = {
   completed: boolean
   progress: number
   current: boolean
-  items: { id: string; kind: 'goal' | 'project' | 'milestone' | 'task'; title: string; progress: number }[]
+  gate_id: string | null
+  gate_title: string | null
+  locked: boolean
+  items: {
+    id: string
+    kind: 'goal' | 'project' | 'milestone' | 'task'
+    title: string
+    progress: number
+    links: string[]
+  }[]
 }
 export type CheckState = 'done' | 'skipped'
 export type Checkin = {
@@ -987,7 +1004,7 @@ export async function createPhase(
 }
 export const updatePhase = (
   id: string,
-  patch: { name?: string; order?: string; start?: string | null; end?: string | null },
+  patch: { name?: string; order?: string; start?: string | null; end?: string | null; gate_id?: string | null },
 ) => enqueue('phase.update', { id, ...patch })
 export const setPhaseDone = (id: string, done: boolean) => enqueue(done ? 'phase.complete' : 'phase.uncomplete', { id })
 /** Puts an item in a Phase of a Roadmap without moving it; null takes it out. One Phase per item per Roadmap. */
@@ -1256,4 +1273,22 @@ export async function calendarData(from: string, to: string) {
     goals: rows.filter((r): r is Goal => r.kind === 'goal' && r.archived_at === null),
     milestones: rows.filter((r): r is Milestone => r.kind === 'milestone'),
   }
+}
+
+/** Gates a Phase behind a Milestone (it stays locked until that is done); null removes the gate. */
+export const setPhaseGate = (id: string, gateId: string | null) => updatePhase(id, { gate_id: gateId })
+/** Replaces the outgoing step links of an item placed in `phaseId`; links point at other placed items. */
+export const setLinks = (roadmapId: string, itemId: string, phaseId: string, links: string[]) =>
+  enqueue('placement.set', {
+    id: placement_id(roadmapId, itemId),
+    roadmap_id: roadmapId,
+    item_id: itemId,
+    phase_id: phaseId,
+    links,
+  })
+/** Every visible Milestone with its Goal, for the Phase gate picker. */
+export async function gateChoices(): Promise<{ id: string; title: string; done: boolean }[]> {
+  return (await visibleRows())
+    .filter((r): r is Milestone => r.kind === 'milestone')
+    .map((m) => ({ id: m.id, title: m.title, done: m.done }))
 }

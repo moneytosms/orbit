@@ -497,6 +497,7 @@ fn check_tree(
             | Op::RoadmapCreate { .. }
             | Op::PhaseCreate { .. }
             | Op::PlacementSet { .. }
+            | Op::PhaseUpdate { .. }
     ) {
         return Ok(None);
     }
@@ -535,6 +536,13 @@ fn check_tree(
                 return Ok(Some(ErrorCode::BadParent));
             }
         }
+    }
+    // A Phase's gate is a Milestone.
+    if let Row::Phase(ph) = &candidate
+        && let Some(gate) = ph.gate_id
+        && !matches!(load_row(conn, &gate.to_string())?, Some(Row::Milestone(_)))
+    {
+        return Ok(Some(ErrorCode::BadParent));
     }
     // Sub-goals go one level deep, under a top-level Goal in an Area.
     if let (Row::Goal(_), Some(p @ Row::Goal(_))) = (&candidate, parent.as_ref()) {

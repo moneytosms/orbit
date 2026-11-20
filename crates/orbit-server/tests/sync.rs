@@ -1246,3 +1246,33 @@ async fn an_area_rename_converges_by_last_writer_wins() {
     );
     assert_eq!(row(&res, AREA)["name"], "Work");
 }
+
+#[tokio::test]
+async fn a_phase_gate_must_be_a_milestone_and_placement_links_converge() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (roadmap, phase, goal, ms) = (c(0x61), c(0x62), c(0x63), c(0x64));
+    let placement =
+        orbit_core::roadmap::placement_id(roadmap.parse().unwrap(), TASK.parse().unwrap())
+            .to_string();
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0x65), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Plan" }), now + 1),
+        cmd(&c(0x66), "phase.create", json!({ "id": phase, "roadmap_id": roadmap, "name": "Later" }), now + 2),
+        cmd(&c(0x67), "goal.create", json!({ "id": goal, "parent_id": AREA, "name": "Run", "order": "a" }), now + 3),
+        cmd(&c(0x68), "milestone.create", json!({ "id": ms, "goal_id": goal, "title": "First 5k", "order": "a" }), now + 4),
+        cmd(&c(0x69), "phase.update", json!({ "id": phase, "gate_id": TASK }), now + 5),
+        cmd(&c(0x6a), "phase.update", json!({ "id": phase, "gate_id": ms }), now + 6),
+        cmd(&c(0x6b), "placement.set", json!({ "id": placement, "roadmap_id": roadmap, "item_id": TASK, "phase_id": phase, "links": [PROJECT] }), now + 7),
+    ]})).await;
+    for n in [0x65, 0x66, 0x67, 0x68, 0x6a, 0x6b] {
+        assert_eq!(res["statuses"][c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        res["statuses"][c(0x69)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    assert_eq!(row(&res, &phase)["gate_id"], ms);
+    assert_eq!(row(&res, &placement)["links"], json!([PROJECT]));
+}
