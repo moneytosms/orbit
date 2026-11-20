@@ -348,8 +348,8 @@ async fn previews_the_mapping_then_commits_and_reruns_create_only() {
     assert_eq!(all.iter().filter(|r| r["kind"] == "label").count(), 3);
     // Todoist's named colours arrive as hex.
     assert_eq!(of(&all, "label", "name", "Errands")["color"], "#b8255f");
-    assert_eq!(of(&all, "area", "name", "Work")["color"], "#4073ff");
-    assert_eq!(of(&all, "project", "name", "Website")["color"], "#158fad");
+    assert_eq!(of(&all, "area", "name", "Work")["color"], "#4180ff");
+    assert_eq!(of(&all, "project", "name", "Website")["color"], "#148fad");
     let page = of(&all, "page", "title", "Todoist comments");
     assert_eq!(page["parent_id"], project["id"]);
     assert!(page["body"].as_str().unwrap().contains("Kickoff notes"));
