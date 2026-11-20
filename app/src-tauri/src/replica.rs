@@ -2,15 +2,19 @@
 //! (share target, WorkManager) with no window. Rust is the only SQLite writer and the only sender.
 #![cfg_attr(not(target_os = "android"), allow(dead_code))] // JNI entry points are Android-only
 use orbit_client::{Client, Result};
-use orbit_core::{Op, Row, Uuid, goal, next, parse, reminder, routine, view};
+use orbit_core::{Op, Row, Task, Uuid, goal, next, parse, reminder, routine, view};
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
 /// Longest a sync may hold the connection, so a stalled network never blocks a capture for long.
 const SYNC_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Ancestors walked before giving up, a guard against cycles in bad data.
+const MAX_WALK: usize = 64;
 
 /// (dir, server url, client). A different dir or url swaps it, dropping the old connection first.
 static CLIENT: Mutex<Option<(String, String, Client)>> = Mutex::new(None);
@@ -149,29 +153,228 @@ pub fn reminders(dir: &str, now_local: &str) -> Result<Value> {
     })
 }
 
+/// One snapshot of the rows: lookups by id, and each Task's live subtasks.
+struct Index<'a> {
+    by_id: HashMap<Uuid, &'a Row>,
+    subtasks: HashMap<Uuid, Vec<&'a Task>>,
+}
+
+impl<'a> Index<'a> {
+    fn new(rows: &'a [Row]) -> Self {
+        let mut idx = Index {
+            by_id: HashMap::new(),
+            subtasks: HashMap::new(),
+        };
+        for r in rows {
+            idx.by_id.insert(r.id(), r);
+            match r {
+                Row::Task(t) if t.trashed_at.is_none() => {
+                    idx.subtasks.entry(t.parent_id).or_default().push(t)
+                }
+                _ => {}
+            }
+        }
+        idx
+    }
+}
+
+/// `row` followed by its ancestors, nearest first.
+fn ancestry<'a>(row: &'a Row, idx: &Index<'a>) -> Vec<&'a Row> {
+    let mut out = vec![row];
+    let mut next = row.parent_id();
+    while let Some(r) = next.and_then(|p| idx.by_id.get(&p).copied()) {
+        if out.len() > MAX_WALK {
+            break;
+        }
+        next = r.parent_id();
+        out.push(r);
+    }
+    out
+}
+
+/// The text a widget shows for a row: a Task's title, else the row's name.
+fn title_of(row: &Row) -> &str {
+    match row {
+        Row::Task(t) => &t.title,
+        Row::Area(a) => &a.name,
+        Row::Project(p) => &p.name,
+        Row::Section(s) => &s.name,
+        Row::Label(l) => &l.name,
+        Row::Goal(g) => &g.name,
+        Row::Page(p) => &p.title,
+        Row::Routine(r) => &r.name,
+        Row::View(v) => &v.name,
+        _ => "",
+    }
+}
+
+/// One display row for a widget. A Task has its fields; any other kind has its title only.
+fn display_row<'a>(row: &'a Row, idx: &Index<'a>) -> Value {
+    let chain = ancestry(row, idx);
+    let area = chain.iter().skip(1).find_map(|r| match r {
+        Row::Area(a) => Some(&a.name),
+        _ => None,
+    });
+    let project = chain.iter().skip(1).find_map(|r| match r {
+        Row::Project(p) => Some(&p.name),
+        _ => None,
+    });
+    match row {
+        Row::Task(t) => {
+            let subs = idx
+                .subtasks
+                .get(&t.id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            json!({
+                "id": t.id,
+                "title": t.title,
+                "priority": t.priority,
+                "due": t.due.as_ref().map(|d| &d.date),
+                "due_time": t.due.as_ref().and_then(|d| d.time.as_ref()),
+                "recurring": t.recurrence.is_some(),
+                "has_reminder": !t.reminders.is_empty(),
+                "sub_done": subs.iter().filter(|s| s.completed_at.is_some()).count(),
+                "sub_total": subs.len(),
+                "area": area,
+                "project": project,
+                "completed": t.completed_at.is_some(),
+            })
+        }
+        _ => json!({
+            "id": row.id(),
+            "title": title_of(row),
+            "priority": 4,
+            "due": null,
+            "due_time": null,
+            "recurring": false,
+            "has_reminder": false,
+            "sub_done": 0,
+            "sub_total": 0,
+            "area": area,
+            "project": project,
+            "completed": matches!(row, Row::Goal(g) if g.completed_at.is_some()),
+        }),
+    }
+}
+
+/// A group as widgets read it: its key and ids, with a display row for each id in order.
+fn group_json(g: &view::Group, idx: &Index) -> Value {
+    let rows: Vec<Value> = g
+        .ids
+        .iter()
+        .filter_map(|id| idx.by_id.get(id))
+        .map(|r| display_row(r, idx))
+        .collect();
+    json!({ "key": g.key, "ids": g.ids, "rows": rows })
+}
+
 /// The groups of the view `view_id` (stored, else built-in) evaluated for `today`.
 pub fn view(dir: &str, view_id: &str, today: &str) -> Result<Value> {
     let id: Uuid = view_id.parse()?;
     with(dir, "", |c| {
         let rows = c.rows()?;
         let v = view::view_or_builtin(id, &rows).ok_or("unknown view")?;
-        Ok(serde_json::to_value(view::evaluate(&v, &rows, today))?)
+        let idx = Index::new(&rows);
+        let groups: Vec<Value> = view::evaluate(&v, &rows, today)
+            .iter()
+            .map(|g| group_json(g, &idx))
+            .collect();
+        Ok(json!(groups))
     })
 }
 
-/// Every view a widget can show: the stored ones, then the built-ins.
+/// The open Tasks under an `area` or `project` (nested ones too), or with a `label`, as one group
+/// in the same shape as `view`. Done and trashed or archived Tasks are left out.
+pub fn list(dir: &str, kind: &str, id: &str) -> Result<Value> {
+    if !matches!(kind, "area" | "project" | "label") {
+        return Err("unknown list kind".into());
+    }
+    let id: Uuid = id.parse()?;
+    with(dir, "", |c| {
+        let rows = c.rows()?;
+        let idx = Index::new(&rows);
+        let mut found: Vec<&Row> = rows
+            .iter()
+            .filter(|r| {
+                let Row::Task(t) = r else { return false };
+                if t.completed_at.is_some() {
+                    return false;
+                }
+                let chain = ancestry(r, &idx);
+                if chain
+                    .iter()
+                    .any(|a| a.trashed_at().is_some() || a.archived_at().is_some())
+                {
+                    return false;
+                }
+                match kind {
+                    "label" => t.label_ids.contains(&id),
+                    "area" => chain
+                        .iter()
+                        .skip(1)
+                        .any(|a| matches!(a, Row::Area(x) if x.id == id)),
+                    _ => chain
+                        .iter()
+                        .skip(1)
+                        .any(|a| matches!(a, Row::Project(x) if x.id == id)),
+                }
+            })
+            .collect();
+        found.sort_by(|a, b| task_order(a).cmp(task_order(b)).then(a.id().cmp(&b.id())));
+        let group = view::Group {
+            key: String::new(),
+            ids: found.iter().map(|r| r.id()).collect(),
+        };
+        Ok(json!([group_json(&group, &idx)]))
+    })
+}
+
+fn task_order(row: &Row) -> &str {
+    match row {
+        Row::Task(t) => &t.order,
+        _ => "",
+    }
+}
+
+/// Every view a widget can show: the stored ones, then the built-ins, then What's next, then every
+/// live Area, Project and Label. `prefill` is the quick-add text that targets it.
 pub fn view_sources(dir: &str) -> Result<Value> {
     with(dir, "", |c| {
         let rows = c.rows()?;
-        let all: Vec<view::View> = rows
+        let views: Vec<view::View> = rows
             .iter()
             .filter_map(|r| match r {
-                Row::View(v) => Some(v.clone()),
+                Row::View(v) if v.builtin.is_none() => Some(v.clone()),
                 _ => None,
             })
-            .chain(view::builtins())
+            .chain(
+                view::builtins()
+                    .into_iter()
+                    .filter_map(|b| view::view_or_builtin(b.id, &rows)),
+            )
+            .filter(|v| v.kind == view::ViewKind::Task && v.trashed_at.is_none())
             .collect();
-        Ok(serde_json::to_value(all)?)
+        let mut out: Vec<Value> = views
+            .iter()
+            .map(|v| json!({ "kind": "view", "id": v.id, "name": v.name, "prefill": "" }))
+            .collect();
+        out.push(json!({ "kind": "next", "id": "", "name": "What's next", "prefill": "" }));
+        for r in &rows {
+            match r {
+                Row::Area(a) if a.trashed_at.is_none() => out.push(
+                    json!({ "kind": "area", "id": a.id, "name": a.name, "prefill": format!("@{}", a.name) }),
+                ),
+                Row::Project(p) if p.trashed_at.is_none() => out.push(
+                    json!({ "kind": "project", "id": p.id, "name": p.name, "prefill": format!("@{}", p.name) }),
+                ),
+                Row::Label(l) => out.push(
+                    json!({ "kind": "label", "id": l.id, "name": l.name, "prefill": format!("#{}", l.name) }),
+                ),
+                _ => {}
+            }
+        }
+        Ok(json!(out))
     })
 }
 
@@ -237,6 +440,8 @@ pub fn goals(dir: &str, today: &str, area: &str) -> Result<Value> {
                 "id": g.id,
                 "name": g.name,
                 "parent_id": g.parent_id,
+                "start": g.start,
+                "target_date": g.target_date,
                 "progress": progress,
                 "behind": goal::behind_pace(g, progress, today),
             }));
@@ -430,6 +635,19 @@ pub mod jni_api {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "system" fn Java_dev_orbit_app_Core_list<'l>(
+        mut env: JNIEnv<'l>,
+        _: JClass<'l>,
+        dir: JString<'l>,
+        kind: JString<'l>,
+        id: JString<'l>,
+        _today: JString<'l>,
+    ) -> jstring {
+        let (d, k, i) = (s(&mut env, &dir), s(&mut env, &kind), s(&mut env, &id));
+        ret(&mut env, super::list(&d, &k, &i))
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "system" fn Java_dev_orbit_app_Core_complete<'l>(
         mut env: JNIEnv<'l>,
         _: JClass<'l>,
@@ -560,5 +778,221 @@ mod tests {
     fn day_number_counts_from_epoch() {
         assert_eq!(day_number("1970-01-01").unwrap(), 0);
         assert_eq!(day_number("1970-01-02").unwrap(), 1);
+    }
+
+    fn uid(n: u128) -> Uuid {
+        Uuid::from_u128(n)
+    }
+
+    fn seed(d: &str, op: Op) {
+        with(d, "", |c| c.enqueue(op, now_ms()).map(drop)).unwrap();
+    }
+
+    fn patch(d: &str, id: Uuid, json: Value) {
+        with(d, "", |c| c.update_task(id, json, now_ms())).unwrap();
+    }
+
+    /// Area 10 holds Project 11 (task 20) and Project 12 (task 21); task 22 is done, 23 trashed.
+    fn sample() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_str().unwrap();
+        seed(
+            d,
+            Op::AreaCreate {
+                id: uid(10),
+                name: "Home".into(),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::ProjectCreate {
+                id: uid(11),
+                parent_id: uid(10),
+                name: "Garden".into(),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::ProjectCreate {
+                id: uid(12),
+                parent_id: uid(10),
+                name: "Kitchen".into(),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(20),
+                title: "rake".into(),
+                parent_id: Some(uid(11)),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(21),
+                title: "mop".into(),
+                parent_id: Some(uid(12)),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(22),
+                title: "weed".into(),
+                parent_id: Some(uid(11)),
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(23),
+                title: "hose".into(),
+                parent_id: Some(uid(11)),
+                order: String::new(),
+            },
+        );
+        with(d, "", |c| c.complete_task(uid(22), now_ms())).unwrap();
+        seed(d, Op::ItemDelete { id: uid(23) });
+        seed(
+            d,
+            Op::LabelCreate {
+                id: uid(30),
+                name: "chores".into(),
+            },
+        );
+        patch(d, uid(21), json!({ "label_ids": [uid(30)] }));
+        dir
+    }
+
+    #[test]
+    fn view_groups_carry_display_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_str().unwrap();
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(1),
+                title: "pay rent".into(),
+                parent_id: None,
+                order: String::new(),
+            },
+        );
+        seed(
+            d,
+            Op::TaskCreate {
+                id: uid(2),
+                title: "receipt".into(),
+                parent_id: Some(uid(1)),
+                order: String::new(),
+            },
+        );
+        with(d, "", |c| c.complete_task(uid(2), now_ms())).unwrap();
+        patch(
+            d,
+            uid(1),
+            json!({ "priority": 1, "due": { "date": "2026-11-20", "time": "09:30" } }),
+        );
+        let groups = view(d, &view::VIEW_INBOX.to_string(), "2026-11-20").unwrap();
+        let row = groups
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|g| g["rows"].as_array().unwrap().clone())
+            .find(|r| r["id"] == json!(uid(1)))
+            .unwrap();
+        assert_eq!(row["title"], "pay rent");
+        assert_eq!(row["priority"], 1);
+        assert_eq!(row["due"], "2026-11-20");
+        assert_eq!(row["due_time"], "09:30");
+        assert_eq!(row["sub_total"], 1);
+        assert_eq!(row["sub_done"], 1);
+        assert_eq!(row["completed"], false);
+    }
+
+    #[test]
+    fn list_returns_open_tasks_under_area_project_or_label() {
+        let dir = sample();
+        let d = dir.path().to_str().unwrap();
+        let ids = |v: Value| -> Vec<Value> { v[0]["ids"].as_array().unwrap().clone() };
+        let area = list(d, "area", &uid(10).to_string()).unwrap();
+        assert_eq!(ids(area.clone()), vec![json!(uid(20)), json!(uid(21))]);
+        assert_eq!(area[0]["key"], "");
+        assert_eq!(area[0]["rows"][0]["area"], "Home");
+        assert_eq!(area[0]["rows"][0]["project"], "Garden");
+        assert_eq!(
+            ids(list(d, "project", &uid(11).to_string()).unwrap()),
+            vec![json!(uid(20))]
+        );
+        assert_eq!(
+            ids(list(d, "label", &uid(30).to_string()).unwrap()),
+            vec![json!(uid(21))]
+        );
+        assert!(list(d, "tag", &uid(30).to_string()).is_err());
+    }
+
+    #[test]
+    fn view_sources_lists_areas_projects_labels_and_next() {
+        let dir = sample();
+        let d = dir.path().to_str().unwrap();
+        let sources = view_sources(d).unwrap();
+        let has = |kind: &str, id: Uuid| {
+            sources
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == kind && e["id"] == json!(id))
+        };
+        assert!(has("area", uid(10)));
+        assert!(has("project", uid(11)));
+        assert!(has("label", uid(30)));
+        assert!(
+            sources
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "next")
+        );
+        assert!(
+            sources
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "view")
+        );
+    }
+
+    #[test]
+    fn goals_expose_start_and_target_date() {
+        let dir = sample();
+        let d = dir.path().to_str().unwrap();
+        seed(
+            d,
+            Op::GoalCreate {
+                id: uid(40),
+                parent_id: uid(10),
+                name: "Tidy".into(),
+                progress: None,
+                start: Some("2026-01-01".into()),
+                target_date: Some("2026-06-30".into()),
+                done_condition: String::new(),
+                order: String::new(),
+            },
+        );
+        let goals = goals(d, "2026-11-20", "").unwrap();
+        let g = goals
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["id"] == json!(uid(40)))
+            .unwrap();
+        assert_eq!(g["start"], "2026-01-01");
+        assert_eq!(g["target_date"], "2026-06-30");
     }
 }

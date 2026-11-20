@@ -29,6 +29,7 @@ object Core {
     @JvmStatic external fun whats_next(dir: String, today: String, nowTime: String): String
     @JvmStatic external fun routines(dir: String, today: String, area: String): String
     @JvmStatic external fun goals(dir: String, today: String, area: String): String
+    @JvmStatic external fun list(dir: String, kind: String, id: String, today: String): String
     @JvmStatic external fun complete(dir: String, taskId: String, today: String): String
     @JvmStatic external fun checkin(dir: String, routineId: String, date: String, state: String): String
     @JvmStatic external fun checkin_clear(dir: String, routineId: String, date: String): String
