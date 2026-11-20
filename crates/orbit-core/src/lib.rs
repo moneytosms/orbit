@@ -80,6 +80,12 @@ pub struct Area {
     /// `#rrggbb`, or empty for none.
     #[serde(default)]
     pub color: String,
+    /// A short emoji shown in the sidebar and headers, or empty for none.
+    #[serde(default)]
+    pub icon: String,
+    /// Banner behind the page header: `#rrggbb`, `blob:<64 hex>` for an uploaded image, or empty.
+    #[serde(default)]
+    pub cover: String,
     /// Fractional index among siblings (see `order`).
     #[serde(default)]
     pub order: String,
@@ -100,6 +106,12 @@ pub struct Project {
     /// `#rrggbb`, or empty for none.
     #[serde(default)]
     pub color: String,
+    /// A short emoji shown in the sidebar and headers, or empty for none.
+    #[serde(default)]
+    pub icon: String,
+    /// Banner behind the page header: `#rrggbb`, `blob:<64 hex>` for an uploaded image, or empty.
+    #[serde(default)]
+    pub cover: String,
     #[serde(default)]
     pub order: String,
     /// The Goal its Tasks count towards unless they link another.
@@ -373,6 +385,8 @@ impl Row {
     pub fn inbox() -> Row {
         Row::Area(Area {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: INBOX,
             name: "Inbox".into(),
             order: String::new(),
@@ -490,6 +504,12 @@ pub enum Op {
             skip_serializing_if = "Option::is_none"
         )]
         goal_id: Option<Option<Uuid>>,
+        #[serde(default)]
+        color: Option<String>,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default)]
+        cover: Option<String>,
     },
     #[serde(rename = "goal.create")]
     GoalCreate {
@@ -887,6 +907,12 @@ pub enum Op {
         id: Uuid,
         #[serde(default)]
         name: Option<String>,
+        #[serde(default)]
+        color: Option<String>,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default)]
+        cover: Option<String>,
     },
 }
 
@@ -1092,13 +1118,22 @@ impl Op {
             Op::ItemArchive { .. } | Op::ItemUnarchive { .. } => vec!["archived_at"],
             Op::PageRename { .. } => vec!["title"],
             Op::PageEditBody { .. } => vec!["body", "rev", "links", "blobs"],
-            Op::ProjectUpdate { goal_id, .. } => {
-                if goal_id.is_some() {
-                    vec!["goal_id"]
-                } else {
-                    vec![]
-                }
-            }
+            Op::ProjectUpdate {
+                goal_id,
+                color,
+                icon,
+                cover,
+                ..
+            } => [
+                ("goal_id", goal_id.is_some()),
+                ("color", color.is_some()),
+                ("icon", icon.is_some()),
+                ("cover", cover.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
             Op::GoalUpdate {
                 name,
                 done_condition,
@@ -1263,13 +1298,22 @@ impl Op {
                 }
                 f
             }
-            Op::AreaUpdate { name, .. } => {
-                if name.is_some() {
-                    vec!["name"]
-                } else {
-                    vec![]
-                }
-            }
+            Op::AreaUpdate {
+                name,
+                color,
+                icon,
+                cover,
+                ..
+            } => [
+                ("name", name.is_some()),
+                ("color", color.is_some()),
+                ("icon", icon.is_some()),
+                ("cover", cover.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
         }
     }
 }
@@ -1346,6 +1390,39 @@ fn is_color(c: &str) -> bool {
         || (c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+/// An icon is a short emoji: at most 32 bytes, no control characters.
+fn is_icon(i: &str) -> bool {
+    i.len() <= 32 && !i.chars().any(char::is_control)
+}
+
+/// A cover is empty, a `#rrggbb` colour, or `blob:` and the 64 hex characters of an uploaded image.
+fn is_cover(c: &str) -> bool {
+    is_color(c)
+        || c.strip_prefix("blob:")
+            .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// The colour, icon and cover an Area or Project update leaves it with; a field it omits keeps its value.
+fn restyle(
+    color: &Option<String>,
+    icon: &Option<String>,
+    cover: &Option<String>,
+    cur_color: &str,
+    cur_icon: &str,
+    cur_cover: &str,
+) -> Result<(String, String, String), ErrorCode> {
+    let pick = |new: &Option<String>, cur: &str, ok: fn(&str) -> bool| match new {
+        Some(v) if !ok(v) => Err(ErrorCode::BadField),
+        Some(v) => Ok(v.clone()),
+        None => Ok(cur.to_string()),
+    };
+    Ok((
+        pick(color, cur_color, is_color)?,
+        pick(icon, cur_icon, is_icon)?,
+        pick(cover, cur_cover, is_cover)?,
+    ))
+}
+
 /// Applies one command to the row it targets. Server and client prediction share this.
 pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
     match &cmd.op {
@@ -1367,6 +1444,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     id: *id,
                     name: name.into(),
                     color: color.clone(),
+                    icon: String::new(),
+                    cover: String::new(),
                     order: order.clone(),
                     trashed_at: None,
                     archived_at: None,
@@ -1393,6 +1472,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     parent_id: *parent_id,
                     name: name.into(),
                     color: color.clone(),
+                    icon: String::new(),
+                    cover: String::new(),
                     order: order.clone(),
                     goal_id: None,
                     trashed_at: None,
@@ -1590,23 +1671,50 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             Some(Row::Task(t)) => Ok(Row::Task(complete_effects(t, cmd).0)),
             _ => Err(ErrorCode::NotFound),
         },
-        Op::ProjectUpdate { goal_id, .. } => match existing {
-            Some(Row::Project(p)) => Ok(Row::Project(Project {
-                goal_id: goal_id.unwrap_or(p.goal_id),
-                touched_at: Some(cmd.hlc.wall.max(p.touched_at.unwrap_or(0))),
-                ..p
-            })),
+        Op::ProjectUpdate {
+            goal_id,
+            color,
+            icon,
+            cover,
+            ..
+        } => match existing {
+            Some(Row::Project(p)) => {
+                let (color, icon, cover) =
+                    restyle(color, icon, cover, &p.color, &p.icon, &p.cover)?;
+                Ok(Row::Project(Project {
+                    goal_id: goal_id.unwrap_or(p.goal_id),
+                    color,
+                    icon,
+                    cover,
+                    touched_at: Some(cmd.hlc.wall.max(p.touched_at.unwrap_or(0))),
+                    ..p
+                }))
+            }
             _ => Err(ErrorCode::NotFound),
         },
-        Op::AreaUpdate { name, .. } => match existing {
-            Some(Row::Area(a)) => match name.as_deref().map(str::trim) {
-                Some("") => Err(ErrorCode::TitleRequired),
-                Some(n) => Ok(Row::Area(Area {
-                    name: n.into(),
+        Op::AreaUpdate {
+            name,
+            color,
+            icon,
+            cover,
+            ..
+        } => match existing {
+            Some(Row::Area(a)) => {
+                let name = match name.as_deref().map(str::trim) {
+                    Some("") => return Err(ErrorCode::TitleRequired),
+                    Some(n) => n.to_string(),
+                    None => a.name.clone(),
+                };
+                let (color, icon, cover) =
+                    restyle(color, icon, cover, &a.color, &a.icon, &a.cover)?;
+                Ok(Row::Area(Area {
+                    name,
+                    color,
+                    icon,
+                    cover,
                     ..a
-                })),
-                None => Ok(Row::Area(a)),
-            },
+                }))
+            }
             _ => Err(ErrorCode::NotFound),
         },
         Op::ViewCreate { .. }
@@ -2230,6 +2338,46 @@ mod tests {
     const TASK: &str = "01900000-0000-7000-8000-00000000000a";
     const DEVICE: &str = "01900000-0000-7000-8000-0000000000d1";
 
+    #[test]
+    fn area_and_project_updates_set_icon_cover_and_colour_and_reject_bad_ones() {
+        let area_row = area(1);
+        let blob = format!("blob:{}", "a".repeat(64));
+        let set = |row: Row, t: &str, v: serde_json::Value| {
+            let mut args = v;
+            args["id"] = serde_json::json!(uid(1));
+            apply(Some(row), &cmd(&uid(1).to_string(), t, args, 5))
+        };
+        let Ok(Row::Area(a)) = set(
+            area_row.clone(),
+            "area.update",
+            serde_json::json!({ "icon": "🏃", "cover": blob, "color": "#112233" }),
+        ) else {
+            panic!("update failed")
+        };
+        assert_eq!(
+            (a.icon.as_str(), a.cover.as_str(), a.color.as_str()),
+            ("🏃", blob.as_str(), "#112233")
+        );
+        for bad in [
+            serde_json::json!({ "icon": "x".repeat(33) }),
+            serde_json::json!({ "icon": "a\nb" }),
+            serde_json::json!({ "cover": "http://evil/x.png" }),
+            serde_json::json!({ "cover": "blob:short" }),
+            serde_json::json!({ "color": "red" }),
+        ] {
+            assert_eq!(
+                set(area_row.clone(), "area.update", bad).err(),
+                Some(ErrorCode::BadField)
+            );
+        }
+        let p = project(1, uid(9));
+        let Ok(Row::Project(p)) = set(p, "project.update", serde_json::json!({ "icon": "🌱" }))
+        else {
+            panic!("update failed")
+        };
+        assert_eq!(p.icon, "🌱");
+    }
+
     fn cmd(uuid: &str, r#type: &str, args: serde_json::Value, wall: u64) -> Command {
         serde_json::from_value(serde_json::json!({
             "uuid": uuid, "type": r#type, "args": args,
@@ -2554,6 +2702,8 @@ mod tests {
     fn area(n: u128) -> Row {
         Row::Area(Area {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: uid(n),
             name: "A".into(),
             order: "a".into(),
@@ -2564,6 +2714,8 @@ mod tests {
     fn project(n: u128, parent: Uuid) -> Row {
         Row::Project(Project {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: uid(n),
             parent_id: parent,
             name: "P".into(),

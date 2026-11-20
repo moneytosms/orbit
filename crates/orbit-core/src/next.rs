@@ -289,6 +289,8 @@ mod tests {
     fn area() -> Row {
         Row::Area(Area {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: uid(1),
             name: "Home".into(),
             order: String::new(),
@@ -474,6 +476,8 @@ mod tests {
             area(),
             Row::Project(Project {
                 color: String::new(),
+                icon: String::new(),
+                cover: String::new(),
                 id: uid(2),
                 parent_id: uid(1),
                 name: "Proj".into(),

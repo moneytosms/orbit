@@ -220,6 +220,8 @@ mod tests {
     fn project(n: u128, parent: Uuid, goal_id: Option<Uuid>) -> Row {
         Row::Project(Project {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: uid(n),
             parent_id: parent,
             name: "P".into(),
@@ -248,6 +250,8 @@ mod tests {
     fn area(n: u128) -> Row {
         Row::Area(Area {
             color: String::new(),
+            icon: String::new(),
+            cover: String::new(),
             id: uid(n),
             name: "A".into(),
             order: String::new(),
