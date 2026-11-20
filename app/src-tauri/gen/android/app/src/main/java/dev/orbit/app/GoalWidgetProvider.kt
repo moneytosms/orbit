@@ -49,7 +49,7 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val pct = percent(goal)
                         views.setTextViewText(R.id.card_title, goal.getString("name"))
                         views.setProgressBar(R.id.card_bar, 100, pct, false)
-                        views.setTextViewText(R.id.card_numbers, ctx.getString(R.string.goal_percent, pct))
+                        views.setTextViewText(R.id.card_numbers, numbers(ctx, goal, pct))
                         views.setViewVisibility(R.id.card_chip, visible(goal.optBoolean("behind")))
                         views.setViewVisibility(R.id.card_target, visible(!goal.isNull("target_date")))
                         if (!goal.isNull("target_date")) {
@@ -70,7 +70,7 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val row = RemoteViews(ctx.packageName, R.layout.widget_goal_row)
                         row.setTextViewText(R.id.name, g.getString("name"))
                         row.setProgressBar(R.id.bar, 100, pct, false)
-                        row.setTextViewText(R.id.percent, ctx.getString(R.string.goal_percent, pct))
+                        row.setTextViewText(R.id.percent, numbers(ctx, g, pct))
                         row.setViewVisibility(R.id.chip, visible(g.optBoolean("behind")))
                         row.setOnClickFillInIntent(R.id.row, Intent().putExtra(EXTRA_OPEN, "goal:$gid"))
                         items.addItem(gid.hashCode().toLong(), row)
@@ -90,6 +90,13 @@ class GoalWidgetProvider : AppWidgetProvider() {
             Intent(ctx, MainActivity::class.java).putExtra(EXTRA_OPEN, "goal:$goalId"),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        /** "3/10 · 30%" for a counted or target Goal, just the percent for a Manual one. */
+        private fun numbers(ctx: Context, g: JSONObject, pct: Int): String {
+            if (g.isNull("total")) return ctx.getString(R.string.goal_percent, pct)
+            fun n(d: Double) = if (d == Math.floor(d)) d.toLong().toString() else "%.1f".format(d)
+            return ctx.getString(R.string.goal_numbers, n(g.getDouble("done")), n(g.getDouble("total")), pct)
+        }
 
         private fun percent(g: JSONObject): Int = (g.optDouble("progress", 0.0) * 100).roundToInt().coerceIn(0, 100)
 

@@ -129,6 +129,7 @@ object ListWidget {
                 .put("title", o.optString("title"))
                 .put("priority", 4)
                 .put("project", path)
+                .put("reason", o.optString("reason"))
             ListEntry(null, row)
         }
     }
@@ -281,6 +282,7 @@ class ListWidgetProvider : AppWidgetProvider() {
 
         /** Today, Tomorrow or the date, then the time; null when the Task has no date. */
         private fun dueLabel(row: JSONObject): String? {
+            row.str("reason")?.let { return it } // What's next rows carry why they are next instead of a date
             val date = row.str("due") ?: return null
             val d = LocalDate.parse(date)
             val today = LocalDate.now()

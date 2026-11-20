@@ -100,8 +100,8 @@ pub fn effective_goal(task: &Task, rows: &[Row]) -> Option<Uuid> {
     None
 }
 
-/// Fraction of `goal` done, 0..=1.
-pub fn progress(goal: &Goal, rows: &[Row]) -> f64 {
+/// `(done, total)` for a Goal counted by units or a target amount; `None` for a Manual Goal.
+pub fn counts(goal: &Goal, rows: &[Row]) -> Option<(f64, f64)> {
     match &goal.progress {
         Progress::Count => {
             let (mut units, mut done) = (0u32, 0u32);
@@ -117,27 +117,23 @@ pub fn progress(goal: &Goal, rows: &[Row]) -> f64 {
                 units += is_unit as u32;
                 done += (is_unit && is_done) as u32;
             }
-            if units == 0 {
-                0.0
-            } else {
-                done as f64 / units as f64
-            }
+            Some((done as f64, units as f64))
         }
         Progress::Target { target, entries } => {
-            if *target <= 0.0 {
-                return 0.0;
-            }
             let sum: f64 = entries.iter().map(|e| e.amount).sum::<f64>()
                 + crate::routine::done_checkins(goal.id, rows) as f64;
-            (sum / target).clamp(0.0, 1.0)
+            Some((sum, *target))
         }
-        Progress::Manual => {
-            if goal.completed_at.is_some() {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        Progress::Manual => None,
+    }
+}
+
+/// Fraction of `goal` done, 0..=1.
+pub fn progress(goal: &Goal, rows: &[Row]) -> f64 {
+    match counts(goal, rows) {
+        Some((_, total)) if total <= 0.0 => 0.0,
+        Some((done, total)) => (done / total).clamp(0.0, 1.0),
+        None => f64::from(goal.completed_at.is_some()),
     }
 }
 

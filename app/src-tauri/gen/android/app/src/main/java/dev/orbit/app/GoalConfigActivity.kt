@@ -1,55 +1,29 @@
 // #71 config for the Goal widget: pick all Goals, one Area's Goals, or one Goal as a card. Stored per widget id.
 package dev.orbit.app
 
-import android.app.Activity
 import android.appwidget.AppWidgetManager
-import android.content.Intent
-import android.os.Bundle
-import android.widget.ArrayAdapter
-import android.view.WindowInsets
-import android.widget.ListView
 
-class GoalConfigActivity : Activity() {
-    override fun onCreate(state: Bundle?) {
-        super.onCreate(state)
-        setResult(RESULT_CANCELED)
-        val widget = intent?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-            ?: AppWidgetManager.INVALID_APPWIDGET_ID
-        if (widget == AppWidgetManager.INVALID_APPWIDGET_ID) {
-            finish()
-            return
-        }
-        // Each option is (label, mode, area, goal id).
-        val options = mutableListOf(Triple(getString(R.string.goal_config_all), "list" to "", ""))
-        val dir = Core.dir(this)
-        val today = WidgetData.today()
-        for ((id, name) in WidgetData.areas(this)) {
-            options.add(Triple(getString(R.string.goal_config_area, name), "list" to id, ""))
-        }
-        for (g in WidgetData.objects(Core.goals(dir, today, ""))) {
-            options.add(Triple(getString(R.string.goal_config_card, g.getString("name")), "card" to "", g.getString("id")))
-        }
-        val list = ListView(this)
-        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, options.map { it.first })
-        list.setOnItemClickListener { _, _, pos, _ ->
-            val (_, modeArea, goalId) = options[pos]
-            val (mode, area) = modeArea
-            GoalWidgetProvider.prefs(this).edit()
-                .putString("mode_$widget", mode)
-                .putString("area_$widget", area)
-                .putString("goal_$widget", goalId)
-                .apply()
-            GoalWidgetProvider.render(this, AppWidgetManager.getInstance(this), intArrayOf(widget))
-            setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widget))
-            finish()
-        }
-        // Android 15 draws edge to edge: keep the first row out from under the status bar.
-        list.clipToPadding = false
-        list.setOnApplyWindowInsetsListener { v, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            v.setPadding(0, bars.top, 0, bars.bottom)
-            insets
-        }
-        setContentView(list)
+/** One choice: its label, `list` or `card` mode, the Area to filter by, and the Goal for a card. */
+private data class Choice(val label: String, val mode: String, val area: String = "", val goal: String = "")
+
+class GoalConfigActivity : PickerConfigActivity() {
+    private val choices by lazy {
+        val all = listOf(Choice(getString(R.string.goal_config_all), "list"))
+        val byArea = WidgetData.areas(this).map { (id, name) -> Choice(getString(R.string.goal_config_area, name), "list", area = id) }
+        val cards = WidgetData.objects(Core.goals(Core.dir(this), WidgetData.today(), ""))
+            .map { Choice(getString(R.string.goal_config_card, it.getString("name")), "card", goal = it.getString("id")) }
+        all + byArea + cards
+    }
+
+    override fun labels() = choices.map { it.label }
+
+    override fun pick(widget: Int, pos: Int) {
+        val c = choices[pos]
+        GoalWidgetProvider.prefs(this).edit()
+            .putString("mode_$widget", c.mode)
+            .putString("area_$widget", c.area)
+            .putString("goal_$widget", c.goal)
+            .apply()
+        GoalWidgetProvider.render(this, AppWidgetManager.getInstance(this), intArrayOf(widget))
     }
 }

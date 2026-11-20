@@ -17,8 +17,18 @@
       <button>Connect</button>
     </form>
     <p id="err"></p>
+    <button id="retry" type="button" hidden>Retry</button>
     <script>
       // Shown only in the Android app until a server URL is saved; the app then loads that server.
+      // The launcher sends us here with ?down=<url> when the saved server did not answer.
+      const down = new URLSearchParams(location.search).get('down')
+      if (down) {
+        document.getElementById('url').value = down
+        document.getElementById('err').textContent = `Can't reach ${down}. Retry, or enter another address.`
+        const retry = document.getElementById('retry')
+        retry.hidden = false
+        retry.onclick = () => (location.href = '/')
+      }
       document.getElementById('f').onsubmit = (e) => {
         e.preventDefault()
         window.__TAURI_INTERNALS__

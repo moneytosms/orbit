@@ -103,7 +103,7 @@ internal object RoutinesPending {
         } else {
             set(ctx, id, true)
             val req = OneTimeWorkRequestBuilder<RoutinesCommitWorker>()
-                .setInitialDelay(2, TimeUnit.SECONDS)
+                .setInitialDelay(ListWidget.UNDO_MS, TimeUnit.MILLISECONDS)
                 .setInputData(Data.Builder().putString(RoutinesCommitWorker.KEY_ID, id).build())
                 .build()
             wm.enqueueUniqueWork(workName(id), ExistingWorkPolicy.REPLACE, req)

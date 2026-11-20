@@ -1,4 +1,4 @@
-// Keeps home-screen widgets in step with the replica: after each sync, and every 15 minutes.
+// Keeps home-screen widgets in step with the replica: after each sync, every 15 minutes, and at day start.
 package dev.orbit.app
 
 import android.appwidget.AppWidgetManager
@@ -31,10 +31,27 @@ object WidgetRefresh {
         }
     }
 
+    fun scheduleDayStart(ctx: Context) {
+        val now = java.time.LocalDateTime.now()
+        val delay = java.time.Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay().plusMinutes(1))
+        val req = OneTimeWorkRequestBuilder<DayStartWorker>().setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS).build()
+        WorkManager.getInstance(ctx).enqueueUniqueWork("widgets-day-start", ExistingWorkPolicy.REPLACE, req)
+    }
+
     /** Refresh the widgets every 15 minutes, the shortest period WorkManager allows. */
     fun schedule(ctx: Context) {
         val req = PeriodicWorkRequestBuilder<WidgetWorker>(15, TimeUnit.MINUTES).build()
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("widgets-periodic", ExistingPeriodicWorkPolicy.KEEP, req)
+        scheduleDayStart(ctx)
+    }
+}
+
+/** Repaints at the start of each local day (due chips, Today/Overdue groups), then books the next one. */
+class DayStartWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
+    override fun doWork(): Result {
+        WidgetRefresh.all(applicationContext)
+        WidgetRefresh.scheduleDayStart(applicationContext)
+        return Result.success()
     }
 }
 

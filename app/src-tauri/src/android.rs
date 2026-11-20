@@ -94,6 +94,22 @@ async fn set_server(
     window.navigate(url).map_err(|e| e.to_string())
 }
 
+/// Whether something accepts a connection at the server URL's host and port within 3 s.
+fn reachable(server: &str) -> bool {
+    use std::net::ToSocketAddrs;
+    let Ok(url) = server.parse::<tauri::Url>() else {
+        return false;
+    };
+    let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) else {
+        return false;
+    };
+    (host, port).to_socket_addrs().is_ok_and(|mut a| {
+        a.any(|addr| {
+            std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(3)).is_ok()
+        })
+    })
+}
+
 pub fn builder() -> tauri::Builder<Wry> {
     let native = tauri::plugin::Builder::<Wry>::new("orbit")
         .setup(|app, api| {
@@ -127,11 +143,15 @@ pub fn builder() -> tauri::Builder<Wry> {
             tauri::async_runtime::spawn_blocking(move || {
                 let server = call(webview.app_handle(), "getServer", json!({})).ok();
                 let server = server.as_ref().and_then(|v| v["server"].as_str());
+                // A saved server that does not answer sends the user to the server page, not a dead WebView.
                 let to = match server {
-                    Some(s) if !s.is_empty() => s,
-                    _ => "http://tauri.localhost/server.html",
+                    Some(s) if reachable(s) => s.to_string(),
+                    Some(s) if !s.is_empty() => {
+                        format!("http://tauri.localhost/server.html?down={s}")
+                    }
+                    _ => "http://tauri.localhost/server.html".to_string(),
                 };
-                if let Ok(to) = to.parse() {
+                if let Ok(to) = to.parse::<tauri::Url>() {
                     let _ = webview.navigate(to);
                 }
             });

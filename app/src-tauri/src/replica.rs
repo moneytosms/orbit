@@ -237,45 +237,40 @@ fn display_row<'a>(row: &'a Row, idx: &Index<'a>) -> Value {
         Row::Project(p) => Some(&p.name),
         _ => None,
     });
-    match row {
-        Row::Task(t) => {
-            let subs = idx
-                .subtasks
-                .get(&t.id)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            json!({
-                "id": t.id,
-                "title": t.title,
-                "priority": t.priority,
-                "due": t.due.as_ref().map(|d| &d.date),
-                "due_time": t.due.as_ref().and_then(|d| d.time.as_ref()),
-                "recurring": t.recurrence.is_some(),
-                "has_reminder": !t.reminders.is_empty(),
-                "sub_done": subs.iter().filter(|s| s.completed_at.is_some()).count(),
-                "sub_total": subs.len(),
-                "area": area.map(|a| &a.name),
-                "area_color": area.map(|a| &a.color),
-                "project": project,
-                "completed": t.completed_at.is_some(),
-            })
-        }
-        _ => json!({
-            "id": row.id(),
-            "title": title_of(row),
-            "priority": 4,
-            "due": null,
-            "due_time": null,
-            "recurring": false,
-            "has_reminder": false,
-            "sub_done": 0,
-            "sub_total": 0,
-            "area": area.map(|a| &a.name),
-            "area_color": area.map(|a| &a.color),
-            "project": project,
-            "completed": matches!(row, Row::Goal(g) if g.completed_at.is_some()),
-        }),
+    let mut out = json!({
+        "id": row.id(),
+        "title": title_of(row),
+        "priority": 4,
+        "due": null,
+        "due_time": null,
+        "recurring": false,
+        "has_reminder": false,
+        "sub_done": 0,
+        "sub_total": 0,
+        "area": area.map(|a| &a.name),
+        "area_color": area.map(|a| &a.color),
+        "project": project,
+        "completed": match row {
+            Row::Task(t) => t.completed_at.is_some(),
+            Row::Goal(g) => g.completed_at.is_some(),
+            _ => false,
+        },
+    });
+    if let Row::Task(t) = row {
+        let subs = idx
+            .subtasks
+            .get(&t.id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        out["priority"] = json!(t.priority);
+        out["due"] = json!(t.due.as_ref().map(|d| &d.date));
+        out["due_time"] = json!(t.due.as_ref().and_then(|d| d.time.as_ref()));
+        out["recurring"] = json!(t.recurrence.is_some());
+        out["has_reminder"] = json!(!t.reminders.is_empty());
+        out["sub_done"] = json!(subs.iter().filter(|s| s.completed_at.is_some()).count());
+        out["sub_total"] = json!(subs.len());
     }
+    out
 }
 
 /// A group as widgets read it: its key and ids, with a display row for each id in order.
@@ -304,12 +299,21 @@ pub fn view(dir: &str, view_id: &str, today: &str) -> Result<Value> {
     })
 }
 
+enum Scope {
+    Area,
+    Project,
+    Label,
+}
+
 /// The open Tasks under an `area` or `project` (nested ones too), or with a `label`, as one group
 /// in the same shape as `view`. Done and trashed or archived Tasks are left out.
 pub fn list(dir: &str, kind: &str, id: &str) -> Result<Value> {
-    if !matches!(kind, "area" | "project" | "label") {
-        return Err("unknown list kind".into());
-    }
+    let kind = match kind {
+        "area" => Scope::Area,
+        "project" => Scope::Project,
+        "label" => Scope::Label,
+        _ => return Err("unknown list kind".into()),
+    };
     let id: Uuid = id.parse()?;
     with(dir, "", |c| {
         let rows = c.rows()?;
@@ -328,16 +332,12 @@ pub fn list(dir: &str, kind: &str, id: &str) -> Result<Value> {
                 {
                     return false;
                 }
+                let under =
+                    |is: fn(&Row) -> Option<Uuid>| chain.iter().skip(1).any(|a| is(a) == Some(id));
                 match kind {
-                    "label" => t.label_ids.contains(&id),
-                    "area" => chain
-                        .iter()
-                        .skip(1)
-                        .any(|a| matches!(a, Row::Area(x) if x.id == id)),
-                    _ => chain
-                        .iter()
-                        .skip(1)
-                        .any(|a| matches!(a, Row::Project(x) if x.id == id)),
+                    Scope::Label => t.label_ids.contains(&id),
+                    Scope::Area => under(|a| matches!(a, Row::Area(_)).then(|| a.id())),
+                    Scope::Project => under(|a| matches!(a, Row::Project(_)).then(|| a.id())),
                 }
             })
             .collect();
@@ -462,7 +462,10 @@ pub fn goals(dir: &str, today: &str, area: &str) -> Result<Value> {
                 continue;
             }
             let progress = goal::progress(g, &rows);
+            let counts = goal::counts(g, &rows);
             out.push(json!({
+                "done": counts.map(|c| c.0),
+                "total": counts.map(|c| c.1),
                 "id": g.id,
                 "name": g.name,
                 "parent_id": g.parent_id,
