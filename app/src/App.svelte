@@ -2,6 +2,7 @@
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Goals from './lib/screens/Goals.svelte'
+  import Roadmap from './lib/screens/Roadmap.svelte'
   import Routines from './lib/screens/Routines.svelte'
   import Page from './lib/screens/Page.svelte'
   import Inbox from './lib/screens/Inbox.svelte'
@@ -50,13 +51,20 @@
   })
   /** The parent whose Tasks the list shows; undefined on screens without a list. */
   const listParent = (s: Screen) =>
-    s.name === 'page' || s.name === 'view' ? undefined : 'id' in s ? s.id : s.name === 'inbox' ? inbox_id() : undefined
+    s.name === 'page' || s.name === 'view' || s.name === 'roadmap'
+      ? undefined
+      : 'id' in s
+        ? s.id
+        : s.name === 'inbox'
+          ? inbox_id()
+          : undefined
   const parent = $derived(listParent(screen))
   const title = $derived.by(() => {
     const s = screen
     if (s.name === 'area') return areas.find((a) => a.area.id === s.id)?.area.name ?? 'Area'
     if (s.name === 'project') return areas.flatMap((a) => a.projects).find((p) => p.id === s.id)?.name ?? 'Project'
     if (s.name === 'page') return 'Page'
+    if (s.name === 'roadmap') return 'Roadmap'
     if (s.name === 'view') return allViews.find((v) => v.id === s.id)?.name ?? 'View'
     return routes[s.name].label
   })
@@ -121,6 +129,12 @@
     {#snippet children(add)}
       {#if screen.name === 'page'}
         <Page id={screen.id} onchange={refresh} />
+      {:else if screen.name === 'roadmap'}
+        {#key screen.id}
+          <Roadmap id={screen.id} {areas} onchange={refresh} />
+        {/key}
+      {:else if screen.name === 'roadmaps'}
+        <Roadmap {areas} onchange={refresh} />
       {:else if screen.name === 'view'}
         {#key screen.id}
           <View id={screen.id} {areas} onchange={refresh} />

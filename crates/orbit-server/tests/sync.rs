@@ -1167,3 +1167,56 @@ async fn reminders_add_snooze_spend_and_remove_on_a_task() {
     assert_eq!(res["statuses"][c(0xf6)], json!({ "status": "ok" }));
     assert_eq!(row(&res, TASK)["reminders"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn placements_converge_on_one_row_and_an_archived_roadmap_is_read_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (roadmap, now_ph, later_ph) = (c(0xc1), c(0xc2), c(0xc3));
+    let placement =
+        orbit_core::roadmap::placement_id(roadmap.parse().unwrap(), TASK.parse().unwrap())
+            .to_string();
+    let other = "01900000-0000-7000-8000-0000000000d2";
+    let place = |uuid: &str, device: &str, phase: &str, wall: u64| {
+        cmd_from(
+            device,
+            uuid,
+            "placement.set",
+            json!({ "id": placement, "roadmap_id": roadmap, "item_id": TASK, "phase_id": phase }),
+            wall,
+        )
+    };
+    let (_, res) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0xc4), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Plan" }), now + 1),
+        cmd(&c(0xc5), "phase.create", json!({ "id": now_ph, "roadmap_id": roadmap, "name": "Now" }), now + 2),
+        cmd(&c(0xc6), "phase.create", json!({ "id": later_ph, "roadmap_id": roadmap, "name": "Later" }), now + 3),
+        place(&c(0xc7), DEVICE, &now_ph, now + 4),
+        place(&c(0xc8), other, &later_ph, now + 5),
+        place(&c(0xc9), DEVICE, &c(0xee), now + 6),
+        cmd(&c(0xca), "phase.complete", json!({ "id": now_ph }), now + 7),
+        cmd(&c(0xcb), "phase.uncomplete", json!({ "id": now_ph }), now + 8),
+        cmd(&c(0xcc), "item.archive", json!({ "id": roadmap }), now + 9),
+        place(&c(0xcd), DEVICE, &now_ph, now + 10),
+        cmd(&c(0xce), "phase.complete", json!({ "id": later_ph }), now + 11),
+        cmd(&c(0xcf), "page.create", json!({ "id": c(0xf3), "title": "Notes", "parent_id": roadmap }), now + 12),
+    ]})).await;
+    for n in [0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xca, 0xcb, 0xcc] {
+        assert_eq!(res["statuses"][c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        res["statuses"][c(0xc9)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+    for n in [0xcd, 0xce, 0xcf] {
+        assert_eq!(
+            res["statuses"][c(n)],
+            json!({ "status": "error", "code": "archived" }),
+            "{n:x}"
+        );
+    }
+    assert_eq!(row(&res, &placement)["phase_id"], later_ph);
+    assert_eq!(row(&res, &now_ph)["completed_at"], Value::Null);
+    assert!(row(&res, &roadmap)["archived_at"].is_u64());
+}

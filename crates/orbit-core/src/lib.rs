@@ -7,6 +7,7 @@ pub mod page;
 pub mod parse;
 pub mod recur;
 pub mod reminder;
+pub mod roadmap;
 pub mod routine;
 pub mod theme;
 pub mod trash;
@@ -256,6 +257,9 @@ pub enum Row {
     View(view::View),
     Routine(routine::Routine),
     Checkin(routine::Checkin),
+    Roadmap(roadmap::Roadmap),
+    Phase(roadmap::Phase),
+    Placement(roadmap::Placement),
 }
 
 impl Row {
@@ -275,6 +279,9 @@ impl Row {
             Row::View(v) => v.id,
             Row::Routine(r) => r.id,
             Row::Checkin(c) => c.id,
+            Row::Roadmap(r) => r.id,
+            Row::Phase(p) => p.id,
+            Row::Placement(p) => p.id,
         }
     }
 
@@ -295,6 +302,9 @@ impl Row {
             Row::Page(p) => Some(p.parent_id),
             Row::Routine(r) => Some(r.parent_id),
             Row::Checkin(c) => Some(c.routine_id),
+            Row::Roadmap(r) => Some(r.parent_id),
+            Row::Phase(p) => Some(p.roadmap_id),
+            Row::Placement(p) => Some(p.roadmap_id),
         }
     }
 
@@ -705,6 +715,66 @@ pub enum Op {
     ReminderSnooze { task_id: Uuid, at: String },
     #[serde(rename = "reminder.spend")]
     ReminderSpend { task_id: Uuid, id: Uuid },
+    #[serde(rename = "roadmap.create")]
+    RoadmapCreate {
+        id: Uuid,
+        /// An Area, Project or Goal.
+        parent_id: Uuid,
+        name: String,
+        #[serde(default)]
+        order: String,
+    },
+    #[serde(rename = "roadmap.update")]
+    RoadmapUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    #[serde(rename = "phase.create")]
+    PhaseCreate {
+        id: Uuid,
+        roadmap_id: Uuid,
+        name: String,
+        #[serde(default)]
+        order: String,
+        #[serde(default)]
+        start: Option<String>,
+        #[serde(default)]
+        end: Option<String>,
+    },
+    #[serde(rename = "phase.update")]
+    PhaseUpdate {
+        id: Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        order: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        start: Option<Option<String>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        end: Option<Option<String>>,
+    },
+    #[serde(rename = "phase.complete")]
+    PhaseComplete { id: Uuid },
+    #[serde(rename = "phase.uncomplete")]
+    PhaseUncomplete { id: Uuid },
+    /// Puts an item in a Phase of the Roadmap (null takes it out). `id` is
+    /// `placement_id(roadmap_id, item_id)`, so an item has one Phase per Roadmap.
+    #[serde(rename = "placement.set")]
+    PlacementSet {
+        id: Uuid,
+        roadmap_id: Uuid,
+        item_id: Uuid,
+        phase_id: Option<Uuid>,
+    },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -782,7 +852,14 @@ impl Op {
             | Op::CheckinClear { id }
             | Op::LabelCreate { id, .. }
             | Op::ItemPin { id, .. }
-            | Op::ItemNotToday { id, .. } => *id,
+            | Op::ItemNotToday { id, .. }
+            | Op::RoadmapCreate { id, .. }
+            | Op::RoadmapUpdate { id, .. }
+            | Op::PhaseCreate { id, .. }
+            | Op::PhaseUpdate { id, .. }
+            | Op::PhaseComplete { id }
+            | Op::PhaseUncomplete { id }
+            | Op::PlacementSet { id, .. } => *id,
             Op::ReminderAdd { task_id, .. }
             | Op::ReminderRemove { task_id, .. }
             | Op::ReminderSnooze { task_id, .. }
@@ -803,6 +880,8 @@ impl Op {
                 | Op::MilestoneCreate { .. }
                 | Op::PageCreate { .. }
                 | Op::RoutineCreate { .. }
+                | Op::RoadmapCreate { .. }
+                | Op::PhaseCreate { .. }
         )
     }
 
@@ -817,6 +896,10 @@ impl Op {
             Op::MilestoneCreate { goal_id, .. } => Some(*goal_id),
             Op::RoutineCreate { parent_id, .. } => Some(*parent_id),
             Op::CheckinSet { routine_id, .. } => Some(*routine_id),
+            Op::RoadmapCreate { parent_id, .. } => Some(*parent_id),
+            Op::PhaseCreate { roadmap_id, .. } | Op::PlacementSet { roadmap_id, .. } => {
+                Some(*roadmap_id)
+            }
             Op::ItemMove { parent_id, .. } => *parent_id,
             _ => None,
         }
@@ -834,6 +917,8 @@ impl Op {
             | Op::PageCreate { .. }
             | Op::ViewCreate { .. }
             | Op::RoutineCreate { .. }
+            | Op::RoadmapCreate { .. }
+            | Op::PhaseCreate { .. }
             | Op::LabelCreate { .. } => vec![],
             Op::ViewDelete { .. } => vec!["trashed_at"],
             Op::ViewReset { .. } => vec![
@@ -1012,6 +1097,29 @@ impl Op {
             | Op::ReminderRemove { .. }
             | Op::ReminderSnooze { .. }
             | Op::ReminderSpend { .. } => vec!["reminders"],
+            Op::RoadmapUpdate { name, .. } => [("name", name.is_some())]
+                .into_iter()
+                .filter(|(_, present)| *present)
+                .map(|(f, _)| f)
+                .collect(),
+            Op::PhaseUpdate {
+                name,
+                order,
+                start,
+                end,
+                ..
+            } => [
+                ("name", name.is_some()),
+                ("order", order.is_some()),
+                ("start", start.is_some()),
+                ("end", end.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
+            Op::PhaseComplete { .. } | Op::PhaseUncomplete { .. } => vec!["completed_at"],
+            Op::PlacementSet { .. } => vec!["phase_id"],
         }
     }
 }
@@ -1233,8 +1341,15 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     order: order.clone(),
                     ..r
                 })),
+                Some(Row::Roadmap(r)) => Ok(Row::Roadmap(roadmap::Roadmap {
+                    parent_id: parent_id.ok_or(ErrorCode::BadParent)?,
+                    order: order.clone(),
+                    ..r
+                })),
                 Some(
-                    Row::Label(_)
+                    Row::Phase(_)
+                    | Row::Placement(_)
+                    | Row::Label(_)
                     | Row::Settings(_)
                     | Row::Completion(_)
                     | Row::Purged(_)
@@ -1328,6 +1443,13 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::ReminderRemove { .. }
         | Op::ReminderSnooze { .. }
         | Op::ReminderSpend { .. } => reminder::apply(existing, cmd),
+        Op::RoadmapCreate { .. }
+        | Op::RoadmapUpdate { .. }
+        | Op::PhaseCreate { .. }
+        | Op::PhaseUpdate { .. }
+        | Op::PhaseComplete { .. }
+        | Op::PhaseUncomplete { .. }
+        | Op::PlacementSet { .. } => roadmap::apply(existing, cmd),
         Op::GoalCreate {
             id,
             parent_id,
@@ -1662,6 +1784,10 @@ pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> 
         (Row::Routine(_), Row::Area(a)) => a.id != INBOX,
         (Row::Routine(_), Row::Project(_)) => true,
         (Row::Checkin(_), Row::Routine(_)) => true,
+        (Row::Roadmap(_), Row::Area(a)) => a.id != INBOX,
+        (Row::Roadmap(_), Row::Project(_) | Row::Goal(_)) => true,
+        (Row::Page(_), Row::Roadmap(_)) => true,
+        (Row::Phase(_) | Row::Placement(_), Row::Roadmap(_)) => true,
         _ => false,
     };
     if ok {
@@ -1778,6 +1904,7 @@ pub fn completion_id(task: Uuid, cmd: Uuid) -> Uuid {
     Builder::from_random_bytes(id.to_be_bytes()).into_uuid()
 }
 
+pub use roadmap::placement_id;
 pub use routine::checkin_id;
 
 fn json(row: &Row) -> serde_json::Value {

@@ -66,6 +66,11 @@ import {
   whatsNext,
   pinItem,
   notToday,
+  createRoadmap,
+  createPhase,
+  placeItem,
+  setPhaseDone,
+  roadmapSummary,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -700,4 +705,29 @@ test('an attachment added offline is uploaded before the command that cites it',
 test('a file over the limit is refused with a clear message', async () => {
   const big = new File([new Uint8Array(25 * 1024 * 1024 + 1)], 'big.bin')
   await expect(addFile(big)).rejects.toThrow(/at most 25 MB/)
+})
+
+test('a Roadmap Phase holds items from any Area, moves them by reference and completes', async () => {
+  await createArea('Work')
+  await createArea('Home')
+  const areas = await tree()
+  const work = areas.find((x) => x.area.name === 'Work')!.area
+  const home = areas.find((x) => x.area.name === 'Home')!.area
+  const road = await createRoadmap(work.id, 'Plan')
+  const one = await createPhase(road, 'One')
+  const two = await createPhase(road, 'Two')
+  const task = await createTask('Elsewhere', home.id)
+  await placeItem(road, task, one)
+  await placeItem(road, task, two)
+  let phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases.map((p) => p.items.length)).toEqual([0, 1])
+  expect(phases[0].current).toBe(true)
+  expect((await tasksIn(home.id)).map((t) => t.task.id)).toContain(task)
+  await completeTask(task)
+  await setPhaseDone(two, true)
+  phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases[1].progress).toBe(1)
+  expect(phases[1].completed).toBe(true)
+  await setPhaseDone(two, false)
+  expect((await roadmapSummary(road, '2026-01-01'))[1].completed).toBe(false)
 })

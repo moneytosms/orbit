@@ -49,6 +49,9 @@
     'project.name',
     'area.name',
     'goal.name',
+    'roadmap.name',
+    'phase.name',
+    'phase.current',
   ]
   const datePaths = new Set(['due', 'deadline', 'created_at', 'touched_at'])
   const ops: [string, string][] = [
@@ -69,11 +72,24 @@
     if (c.op === 'within') c.value = { from: '', to: '' }
     else
       c.value =
-        path === 'completed' ? false : path === 'priority' ? 1 : path === 'label' ? (labelList[0]?.id ?? '') : ''
+        path === 'completed' || path === 'phase.current'
+          ? false
+          : path === 'priority'
+            ? 1
+            : path === 'label'
+              ? (labelList[0]?.id ?? '')
+              : ''
   }
   function setOp(c: Cond, op: string) {
     c.op = op
-    c.value = op === 'within' ? { from: '', to: '' } : c.path === 'completed' ? false : c.path === 'priority' ? 1 : ''
+    c.value =
+      op === 'within'
+        ? { from: '', to: '' }
+        : c.path === 'completed' || c.path === 'phase.current'
+          ? false
+          : c.path === 'priority'
+            ? 1
+            : ''
   }
   function setWithin(c: Cond, key: 'from' | 'to', value: string) {
     const cur = c.value && typeof c.value === 'object' && !Array.isArray(c.value) ? c.value : {}
@@ -192,7 +208,7 @@
                 oninput={(e) => (child.value = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}
                 class="{fieldClass} w-16"
               />
-            {:else if child.path === 'completed'}
+            {:else if child.path === 'completed' || child.path === 'phase.current'}
               <select
                 aria-label="Value"
                 value={child.value === true ? 'true' : 'false'}

@@ -16,6 +16,8 @@ import {
   print_filter,
   checkin_id,
   local_day,
+  placement_id,
+  roadmap_summary,
   routine_stats,
   whats_next,
   reminder_schedule,
@@ -195,6 +197,39 @@ export type Routine = {
   trashed_at: number | null
   archived_at: number | null
 }
+export type Roadmap = {
+  kind: 'roadmap'
+  id: string
+  parent_id: string
+  name: string
+  order: string
+  archived_at: number | null
+  trashed_at: number | null
+  created_at: number | null
+}
+export type Phase = {
+  kind: 'phase'
+  id: string
+  roadmap_id: string
+  name: string
+  order: string
+  start: string | null
+  end: string | null
+  completed_at: number | null
+  archived_at: number | null
+  trashed_at: number | null
+}
+export type Placement = { kind: 'placement'; id: string; roadmap_id: string; item_id: string; phase_id: string | null }
+export type PhaseSummary = {
+  id: string
+  name: string
+  start: string | null
+  end: string | null
+  completed: boolean
+  progress: number
+  current: boolean
+  items: { id: string; kind: 'goal' | 'project' | 'milestone' | 'task'; title: string; progress: number }[]
+}
 export type CheckState = 'done' | 'skipped'
 export type Checkin = {
   kind: 'checkin'
@@ -215,7 +250,22 @@ export type RoutineStats = {
 }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
 type Row =
-  Area | Project | Section | Task | Label | Settings | Completion | Goal | Milestone | Page | View | Routine | Checkin
+  | Area
+  | Project
+  | Section
+  | Task
+  | Label
+  | Settings
+  | Completion
+  | Goal
+  | Milestone
+  | Page
+  | View
+  | Routine
+  | Checkin
+  | Roadmap
+  | Phase
+  | Placement
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -385,7 +435,7 @@ export const deleteItem = (id: string) => enqueue('item.delete', { id })
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })
 export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
-export type Trashed = Exclude<Row, Completion | Label | Settings | View | Checkin>
+export type Trashed = Exclude<Row, Completion | Label | Settings | View | Checkin | Placement>
 /** Items deleted by hand (their own `trashed_at`), newest first. */
 export async function trashed(): Promise<Trashed[]> {
   return (await allRows())
@@ -880,6 +930,60 @@ export async function checkinsOf(id: string): Promise<Map<string, CheckState>> {
   const m = new Map<string, CheckState>()
   for (const r of await allRows()) if (r.kind === 'checkin' && r.routine_id === id && !r.cleared) m.set(r.date, r.state)
   return m
+}
+
+/** Visible Roadmaps (not archived or trashed), in display order. */
+export async function roadmaps(): Promise<Roadmap[]> {
+  return (await visibleRows()).filter((r): r is Roadmap => r.kind === 'roadmap').sort(byOrder)
+}
+export async function getRoadmap(id: string): Promise<Roadmap | undefined> {
+  return (await visibleRows()).find((r): r is Roadmap => r.kind === 'roadmap' && r.id === id)
+}
+/** Creates a Roadmap under an Area, Project or Goal; returns its id. */
+export async function createRoadmap(parentId: string, name: string): Promise<string> {
+  const id = newId()
+  await enqueue('roadmap.create', { id, parent_id: parentId, name, order: await appendOrder(parentId) })
+  return id
+}
+export const renameRoadmap = (id: string, name: string) => enqueue('roadmap.update', { id, name })
+/** Adds a Phase at the end of a Roadmap; returns its id. */
+export async function createPhase(
+  roadmapId: string,
+  name: string,
+  start: string | null = null,
+  end: string | null = null,
+): Promise<string> {
+  const id = newId()
+  await enqueue('phase.create', { id, roadmap_id: roadmapId, name, order: await appendOrder(roadmapId), start, end })
+  return id
+}
+export const updatePhase = (
+  id: string,
+  patch: { name?: string; order?: string; start?: string | null; end?: string | null },
+) => enqueue('phase.update', { id, ...patch })
+export const setPhaseDone = (id: string, done: boolean) => enqueue(done ? 'phase.complete' : 'phase.uncomplete', { id })
+/** Puts an item in a Phase of a Roadmap without moving it; null takes it out. One Phase per item per Roadmap. */
+export const placeItem = (roadmapId: string, itemId: string, phaseId: string | null) =>
+  enqueue('placement.set', {
+    id: placement_id(roadmapId, itemId),
+    roadmap_id: roadmapId,
+    item_id: itemId,
+    phase_id: phaseId,
+  })
+/** Phases of a Roadmap with progress, the current flag and their items, from core. */
+export async function roadmapSummary(id: string, today?: string): Promise<PhaseSummary[]> {
+  const rows = await visibleRows()
+  return JSON.parse(roadmap_summary(JSON.stringify(rows), id, today ?? (await localDay()))).phases
+}
+/** Goals, Projects, Milestones and open Tasks that a Phase can hold, with their titles. */
+export async function placeable(): Promise<{ id: string; kind: string; title: string }[]> {
+  return (await visibleRows()).flatMap((r): { id: string; kind: string; title: string }[] =>
+    r.kind === 'goal' || r.kind === 'project'
+      ? [{ id: r.id, kind: r.kind, title: r.name }]
+      : r.kind === 'milestone' || (r.kind === 'task' && r.completed_at === null)
+        ? [{ id: r.id, kind: r.kind, title: r.title }]
+        : [],
+  )
 }
 
 type Any = { kind: string; id: string; parent_id?: string; trashed_at?: number | null; archived_at?: number | null }

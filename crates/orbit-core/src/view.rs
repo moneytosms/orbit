@@ -1,7 +1,7 @@
 //! Views: saved filters over Tasks, Projects, Goals and Pages, and the pure engine that runs them.
 use crate::goal::effective_goal;
 use crate::parse::{fmt_date, parse_ymd};
-use crate::{Command, ErrorCode, INBOX, Op, Row, Uuid, trash};
+use crate::{Command, ErrorCode, INBOX, Op, Row, Uuid, roadmap, trash};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
@@ -24,6 +24,8 @@ pub enum ViewKind {
     Goal,
     Page,
     Plan,
+    Roadmap,
+    Phase,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -458,6 +460,9 @@ fn kind_name(row: &Row) -> &'static str {
         Row::View(_) => "view",
         Row::Routine(_) => "routine",
         Row::Checkin(_) => "checkin",
+        Row::Roadmap(_) => "roadmap",
+        Row::Phase(_) => "phase",
+        Row::Placement(_) => "placement",
     }
 }
 
@@ -480,6 +485,8 @@ fn own(row: &Row, field: &str) -> Option<Value> {
         ("title" | "name", Row::Goal(g)) => json!(g.name),
         ("title" | "name", Row::Area(a)) => json!(a.name),
         ("title" | "name", Row::Page(p)) => json!(p.title),
+        ("title" | "name", Row::Roadmap(r)) => json!(r.name),
+        ("title" | "name", Row::Phase(p)) => json!(p.name),
         ("priority", Row::Task(t)) => json!(t.priority),
         ("due", Row::Task(t)) => t.due.as_ref().map_or(Value::Null, |d| json!(d.date)),
         ("due", Row::Goal(g)) => opt(&g.target_date),
@@ -657,6 +664,19 @@ fn eval(node: &Node, row: &Row, cx: &Ctx) -> bool {
                 children.iter().any(|c| eval(c, row, cx))
             }
         }
+        Node::Cond { path, op, value }
+            if path.starts_with("phase.") || path.starts_with("roadmap.") =>
+        {
+            let today = crate::parse::fmt_date(cx.today);
+            let values = roadmap::path_values(row, path, cx.rows, &cx.by_id, &today);
+            let hit = |v: &Value| eval_cond(v, CondOp::Is, value, cx.today);
+            match op {
+                CondOp::IsEmpty => values.iter().all(is_empty),
+                CondOp::IsNot => !values.iter().any(hit),
+                CondOp::Is => values.iter().any(hit),
+                _ => values.iter().any(|v| eval_cond(v, *op, value, cx.today)),
+            }
+        }
         Node::Cond { path, op, value } => value_at(row, path, cx.rows, &cx.by_id)
             .is_some_and(|v| eval_cond(&v, *op, value, cx.today)),
     }
@@ -729,6 +749,8 @@ fn is_candidate(kind: ViewKind, row: &Row) -> bool {
             | (ViewKind::Goal, Row::Goal(_))
             | (ViewKind::Page, Row::Page(_))
             | (ViewKind::Plan, Row::Project(_) | Row::Goal(_))
+            | (ViewKind::Roadmap, Row::Roadmap(_))
+            | (ViewKind::Phase, Row::Phase(_))
     )
 }
 
@@ -736,6 +758,7 @@ fn is_completed(row: &Row) -> bool {
     match row {
         Row::Task(t) => t.completed_at.is_some(),
         Row::Goal(g) => g.completed_at.is_some(),
+        Row::Phase(p) => p.completed_at.is_some(),
         _ => false,
     }
 }

@@ -319,6 +319,7 @@ fn purge(conn: &mut Connection, now: i64) -> rusqlite::Result<()> {
                  UNION
                  SELECT r.id FROM rows r JOIN d ON
                      json_extract(r.data, '$.parent_id') = d.id
+                     OR json_extract(r.data, '$.roadmap_id') = d.id
                      OR (json_extract(r.data, '$.kind') = 'milestone'
                          AND json_extract(r.data, '$.goal_id') = d.id)
              )
@@ -493,6 +494,9 @@ fn check_tree(
             | Op::RoutineCreate { .. }
             | Op::RoutineUpdate { .. }
             | Op::CheckinSet { .. }
+            | Op::RoadmapCreate { .. }
+            | Op::PhaseCreate { .. }
+            | Op::PlacementSet { .. }
     ) {
         return Ok(None);
     }
@@ -517,6 +521,19 @@ fn check_tree(
         );
         if !target {
             return Ok(Some(ErrorCode::BadParent));
+        }
+    }
+    // A Placement points at a Goal, Project, Milestone or Task, and at a Phase of its Roadmap.
+    if let Row::Placement(pl) = &candidate {
+        let item = load_row(conn, &pl.item_id.to_string())?;
+        if !item.as_ref().is_some_and(orbit_core::roadmap::is_placeable) {
+            return Ok(Some(ErrorCode::BadParent));
+        }
+        if let Some(phase_id) = pl.phase_id {
+            let phase = load_row(conn, &phase_id.to_string())?;
+            if !matches!(phase, Some(Row::Phase(p)) if p.roadmap_id == pl.roadmap_id) {
+                return Ok(Some(ErrorCode::BadParent));
+            }
         }
     }
     // Sub-goals go one level deep, under a top-level Goal in an Area.

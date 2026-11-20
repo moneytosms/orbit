@@ -148,7 +148,7 @@
   <a
     href="#/{r}"
     onclick={() => (drawer = false)}
-    aria-current={screen.name === r ? 'page' : undefined}
+    aria-current={screen.name === r || (r === 'roadmaps' && screen.name === 'roadmap') ? 'page' : undefined}
     class="group flex h-8 items-center gap-[9px] rounded-[7px] px-2.5 hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
   >
     <Icon size={16} class="text-icon group-aria-[current=page]:text-accent" />
