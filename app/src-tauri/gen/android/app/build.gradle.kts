@@ -7,12 +7,28 @@ plugins {
     id("rust")
 }
 
-val tauriProperties = Properties().apply {
-    val propFile = file("tauri.properties")
+// Version lockstep: versionName is the semver in tauri.conf.json (scripts/release.sh bumps it);
+// versionCode is derived from it (major*10000 + minor*100 + patch), so every release is newer.
+val appVersion = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+    .find(file("../../../tauri.conf.json").readText())!!.groupValues[1]
+val appVersionCode = appVersion.split(".").map { it.toInt() }
+    .let { (major, minor, patch) -> major * 10000 + minor * 100 + patch }
+
+// Release signing: keystore outside the repo. Env wins over ~/.config/orbit/release.properties.
+// Keys: storeFile, storePassword, keyAlias, keyPassword. Absent -> release APK is debug-signed.
+val releaseProps = Properties().apply {
+    val propFile = File(System.getProperty("user.home"), ".config/orbit/release.properties")
     if (propFile.exists()) {
         propFile.inputStream().use { load(it) }
     }
 }
+fun releaseSecret(env: String, key: String): String? = System.getenv(env) ?: releaseProps.getProperty(key)
+val releaseStoreFile = releaseSecret("ORBIT_KEYSTORE", "storeFile")
+val releaseStorePassword = releaseSecret("ORBIT_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = releaseSecret("ORBIT_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = releaseSecret("ORBIT_KEY_PASSWORD", "keyPassword")
+val hasReleaseKey = releaseStoreFile != null && File(releaseStoreFile).isFile &&
+    releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
 
 android {
     compileSdk = 37
@@ -22,8 +38,18 @@ android {
         applicationId = "dev.orbit.app"
         minSdk = 31
         targetSdk = 37
-        versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
-        versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        versionCode = appVersionCode
+        versionName = appVersion
+    }
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = File(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -39,6 +65,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
             optimization {
                enable = true
             }

@@ -30,6 +30,8 @@ web: wasm
 docs:
     cargo run -q -p orbit-cli -- docs docs
 
+import 'release.just'
+
 # Run `just check` before every push
 hooks:
     git config core.hooksPath .githooks
