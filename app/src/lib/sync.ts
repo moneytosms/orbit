@@ -783,6 +783,7 @@ export function sync(): Promise<void> {
       again = false
       await flush()
     } while (again)
+    await archiveEndedRoutines()
   })()
     .catch((e) => console.warn('sync failed', e))
     .finally(() => (running = undefined)))
@@ -947,6 +948,10 @@ export const setDayStart = (day_start: string) => enqueue('settings.update', { d
 /** Visible Routines (not archived or trashed), in display order. */
 export async function routines(): Promise<Routine[]> {
   return (await visibleRows()).filter((r): r is Routine => r.kind === 'routine').sort(byOrder)
+}
+/** Moves Routines past their length to Archived, history kept; already archived ones are not listed. */
+async function archiveEndedRoutines() {
+  for (const r of await routines()) if ((await routineStats(r.id)).ended) await archiveItem(r.id)
 }
 /** Archived Routines, history kept. */
 export async function archivedRoutines(): Promise<Routine[]> {
