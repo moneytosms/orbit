@@ -42,4 +42,20 @@
     <string name="goal_config_all">"All Goals (list)"</string>
     <string name="goal_config_area">"Area: %1$s (list)"</string>
     <string name="goal_config_card">"Goal: %1$s (card)"</string>
+    <string name="preview_list_title">"Today"</string>
+    <string name="preview_task_1">"Send the invoice"</string>
+    <string name="preview_task_2">"Book dentist"</string>
+    <string name="preview_task_3">"Review the roadmap"</string>
+    <string name="preview_task_4">"Water the plants"</string>
+    <string name="preview_due_today">"Today"</string>
+    <string name="preview_due_tomorrow">"Tomorrow"</string>
+    <string name="preview_routine_1">"Morning pages"</string>
+    <string name="preview_streak_1">"Streak 12"</string>
+    <string name="preview_routine_2">"Stretch"</string>
+    <string name="preview_streak_2">"Streak 5"</string>
+    <string name="preview_routine_3">"Read 20 pages"</string>
+    <string name="preview_streak_3">"Streak 31"</string>
+    <string name="preview_goal_title">"Run a half marathon"</string>
+    <string name="preview_goal_numbers">"13/21 km · 62%"</string>
+    <string name="preview_goal_target">"Target 2026-10-04"</string>
 </resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Picker preview of the task list widget: static sample rows (the live layout is an empty list). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_panel" android:orientation="vertical" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:singleLine="true" android:text="@string/preview_list_title" android:textColor="@color/widget_text" android:textSize="16sp" android:textStyle="bold" />
+        <TextView android:layout_width="32dp" android:layout_height="32dp" android:background="@drawable/add_button" android:gravity="center" android:text="+" android:textColor="@android:color/white" android:textSize="20sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ring" android:tint="#D32F2F" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:singleLine="true" android:ellipsize="end" android:text="@string/preview_task_1" android:textColor="@color/widget_text" android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:background="@drawable/chip" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:singleLine="true" android:text="@string/preview_due_today" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ring" android:tint="#F57C00" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:singleLine="true" android:ellipsize="end" android:text="@string/preview_task_2" android:textColor="@color/widget_text" android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:background="@drawable/chip" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:singleLine="true" android:text="@string/preview_due_today" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ring" android:tint="#1976D2" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:singleLine="true" android:ellipsize="end" android:text="@string/preview_task_3" android:textColor="@color/widget_text" android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:background="@drawable/chip" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:singleLine="true" android:text="@string/preview_due_tomorrow" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ring" android:tint="#9E9E9E" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:singleLine="true" android:ellipsize="end" android:text="@string/preview_task_4" android:textColor="@color/widget_text" android:textSize="14sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:background="@drawable/chip" android:paddingStart="6dp" android:paddingEnd="6dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:singleLine="true" android:text="@string/preview_due_tomorrow" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Picker preview of the Routines widget. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_panel" android:orientation="vertical" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_1" android:textColor="@color/widget_text" android:textSize="16sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_1" android:textColor="@color/widget_muted" android:textSize="12sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_2" android:textColor="@color/widget_text" android:textSize="16sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_2" android:textColor="@color/widget_muted" android:textSize="12sp" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_3" android:textColor="@color/widget_text" android:textSize="16sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_3" android:textColor="@color/widget_muted" android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>
