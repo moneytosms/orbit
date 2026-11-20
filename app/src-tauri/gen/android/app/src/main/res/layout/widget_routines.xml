@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #71 Routines widget frame: the list of today's unchecked Routines, or the "All done today" empty state. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/routines_panel"
+    android:padding="12dp">
+
+    <ListView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:divider="@null"
+        android:dividerHeight="0dp" />
+
+    <TextView
+        android:id="@+id/empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="@string/routines_done_today"
+        android:textSize="16sp"
+        android:visibility="gone" />
+</FrameLayout>

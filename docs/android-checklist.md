@@ -27,3 +27,17 @@ Create a Task due a few minutes ahead with a timed due (or a reminder at a set t
 6. **Permission.** On Android 13+, a fresh install asks for notification permission on first open. Deny it, then confirm in Settings that the app shows no notifications; allow it and confirm they appear.
 7. **Battery guidance.** On first open a dialog explains unrestricted battery use; "Open app info" opens the app's settings page. It must not appear again after dismissing it.
 8. **OEM battery saver (Samsung, Xiaomi, Huawei, etc.).** Set the app to unrestricted battery use, leave the phone idle for 30 minutes, and confirm the reminder still fires on time.
+
+## #71 Routines and Goal widgets
+
+Add each widget from the launcher's widget picker. Routines needs Android 12 (API 31) or later for the list.
+
+1. **Routines list.** Add the Routines widget. Expect today's unchecked Routines, each with its streak in muted text. A Routine already checked today is absent.
+2. **Check-in and undo.** Tap a Routine. Expect its name struck through and an "Undo" label. Tap it again within 2 s: it returns unchanged, and no check-in is recorded. Let the 2 s pass instead: the Routine leaves the list and `checkin` shows it as done for today.
+3. **All done.** Check in every Routine for today. Expect the "All done today" empty state.
+4. **Area filter.** Add a second Routines widget, pick one Area in its setup. Expect only that Area's Routines.
+5. **Goal card.** Add the Goal widget, pick one Goal. Expect its name, a progress bar with a percentage, and a target date when it has one. Tap it: Orbit opens.
+6. **Goal list.** Add another Goal widget and pick "All Goals (list)". Expect each Goal with a bar and a percentage. Tap one: Orbit opens on that Goal.
+7. **Behind pace.** A Goal behind its pace shows the "Behind" label in both the card and the list.
+8. **Refresh.** Change a Routine or Goal in Orbit or sync from another device. Expect both widgets to update after the next sync.
+9. **Removed Goal.** Delete the Goal shown in a card widget. Expect "This Goal is gone" after the next refresh.

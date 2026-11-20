@@ -10,4 +10,21 @@
     <string name="battery_message">"Some phone makers pause apps to save battery, which can delay or drop reminders. Set Orbit to Unrestricted battery use (Battery, under App info)."</string>
     <string name="battery_open">"Open app info"</string>
     <string name="battery_later">"Later"</string>
+    <!-- #71 -->
+    <string name="routines_widget_label">"Routines"</string>
+    <string name="routines_widget_description">"Today's Routines. Tap one to check it in."</string>
+    <string name="routines_done_today">"All done today"</string>
+    <string name="routines_undo">"Undo"</string>
+    <string name="routines_streak">"Streak %1$d"</string>
+    <string name="routines_config_all">"All areas"</string>
+    <string name="goal_widget_label">"Goal"</string>
+    <string name="goal_widget_description">"A Goal as a card, or a list of Goals. Tap to open it in Orbit."</string>
+    <string name="goal_percent">"%1$d%%"</string>
+    <string name="goal_target">"Target %1$s"</string>
+    <string name="goal_behind">"Behind"</string>
+    <string name="goal_missing">"This Goal is gone"</string>
+    <string name="goal_none">"No Goals"</string>
+    <string name="goal_config_all">"All Goals (list)"</string>
+    <string name="goal_config_area">"Area: %1$s (list)"</string>
+    <string name="goal_config_card">"Goal: %1$s (card)"</string>
 </resources>
