@@ -1,0 +1,10 @@
+.git
+target
+data
+**/node_modules
+app/dist
+app/wasm
+app/src-tauri/target
+app/src-tauri/gen
+.remember
+.claude

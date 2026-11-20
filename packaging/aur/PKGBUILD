@@ -1,0 +1,18 @@
+pkgname=orbit-bin
+pkgver=0.0.1
+pkgrel=1
+pkgdesc="Personal task and notes app (Todoist-style) that syncs to a self-hosted Orbit server"
+arch=('x86_64')
+url="https://github.com/moneytosms/orbit"
+license=('AGPL3')
+depends=('webkit2gtk-4.1' 'libayatana-appindicator')
+provides=('orbit-app')
+conflicts=('orbit-app')
+options=('!strip')
+source=("Orbit_${pkgver}_amd64.AppImage::https://github.com/moneytosms/orbit/releases/download/v${pkgver}/Orbit_${pkgver}_amd64.AppImage")
+# Replace SKIP with the release AppImage checksum: updpkgsums (see packaging/aur/README.md)
+sha256sums=('SKIP')
+
+package() {
+  install -Dm755 "$srcdir/Orbit_${pkgver}_amd64.AppImage" "$pkgdir/usr/bin/orbit-app"
+}
