@@ -253,6 +253,17 @@ impl Client {
         Ok(body)
     }
 
+    /// GETs a server endpoint as this Device and returns the raw body. A 401 is `is_signed_out`;
+    /// any other failure is the HTTP status.
+    pub async fn download(&self, path: &str) -> Result<Vec<u8>> {
+        let mut req = self.http.get(format!("{}{path}", self.url));
+        if let Some(token) = meta(&self.db, "auth")? {
+            req = req.bearer_auth(token);
+        }
+        let res = req.send().await?.error_for_status()?;
+        Ok(res.bytes().await?.to_vec())
+    }
+
     /// Sends the outbox in batches of 100 and merges each delta. On a network or HTTP error
     /// (401, 426, ...) the outbox stays queued and the error is returned.
     pub async fn sync(&mut self, now_ms: u64) -> Result<Vec<Rejection>> {

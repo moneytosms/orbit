@@ -135,6 +135,14 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Download everything as a zip: items.json, Pages as .md and attachments.
+    #[command(
+        after_help = "Examples:\n  orbit export orbit-export.zip\n  orbit --json export backup.zip"
+    )]
+    Export {
+        /// Where to write the zip.
+        file: PathBuf,
+    },
     /// Print a short reference: commands, refs, listings, JSON shapes and exit codes.
     #[command(after_help = "Examples:\n  orbit guide\n  orbit --json guide")]
     Guide,
@@ -199,6 +207,7 @@ fn run(command: Cmd) -> Done {
             from: Import::Todoist { maps, yes },
         } => cmd::import_todoist(&maps, yes),
         Cmd::Checkin { r, date, dry_run } => cmd::checkin(&r, date.as_deref(), dry_run),
+        Cmd::Export { file } => cmd::export(&file),
         Cmd::Guide => guide::guide(),
         Cmd::Docs { dir } => docs::write(&dir),
         Cmd::Mcp | Cmd::Completions { .. } => unreachable!("handled in main"),

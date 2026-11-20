@@ -23,6 +23,7 @@ Commands:
   search       Find tasks by words
   import       Bring data in from another app
   checkin      Check a routine in for a day (default today)
+  export       Download everything as a zip: items.json, Pages as .md and attachments
   guide        Print a short reference: commands, refs, listings, JSON shapes and exit codes
   mcp          Run as an MCP server over stdio, so AI tools can use Orbit
   completions  Print shell completions to stdout
@@ -402,6 +403,29 @@ Examples:
   orbit checkin 1
   orbit checkin 1 --date 2026-11-19
   orbit checkin 1 --dry-run
+```
+
+### `orbit export`
+
+```text
+Download everything as a zip: items.json, Pages as .md and attachments
+
+Usage: orbit export [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>
+          Where to write the zip
+
+Options:
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit export orbit-export.zip
+  orbit --json export backup.zip
 ```
 
 ### `orbit guide`

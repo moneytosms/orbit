@@ -112,3 +112,54 @@ async fn export_and_disk_need_a_device() {
     let (status, _, _) = get(&app, "/disk", false).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn export_has_pages_as_markdown_and_their_blobs() {
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let bytes = b"attachment bytes";
+    let hash = hex::encode(Sha256::digest(bytes));
+    let blob = dir
+        .path()
+        .join("blobs")
+        .join(&hash[..2])
+        .join(&hash[2..4])
+        .join(&hash);
+    std::fs::create_dir_all(blob.parent().unwrap()).unwrap();
+    std::fs::write(&blob, bytes).unwrap();
+    let area = "01900000-0000-7000-8000-0000000000a1";
+    let page = "01900000-0000-7000-8000-0000000000b1";
+    let body = format!("# Hi\n\n![pic](blob:{hash})\n");
+    sync(
+        &app,
+        json!({ "v": 1, "commands": [
+            { "uuid": "01900000-0000-7000-8000-0000000000c1", "type": "area.create",
+              "args": { "id": area, "name": "Home", "order": "a" },
+              "hlc": { "wall": 1000, "counter": 0, "device": DEVICE } },
+            { "uuid": "01900000-0000-7000-8000-0000000000c2", "type": "page.create",
+              "args": { "id": page, "parent_id": area, "title": "My Notes!", "body": body },
+              "hlc": { "wall": 1001, "counter": 0, "device": DEVICE } },
+        ] }),
+    )
+    .await;
+
+    let (status, _, zipped) = get(&app, "/export", true).await;
+    assert_eq!(status, StatusCode::OK);
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zipped)).unwrap();
+    let mut md = String::new();
+    archive
+        .by_name("pages/my-notes.md")
+        .unwrap()
+        .read_to_string(&mut md)
+        .unwrap();
+    assert_eq!(md, body);
+    let mut raw = Vec::new();
+    archive
+        .by_name(&format!("blobs/{hash}"))
+        .unwrap()
+        .read_to_end(&mut raw)
+        .unwrap();
+    assert_eq!(raw, bytes);
+    assert!(archive.by_name("items.json").is_ok());
+}

@@ -235,6 +235,43 @@ pub fn status() -> Done {
     ))
 }
 
+pub fn export(file: &Path) -> Done {
+    let ctx = open()?;
+    if ctx.url.is_empty() {
+        return Err(fail(
+            "no_server",
+            "not logged in to a server",
+            Some("run `orbit login <url>`"),
+        ));
+    }
+    if !ctx.client.is_signed_in().map_err(internal)? {
+        return Err(fail(
+            "signed_out",
+            "this device is signed out",
+            Some("run `orbit login <url>`"),
+        ));
+    }
+    let bytes = runtime()?
+        .block_on(ctx.client.download("/export"))
+        .map_err(|e| {
+            if is_signed_out(&*e) {
+                fail(
+                    "signed_out",
+                    "the server no longer accepts this device",
+                    Some("run `orbit login <url>`"),
+                )
+            } else {
+                fail("network", e.to_string(), Some("try again later"))
+            }
+        })?;
+    std::fs::write(file, &bytes).map_err(internal)?;
+    let path = file.display().to_string();
+    Ok((
+        format!("wrote {path} ({} bytes)", bytes.len()),
+        json!({ "path": path, "bytes": bytes.len() }),
+    ))
+}
+
 /// Open (not done, not in the Trash) tasks, in list order.
 fn open_tasks(client: &Client) -> R<Vec<Task>> {
     let mut tasks: Vec<Task> = client

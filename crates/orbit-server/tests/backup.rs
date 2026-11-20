@@ -60,3 +60,36 @@ fn backup_without_dir_prints_usage_and_exits_2() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("usage: orbit-server backup"));
 }
+
+const HASH: &str = "abcd000000000000000000000000000000000000000000000000000000000001";
+
+fn blob_file(data: &std::path::Path) -> std::path::PathBuf {
+    data.join("blobs").join("ab").join("cd").join(HASH)
+}
+
+#[test]
+fn snapshot_includes_blobs_and_restore_brings_them_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    let snaps = tmp.path().join("snaps");
+    fs::create_dir_all(blob_file(&data).parent().unwrap()).unwrap();
+    fs::write(blob_file(&data), b"attachment").unwrap();
+    let conn = Connection::open(data.join("orbit.db")).unwrap();
+    conn.execute_batch("CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('original');")
+        .unwrap();
+    drop(conn);
+
+    let out = run(&data, &["backup", snaps.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(fs::read(blob_file(&snaps)).unwrap(), b"attachment");
+
+    fs::remove_file(blob_file(&data)).unwrap();
+    let snap = fs::read_dir(&snaps)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "db"))
+        .unwrap();
+    let out = run(&data, &["restore", snap.to_str().unwrap()]);
+    assert!(out.status.success());
+    assert_eq!(fs::read(blob_file(&data)).unwrap(), b"attachment");
+}
