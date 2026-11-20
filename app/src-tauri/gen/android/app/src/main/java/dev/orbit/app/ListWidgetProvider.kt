@@ -234,12 +234,23 @@ class ListWidgetProvider : AppWidgetProvider() {
             val title = row.optString("title")
             val views = RemoteViews(ctx.packageName, R.layout.widget_list_row)
             views.setImageViewResource(R.id.row_circle, if (done) R.drawable.filled_circle else R.drawable.ring)
-            views.setInt(R.id.row_circle, "setColorFilter", priorityColor(row.optInt("priority", 4)))
+            views.setInt(R.id.row_circle, "setColorFilter", priorityColor(ctx, row.optInt("priority", 4)))
             views.setTextViewText(R.id.row_title, if (done) strike(title) else title)
 
             val due = dueLabel(row)
             views.setViewVisibility(R.id.row_due, if (due == null) View.GONE else View.VISIBLE)
-            if (due != null) views.setTextViewText(R.id.row_due, due)
+            if (due != null) {
+                views.setTextViewText(R.id.row_due, due)
+                // Today reads in the accent, anything overdue in the warning colour, later dates stay quiet.
+                val day = row.str("due")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                val (bg, fg) = when {
+                    day == null || day.isAfter(LocalDate.now()) -> R.drawable.chip to R.color.widget_muted
+                    day.isEqual(LocalDate.now()) -> R.drawable.chip_accent to R.color.widget_accent
+                    else -> R.drawable.chip_warn to R.color.widget_warn
+                }
+                views.setInt(R.id.row_due, "setBackgroundResource", bg)
+                views.setTextColor(R.id.row_due, ctx.getColor(fg))
+            }
 
             val glyphs = listOfNotNull(
                 if (row.optBoolean("recurring")) "↻" else null,
@@ -266,16 +277,16 @@ class ListWidgetProvider : AppWidgetProvider() {
         private fun fill(action: String, taskId: String): Intent =
             Intent().putExtra(ListWidget.EXTRA_ACTION, action).putExtra(ListWidget.EXTRA_TASK, taskId)
 
-        private fun priorityColor(priority: Int): Int = when (priority) {
-            1 -> Color.parseColor("#D32F2F")
-            2 -> Color.parseColor("#F57C00")
-            3 -> Color.parseColor("#1976D2")
-            else -> Color.parseColor("#9E9E9E")
-        }
+        private fun priorityColor(ctx: Context, priority: Int): Int = ctx.getColor(
+            when (priority) {
+                1 -> R.color.widget_p1
+                2 -> R.color.widget_p2
+                3 -> R.color.widget_p3
+                else -> R.color.widget_p4
+            }
+        )
 
-        /** The system accent on Android 12+, a static blue below that. */
-        private fun accent(ctx: Context): Int =
-            if (Build.VERSION.SDK_INT >= 31) ctx.getColor(android.R.color.system_accent1_600) else Color.parseColor("#3949AB")
+        private fun accent(ctx: Context): Int = ctx.getColor(R.color.widget_accent)
 
         private fun strike(s: String): CharSequence =
             SpannableString(s).apply { setSpan(StrikethroughSpan(), 0, length, SpannableString.SPAN_INCLUSIVE_EXCLUSIVE) }

@@ -71,6 +71,7 @@ class RoutinesWidgetProvider : AppWidgetProvider() {
                         R.id.name, "setPaintFlags",
                         Paint.ANTI_ALIAS_FLAG or (if (isPending) Paint.STRIKE_THRU_TEXT_FLAG else 0)
                     )
+                    row.setImageViewResource(R.id.check, if (isPending) R.drawable.filled_circle else R.drawable.ring)
                     row.setViewVisibility(R.id.undo, if (isPending) View.VISIBLE else View.GONE)
                     row.setOnClickFillInIntent(R.id.row, Intent().putExtra(EXTRA_ROUTINE_ID, rid))
                     items.addItem(rid.hashCode().toLong(), row)
@@ -81,6 +82,8 @@ class RoutinesWidgetProvider : AppWidgetProvider() {
                 views.setPendingIntentTemplate(R.id.list, template)
                 views.setViewVisibility(R.id.list, if (count == 0) View.GONE else View.VISIBLE)
                 views.setViewVisibility(R.id.empty, if (count == 0) View.VISIBLE else View.GONE)
+                views.setTextViewText(R.id.left, ctx.getString(R.string.routines_left, count))
+                views.setViewVisibility(R.id.left, if (count == 0) View.GONE else View.VISIBLE)
                 mgr.updateAppWidget(widget, views)
             }
         }

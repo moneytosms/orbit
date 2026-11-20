@@ -7,10 +7,20 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <!-- Goal and Routines widgets follow the system theme. -->
-    <color name="widget_panel">#CCF3F1F6</color>
-    <color name="widget_bg">#F3F1F6</color>
-    <color name="widget_text">#1B1B1F</color>
-    <color name="widget_muted">#5F6368</color>
-    <color name="widget_warn">#B3261E</color>
+    <!-- Widgets use the app's own tokens (app/src/app.css), light here and dark in values-night. -->
+    <color name="widget_panel">#FBFAF8</color>
+    <color name="widget_line">#EBE7E0</color>
+    <color name="widget_sunk">#E9E4DC</color>
+    <color name="widget_text">#2A2723</color>
+    <color name="widget_muted">#6B665E</color>
+    <color name="widget_accent">#C2552F</color>
+    <color name="widget_accent_ink">#FFFFFF</color>
+    <color name="widget_accent_soft">#F8EBE4</color>
+    <color name="widget_warn">#BB3A2A</color>
+    <color name="widget_warn_soft">#F9E6E2</color>
+    <color name="widget_ok">#3D7A4D</color>
+    <color name="widget_p1">#BB3A2A</color>
+    <color name="widget_p2">#C77100</color>
+    <color name="widget_p3">#3B6CB0</color>
+    <color name="widget_p4">#8A847A</color>
 </resources>

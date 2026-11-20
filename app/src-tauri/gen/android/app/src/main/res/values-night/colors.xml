@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_panel">#CC1E2124</color>
-    <color name="widget_bg">#1E2124</color>
-    <color name="widget_text">#FFFFFF</color>
-    <color name="widget_muted">#9AA0A6</color>
-    <color name="widget_warn">#F2B8B5</color>
+    <color name="widget_panel">#252321</color>
+    <color name="widget_line">#3A3733</color>
+    <color name="widget_sunk">#3A3733</color>
+    <color name="widget_text">#EDE8E0</color>
+    <color name="widget_muted">#A8A197</color>
+    <color name="widget_accent">#E2835E</color>
+    <color name="widget_accent_ink">#1B1A18</color>
+    <color name="widget_accent_soft">#3A281F</color>
+    <color name="widget_warn">#EF8070</color>
+    <color name="widget_warn_soft">#3A2320</color>
+    <color name="widget_ok">#7FC08C</color>
+    <color name="widget_p1">#EF8070</color>
+    <color name="widget_p2">#E2AB5A</color>
+    <color name="widget_p3">#79A2E0</color>
+    <color name="widget_p4">#8F897F</color>
 </resources>

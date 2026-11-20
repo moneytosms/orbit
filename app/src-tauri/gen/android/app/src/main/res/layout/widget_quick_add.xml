@@ -20,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="+"
-            android:textColor="@android:color/white"
+            android:textColor="@color/widget_accent_ink"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -30,8 +30,9 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:singleLine="true"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/quick_add_label"
-            android:textColor="@android:color/white"
+            android:textColor="@color/widget_accent_ink"
             android:textSize="14sp" />
     </LinearLayout>
 </FrameLayout>

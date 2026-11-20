@@ -1,16 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Picker preview of the Routines widget. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_panel" android:orientation="vertical" android:padding="12dp">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_1" android:textColor="@color/widget_text" android:textSize="16sp" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_1" android:textColor="@color/widget_muted" android:textSize="12sp" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_panel" android:orientation="vertical" android:padding="14dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-medium" android:text="@string/routines_header" android:textColor="@color/widget_text" android:textSize="17sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="@drawable/chip_accent" android:paddingBottom="2dp" android:paddingEnd="8dp" android:paddingStart="8dp" android:paddingTop="2dp" android:text="3 left" android:textColor="@color/widget_accent" android:textSize="12sp" />
     </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_2" android:textColor="@color/widget_text" android:textSize="16sp" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_2" android:textColor="@color/widget_muted" android:textSize="12sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingBottom="7dp" android:paddingTop="7dp">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ring" android:tint="@color/widget_accent" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/preview_routine_1" android:textColor="@color/widget_text" android:textSize="14sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/preview_streak_1" android:textColor="@color/widget_muted" android:textSize="11sp" />
+        </LinearLayout>
     </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_routine_3" android:textColor="@color/widget_text" android:textSize="16sp" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:singleLine="true" android:text="@string/preview_streak_3" android:textColor="@color/widget_muted" android:textSize="12sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingBottom="7dp" android:paddingTop="7dp">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ring" android:tint="@color/widget_accent" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/preview_routine_2" android:textColor="@color/widget_text" android:textSize="14sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/preview_streak_2" android:textColor="@color/widget_muted" android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingBottom="7dp" android:paddingTop="7dp">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ring" android:tint="@color/widget_accent" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/preview_routine_3" android:textColor="@color/widget_text" android:textSize="14sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/preview_streak_3" android:textColor="@color/widget_muted" android:textSize="11sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

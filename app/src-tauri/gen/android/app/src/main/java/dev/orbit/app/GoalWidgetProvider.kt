@@ -42,6 +42,8 @@ class GoalWidgetProvider : AppWidgetProvider() {
                     val goalId = p.getString("goal_$widget", "") ?: ""
                     val goal = WidgetData.objects(Core.goals(dir, today, ""))
                         .firstOrNull { it.getString("id") == goalId }
+                    // The card has no "Goals" header, and neither does the empty message.
+                    views.setViewVisibility(R.id.header, View.GONE)
                     if (goal == null) {
                         views.setTextViewText(R.id.empty, ctx.getString(R.string.goal_missing))
                         views.setViewVisibility(R.id.empty, View.VISIBLE)
@@ -49,7 +51,8 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val pct = percent(goal)
                         views.setTextViewText(R.id.card_title, goal.getString("name"))
                         views.setProgressBar(R.id.card_bar, 100, pct, false)
-                        views.setTextViewText(R.id.card_numbers, numbers(ctx, goal, pct))
+                        views.setTextViewText(R.id.card_percent, ctx.getString(R.string.goal_percent, pct))
+                        views.setTextViewText(R.id.card_numbers, counts(goal) ?: "")
                         views.setViewVisibility(R.id.card_chip, visible(goal.optBoolean("behind")))
                         views.setViewVisibility(R.id.card_target, visible(!goal.isNull("target_date")))
                         if (!goal.isNull("target_date")) {
@@ -70,7 +73,9 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val row = RemoteViews(ctx.packageName, R.layout.widget_goal_row)
                         row.setTextViewText(R.id.name, g.getString("name"))
                         row.setProgressBar(R.id.bar, 100, pct, false)
-                        row.setTextViewText(R.id.percent, numbers(ctx, g, pct))
+                        row.setTextViewText(R.id.percent, ctx.getString(R.string.goal_percent, pct))
+                        row.setTextViewText(R.id.counts, counts(g) ?: "")
+                        row.setViewVisibility(R.id.counts, visible(!g.isNull("total")))
                         row.setViewVisibility(R.id.chip, visible(g.optBoolean("behind")))
                         row.setOnClickFillInIntent(R.id.row, Intent().putExtra(EXTRA_OPEN, "goal:$gid"))
                         items.addItem(gid.hashCode().toLong(), row)
@@ -91,11 +96,11 @@ class GoalWidgetProvider : AppWidgetProvider() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        /** "3/10 · 30%" for a counted or target Goal, just the percent for a Manual one. */
-        private fun numbers(ctx: Context, g: JSONObject, pct: Int): String {
-            if (g.isNull("total")) return ctx.getString(R.string.goal_percent, pct)
+        /** "3/10" for a counted or target Goal, null for a Manual one. */
+        private fun counts(g: JSONObject): String? {
+            if (g.isNull("total")) return null
             fun n(d: Double) = if (d == Math.floor(d)) d.toLong().toString() else "%.1f".format(d)
-            return ctx.getString(R.string.goal_numbers, n(g.getDouble("done")), n(g.getDouble("total")), pct)
+            return "${n(g.getDouble("done"))}/${n(g.getDouble("total"))}"
         }
 
         private fun percent(g: JSONObject): Int = (g.optDouble("progress", 0.0) * 100).roundToInt().coerceIn(0, 100)

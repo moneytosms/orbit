@@ -38,6 +38,9 @@
     <string name="goal_target">"Target %1$s"</string>
     <string name="goal_behind">"Behind"</string>
     <string name="goal_missing">"This Goal is gone"</string>
+    <string name="goal_header">"Goals"</string>
+    <string name="routines_header">"Routines"</string>
+    <string name="routines_left">"%1$d left"</string>
     <string name="goal_none">"No Goals"</string>
     <string name="goal_config_all">"All Goals (list)"</string>
     <string name="goal_config_area">"Area: %1$s (list)"</string>
