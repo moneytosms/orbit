@@ -3240,18 +3240,11 @@ dependencies = [
 name = "orbit-cli"
 version = "0.0.1"
 dependencies = [
- "axum",
  "clap",
  "clap_complete",
  "clap_mangen",
  "orbit-client",
  "orbit-core",
- "orbit-server",
- "reqwest",
- "rusqlite",
- "serde_json",
- "tempfile",
- "tokio",
 ]
 
 [[package]]
