@@ -14,7 +14,9 @@ let started = false
 async function provisionToken() {
   try {
     if (await invoke<boolean>('has_token')) return
-    const { device, token } = await createToken('Orbit desktop (reminders)')
+    const { device, token } = await createToken(
+      navigator.userAgent.includes('Android') ? 'Orbit Android (background sync)' : 'Orbit desktop (reminders)',
+    )
     await invoke('set_token', { server: location.origin, device, token })
   } catch {
     // Signed out or offline: retried at the next start or window focus.

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbit</title>
+    <style>
+      body { font: 16px system-ui, sans-serif; margin: 0; padding: 24px; background: #fbfaf8; color: #222; }
+      input, button { font: inherit; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 12px; }
+      p { color: #b3261e; }
+    </style>
+  </head>
+  <body>
+    <h1>Orbit server</h1>
+    <form id="f">
+      <input id="url" type="url" placeholder="https://orbit.example.com" required autofocus />
+      <button>Connect</button>
+    </form>
+    <p id="err"></p>
+    <script>
+      // Shown only in the Android app until a server URL is saved; the app then loads that server.
+      document.getElementById('f').onsubmit = (e) => {
+        e.preventDefault()
+        window.__TAURI_INTERNALS__
+          .invoke('set_server', { url: document.getElementById('url').value })
+          .catch((m) => (document.getElementById('err').textContent = String(m)))
+      }
+    </script>
+  </body>
+</html>

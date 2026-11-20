@@ -1,13 +1,22 @@
+#[cfg(target_os = "android")]
+mod android;
+#[cfg(desktop)]
 mod reminders;
+mod replica;
+#[cfg(desktop)]
 mod token;
+#[cfg(desktop)]
 mod tray;
 
+#[cfg(desktop)]
 use tauri::WindowEvent;
 
+#[cfg(desktop)]
 fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn set_token(server: String, device: String, token: String) -> Result<(), String> {
     token::save(&token::Stored {
@@ -18,18 +27,39 @@ fn set_token(server: String, device: String, token: String) -> Result<(), String
     .map_err(|e| e.to_string())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn clear_token() {
     token::clear();
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn has_token() -> bool {
     token::has()
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+#[cfg(desktop)]
+fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle().clone();
+    tray::build(&handle)?;
+    reminders::start(handle.clone());
+    let args: Vec<String> = std::env::args().collect();
+    if !has_flag(&args, "--hidden") {
+        tray::show_main(&handle);
+    }
+    // The first `--capture` launch also needs the page to be listening, so give it a moment.
+    if has_flag(&args, "--capture") {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            tray::capture(&handle);
+        });
+    }
+    Ok(())
+}
+
+#[cfg(desktop)]
+fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if has_flag(&args, "--capture") {
@@ -44,23 +74,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![set_token, clear_token, has_token])
-        .setup(|app| {
-            let handle = app.handle().clone();
-            tray::build(&handle)?;
-            reminders::start(handle.clone());
-            let args: Vec<String> = std::env::args().collect();
-            if !has_flag(&args, "--hidden") {
-                tray::show_main(&handle);
-            }
-            // The first `--capture` launch also needs the page to be listening, so give it a moment.
-            if has_flag(&args, "--capture") {
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    tray::capture(&handle);
-                });
-            }
-            Ok(())
-        })
+        .setup(|app| setup_desktop(app))
         .on_window_event(|window, event| {
             // Closing hides to tray; Quit in the tray menu exits.
             if let WindowEvent::CloseRequested { api, .. } = event
@@ -70,6 +84,16 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
+}
+
+#[cfg(target_os = "android")]
+fn builder() -> tauri::Builder<tauri::Wry> {
+    android::builder()
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    builder()
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
