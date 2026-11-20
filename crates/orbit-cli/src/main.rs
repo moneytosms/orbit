@@ -1,13 +1,22 @@
 mod cmd;
+mod docs;
+mod guide;
+mod mcp;
 mod out;
 mod refs;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use out::{Done, print_err, print_ok};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "orbit", version, about = "Orbit from the terminal")]
+#[command(
+    name = "orbit",
+    version,
+    about = "Orbit from the terminal",
+    after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit ls\n  orbit done 1\n  orbit guide"
+)]
 struct Cli {
     /// Print one JSON object per result, with `"v":1`, instead of text.
     #[arg(long, global = true)]
@@ -19,6 +28,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin.
+    #[command(
+        after_help = "Examples:\n  orbit login https://orbit.example.com\n  orbit login https://orbit.example.com --totp 123456\n  echo \"$PASSWORD\" | orbit login https://orbit.example.com --name laptop"
+    )]
     Login {
         url: String,
         /// The current two-factor code, if the account has one.
@@ -28,6 +40,7 @@ enum Cmd {
         name: String,
     },
     /// Sign this device out. Unsynced changes wait for the next login.
+    #[command(after_help = "Examples:\n  orbit logout --dry-run\n  orbit logout --yes")]
     Logout {
         /// Log out even with unsynced changes.
         #[arg(long)]
@@ -36,10 +49,15 @@ enum Cmd {
         dry_run: bool,
     },
     /// Send queued changes to the server and fetch the rest.
+    #[command(after_help = "Examples:\n  orbit sync\n  orbit --json sync")]
     Sync,
     /// Show the server, sign-in state and unsynced count.
+    #[command(after_help = "Examples:\n  orbit status\n  orbit --json status")]
     Status,
     /// Add a task.
+    #[command(
+        after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run"
+    )]
     Add {
         #[arg(required = true)]
         title: Vec<String>,
@@ -50,16 +68,21 @@ enum Cmd {
         dry_run: bool,
     },
     /// List open tasks.
+    #[command(after_help = "Examples:\n  orbit ls\n  orbit ls --all\n  orbit --json ls")]
     Ls {
         #[arg(long)]
         all: bool,
     },
     /// Show what to do next.
+    #[command(after_help = "Examples:\n  orbit next\n  orbit next --all\n  orbit --json next")]
     Next {
         #[arg(long)]
         all: bool,
     },
     /// Complete a task.
+    #[command(
+        after_help = "Examples:\n  orbit done 1\n  orbit done 3f2b9c\n  orbit done 1 --dry-run"
+    )]
     Done {
         /// A row number from the last listing, or an id prefix of 6+ characters.
         r: String,
@@ -67,8 +90,12 @@ enum Cmd {
         dry_run: bool,
     },
     /// Show one task.
+    #[command(after_help = "Examples:\n  orbit show 1\n  orbit show 3f2b9c\n  orbit --json show 1")]
     Show { r: String },
     /// Change a task's title or description.
+    #[command(
+        after_help = "Examples:\n  orbit edit 1 --title \"buy oat milk\"\n  orbit edit 3f2b9c --description \"two litres\"\n  orbit edit 1 --title \"buy oat milk\" --dry-run"
+    )]
     Edit {
         r: String,
         #[arg(long)]
@@ -79,6 +106,9 @@ enum Cmd {
         dry_run: bool,
     },
     /// Find tasks by words.
+    #[command(
+        after_help = "Examples:\n  orbit search milk\n  orbit search dentist tomorrow\n  orbit search milk --all"
+    )]
     Search {
         #[arg(required = true)]
         words: Vec<String>,
@@ -86,11 +116,17 @@ enum Cmd {
         all: bool,
     },
     /// Bring data in from another app.
+    #[command(
+        after_help = "Examples:\n  orbit import todoist\n  orbit import todoist --map 2201=project:Home/Garden --yes"
+    )]
     Import {
         #[command(subcommand)]
         from: Import,
     },
     /// Check a routine in for a day (default today).
+    #[command(
+        after_help = "Examples:\n  orbit checkin 1\n  orbit checkin 1 --date 2026-11-19\n  orbit checkin 1 --dry-run"
+    )]
     Checkin {
         r: String,
         /// YYYY-MM-DD.
@@ -99,12 +135,38 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Print a short reference: commands, refs, listings, JSON shapes and exit codes.
+    #[command(after_help = "Examples:\n  orbit guide\n  orbit --json guide")]
+    Guide,
+    /// Run as an MCP server over stdio, so AI tools can use Orbit.
+    #[command(after_help = "Examples:\n  orbit mcp\n  claude mcp add orbit -- orbit mcp")]
+    Mcp,
+    /// Print shell completions to stdout.
+    #[command(
+        after_help = "Examples:\n  orbit completions bash > ~/.local/share/bash-completion/completions/orbit\n  orbit completions zsh > \"${fpath[1]}/_orbit\"\n  orbit completions fish > ~/.config/fish/completions/orbit.fish"
+    )]
+    Completions {
+        /// The shell to write completions for.
+        shell: clap_complete::Shell,
+    },
+    /// Write docs/cli.md and the man pages (maintainers; see `just docs`).
+    #[command(
+        hide = true,
+        after_help = "Examples:\n  orbit docs docs\n  orbit docs /tmp/orbit-docs"
+    )]
+    Docs {
+        /// The directory to write `cli.md` and `man/` into.
+        dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
 enum Import {
     /// Import active Todoist items. The token is read from ORBIT_TODOIST_TOKEN or stdin, used once
     /// and never stored. Without --yes it only previews the mapping.
+    #[command(
+        after_help = "Examples:\n  orbit import todoist\n  orbit import todoist --map 2201=project:Home/Garden\n  orbit import todoist --map 2201=inbox --yes"
+    )]
     Todoist {
         /// Change where a Todoist project goes: ID=area:NAME, ID=project:AREA/NAME or ID=inbox.
         #[arg(long = "map")]
@@ -137,6 +199,9 @@ fn run(command: Cmd) -> Done {
             from: Import::Todoist { maps, yes },
         } => cmd::import_todoist(&maps, yes),
         Cmd::Checkin { r, date, dry_run } => cmd::checkin(&r, date.as_deref(), dry_run),
+        Cmd::Guide => guide::guide(),
+        Cmd::Docs { dir } => docs::write(&dir),
+        Cmd::Mcp | Cmd::Completions { .. } => unreachable!("handled in main"),
     }
 }
 
@@ -161,7 +226,15 @@ fn main() -> ExitCode {
         }
     };
     let json = cli.json;
-    match run(cli.command) {
+    let command = match cli.command {
+        Cmd::Mcp => return mcp::serve(),
+        Cmd::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "orbit", &mut std::io::stdout());
+            return ExitCode::SUCCESS;
+        }
+        command => command,
+    };
+    match run(command) {
         Ok((human, body)) => {
             print_ok(json, &human, body);
             ExitCode::SUCCESS
@@ -170,5 +243,39 @@ fn main() -> ExitCode {
             print_err(json, &failure);
             ExitCode::from(failure.exit)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every command and subcommand (hidden ones too) shows examples in its help.
+    fn walk(cmd: &clap::Command, path: &str, missing: &mut Vec<String>) {
+        for sub in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+            let name = format!("{path} {}", sub.get_name());
+            let help = sub.clone().render_long_help().to_string();
+            if !help.contains("Examples") {
+                missing.push(name.clone());
+            }
+            walk(sub, &name, missing);
+        }
+    }
+
+    #[test]
+    fn every_command_help_has_examples() {
+        let mut root = Cli::command();
+        root.build();
+        let mut missing = vec![];
+        if !root
+            .clone()
+            .render_long_help()
+            .to_string()
+            .contains("Examples")
+        {
+            missing.push("orbit".to_string());
+        }
+        walk(&root, "orbit", &mut missing);
+        assert!(missing.is_empty(), "no examples in help for: {missing:?}");
     }
 }

@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-import 1  "import " 
+.SH NAME
+orbit\-import \- Bring data in from another app
+.SH SYNOPSIS
+\fBorbit import\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Bring data in from another app
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH SUBCOMMANDS
+.TP
+orbit\-import\-todoist(1)
+Import active Todoist items. The token is read from ORBIT_TODOIST_TOKEN or stdin, used once and never stored. Without \-\-yes it only previews the mapping
+.SH EXTRA
+Examples:
+  orbit import todoist
+  orbit import todoist \-\-map 2201=project:Home/Garden \-\-yes

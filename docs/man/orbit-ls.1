@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-ls 1  "ls " 
+.SH NAME
+orbit\-ls \- List open tasks
+.SH SYNOPSIS
+\fBorbit ls\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+List open tasks
+.SH OPTIONS
+.TP
+\fB\-\-all\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  orbit ls
+  orbit ls \-\-all
+  orbit \-\-json ls

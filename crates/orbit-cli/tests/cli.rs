@@ -378,3 +378,29 @@ fn import_todoist_previews_then_imports_with_yes() {
     let o = run(&["import", "todoist", "--map", "nonsense"]);
     assert_eq!(o.code, 2);
 }
+
+#[test]
+fn guide_has_its_sections() {
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit(d.path(), &["guide"]);
+    assert_eq!(o.code, 0);
+    for section in [
+        "Core commands",
+        "Refs",
+        "Filters and listings",
+        "JSON (--json",
+        "Exit codes",
+    ] {
+        assert!(o.stdout.contains(section), "missing {section}");
+    }
+}
+
+#[test]
+fn completions_print_for_each_shell() {
+    let d = tempfile::tempdir().unwrap();
+    for shell in ["bash", "zsh", "fish"] {
+        let o = orbit(d.path(), &["completions", shell]);
+        assert_eq!(o.code, 0, "{shell}: {}", o.stderr);
+        assert!(o.stdout.contains("orbit"), "{shell} completions name orbit");
+    }
+}

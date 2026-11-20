@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-show 1  "show " 
+.SH NAME
+orbit\-show \- Show one task
+.SH SYNOPSIS
+\fBorbit show\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+.SH DESCRIPTION
+Show one task
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+
+.SH EXTRA
+Examples:
+  orbit show 1
+  orbit show 3f2b9c
+  orbit \-\-json show 1

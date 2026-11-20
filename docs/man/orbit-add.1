@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-add 1  "add " 
+.SH NAME
+orbit\-add \- Add a task
+.SH SYNOPSIS
+\fBorbit add\fR [\fB\-\-id\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITITLE\fR> 
+.SH DESCRIPTION
+Add a task
+.SH OPTIONS
+.TP
+\fB\-\-id\fR \fI<ID>\fR
+Use this UUID for the task. Adding an id that exists is a no\-op
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fITITLE\fR>
+
+.SH EXTRA
+Examples:
+  orbit add "buy milk"
+  orbit add call the dentist tomorrow
+  orbit add \-\-id 3f2b9c1e\-6d4a\-4b8e\-9f1a\-2c7d5e8b0a11 "buy milk" \-\-dry\-run

@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-search 1  "search " 
+.SH NAME
+orbit\-search \- Find tasks by words
+.SH SYNOPSIS
+\fBorbit search\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIWORDS\fR> 
+.SH DESCRIPTION
+Find tasks by words
+.SH OPTIONS
+.TP
+\fB\-\-all\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIWORDS\fR>
+
+.SH EXTRA
+Examples:
+  orbit search milk
+  orbit search dentist tomorrow
+  orbit search milk \-\-all

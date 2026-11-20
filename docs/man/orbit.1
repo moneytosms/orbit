@@ -1,0 +1,76 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit 1  "orbit 0.0.0" 
+.SH NAME
+orbit \- Orbit from the terminal
+.SH SYNOPSIS
+\fBorbit\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Orbit from the terminal
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+orbit\-login(1)
+Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin
+.TP
+orbit\-logout(1)
+Sign this device out. Unsynced changes wait for the next login
+.TP
+orbit\-sync(1)
+Send queued changes to the server and fetch the rest
+.TP
+orbit\-status(1)
+Show the server, sign\-in state and unsynced count
+.TP
+orbit\-add(1)
+Add a task
+.TP
+orbit\-ls(1)
+List open tasks
+.TP
+orbit\-next(1)
+Show what to do next
+.TP
+orbit\-done(1)
+Complete a task
+.TP
+orbit\-show(1)
+Show one task
+.TP
+orbit\-edit(1)
+Change a task\*(Aqs title or description
+.TP
+orbit\-search(1)
+Find tasks by words
+.TP
+orbit\-import(1)
+Bring data in from another app
+.TP
+orbit\-checkin(1)
+Check a routine in for a day (default today)
+.TP
+orbit\-guide(1)
+Print a short reference: commands, refs, listings, JSON shapes and exit codes
+.TP
+orbit\-mcp(1)
+Run as an MCP server over stdio, so AI tools can use Orbit
+.TP
+orbit\-completions(1)
+Print shell completions to stdout
+.SH EXTRA
+Examples:
+  orbit add "buy milk"
+  orbit ls
+  orbit done 1
+  orbit guide
+.SH VERSION
+v0.0.0

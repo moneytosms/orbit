@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-edit 1  "edit " 
+.SH NAME
+orbit\-edit \- Change a task\*(Aqs title or description
+.SH SYNOPSIS
+\fBorbit edit\fR [\fB\-\-json\fR] [\fB\-\-title\fR] [\fB\-\-description\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+.SH DESCRIPTION
+Change a task\*(Aqs title or description
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-title\fR \fI<TITLE>\fR
+
+.TP
+\fB\-\-description\fR \fI<DESCRIPTION>\fR
+
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+
+.SH EXTRA
+Examples:
+  orbit edit 1 \-\-title "buy oat milk"
+  orbit edit 3f2b9c \-\-description "two litres"
+  orbit edit 1 \-\-title "buy oat milk" \-\-dry\-run

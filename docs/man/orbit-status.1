@@ -1,0 +1,20 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-status 1  "status " 
+.SH NAME
+orbit\-status \- Show the server, sign\-in state and unsynced count
+.SH SYNOPSIS
+\fBorbit status\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Show the server, sign\-in state and unsynced count
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  orbit status
+  orbit \-\-json status
