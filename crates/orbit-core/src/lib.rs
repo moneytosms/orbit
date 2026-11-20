@@ -776,6 +776,12 @@ pub enum Op {
         item_id: Uuid,
         phase_id: Option<Uuid>,
     },
+    #[serde(rename = "area.update")]
+    AreaUpdate {
+        id: Uuid,
+        #[serde(default)]
+        name: Option<String>,
+    },
 }
 
 /// Deserializes a present value, `null` included, as `Some`, so that an absent field
@@ -860,6 +866,7 @@ impl Op {
             | Op::PhaseUpdate { id, .. }
             | Op::PhaseComplete { id }
             | Op::PhaseUncomplete { id }
+            | Op::AreaUpdate { id, .. }
             | Op::PlacementSet { id, .. } => *id,
             Op::ReminderAdd { task_id, .. }
             | Op::ReminderRemove { task_id, .. }
@@ -1121,6 +1128,13 @@ impl Op {
             .collect(),
             Op::PhaseComplete { .. } | Op::PhaseUncomplete { .. } => vec!["completed_at"],
             Op::PlacementSet { .. } => vec!["phase_id"],
+            Op::AreaUpdate { name, .. } => {
+                if name.is_some() {
+                    vec!["name"]
+                } else {
+                    vec![]
+                }
+            }
         }
     }
 }
@@ -1428,6 +1442,17 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 touched_at: Some(cmd.hlc.wall.max(p.touched_at.unwrap_or(0))),
                 ..p
             })),
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::AreaUpdate { name, .. } => match existing {
+            Some(Row::Area(a)) => match name.as_deref().map(str::trim) {
+                Some("") => Err(ErrorCode::TitleRequired),
+                Some(n) => Ok(Row::Area(Area {
+                    name: n.into(),
+                    ..a
+                })),
+                None => Ok(Row::Area(a)),
+            },
             _ => Err(ErrorCode::NotFound),
         },
         Op::ViewCreate { .. }
@@ -2727,5 +2752,35 @@ mod tests {
             updated(serde_json::json!({ "title": "x" })).links,
             Vec::<Uuid>::new()
         );
+    }
+
+    #[test]
+    fn area_update_renames_and_rejects_bad_targets() {
+        let mut clocks = Clocks::new();
+        let row = apply_lww(
+            None,
+            &mut clocks,
+            &cmd(
+                "01900000-0000-7000-8000-0000000000c1",
+                "area.create",
+                serde_json::json!({ "id": uid(1), "name": "Home", "order": "a" }),
+                1000,
+            ),
+        )
+        .unwrap();
+        let upd = |name: &str, wall| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000c2",
+                "area.update",
+                serde_json::json!({ "id": uid(1), "name": name }),
+                wall,
+            )
+        };
+        let row = apply_lww(Some(row), &mut clocks, &upd("  Work ", 2000)).unwrap();
+        assert!(matches!(&row, Row::Area(a) if a.name == "Work"));
+        let row = apply_lww(Some(row), &mut clocks, &upd("Old", 1500)).unwrap();
+        assert!(matches!(&row, Row::Area(a) if a.name == "Work"));
+        assert!(apply(Some(row), &upd(" ", 3000)).is_err());
+        assert!(apply(None, &upd("X", 3000)).is_err());
     }
 }

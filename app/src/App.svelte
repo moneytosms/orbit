@@ -1,6 +1,7 @@
 <script lang="ts">
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
+  import Area from './lib/screens/Area.svelte'
   import Goals from './lib/screens/Goals.svelte'
   import Roadmap from './lib/screens/Roadmap.svelte'
   import Routines from './lib/screens/Routines.svelte'
@@ -141,6 +142,15 @@
         {/key}
       {:else if screen.name === 'upcoming'}
         <View id={VIEW_UPCOMING} {areas} onchange={refresh} />
+      {:else if screen.name === 'area'}
+        {#key screen.id}
+          {@const areaId = screen.id}
+          <Area id={areaId} {areas} onchange={refresh}>
+            {#snippet tasks()}
+              <Inbox parentId={areaId} {title} {rows} onchange={refresh} onadd={add} />
+            {/snippet}
+          </Area>
+        {/key}
       {:else if parent}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
       {:else if screen.name === 'goals'}
