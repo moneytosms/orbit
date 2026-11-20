@@ -44,11 +44,24 @@ jobs:
       - run: pnpm -C app install --frozen-lockfile
       - run: just wasm
       - name: AppImage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: cargo tauri build --bundles appimage
-      - name: Collect AppImage
+      - name: Collect AppImage, signature and latest.json
         run: |
           mkdir -p dist
-          cp target/release/bundle/appimage/*.AppImage dist/
+          cp target/release/bundle/appimage/*.AppImage target/release/bundle/appimage/*.AppImage.sig dist/
+          image=$(basename dist/*.AppImage)
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "Orbit $GITHUB_REF_NAME" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg sig "$(cat "dist/$image.sig")" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$image" \
+            '{version: $version, notes: $notes, pub_date: $date, platforms: {"linux-x86_64": {signature: $sig, url: $url}}}' \
+            > dist/latest.json
       - uses: actions/upload-artifact@v4
         with:
           name: linux

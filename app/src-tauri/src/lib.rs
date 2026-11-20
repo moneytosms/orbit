@@ -1,6 +1,8 @@
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(desktop)]
+mod desktop;
+#[cfg(desktop)]
 mod reminders;
 mod replica;
 #[cfg(desktop)]
@@ -18,7 +20,15 @@ fn has_flag(args: &[String], flag: &str) -> bool {
 
 #[cfg(desktop)]
 #[tauri::command]
-fn set_token(server: String, device: String, token: String) -> Result<(), String> {
+fn set_token(
+    window: tauri::WebviewWindow,
+    server: String,
+    device: String,
+    token: String,
+) -> Result<(), String> {
+    desktop::trusted(&window)?;
+    // The background replica talks to the saved server, not the origin the window happens to be on.
+    let server = desktop::saved().unwrap_or(server);
     token::save(&token::Stored {
         server,
         device,
@@ -29,22 +39,26 @@ fn set_token(server: String, device: String, token: String) -> Result<(), String
 
 #[cfg(desktop)]
 #[tauri::command]
-fn clear_token() {
-    token::clear();
+fn clear_token(window: tauri::WebviewWindow) {
+    if desktop::trusted(&window).is_ok() {
+        token::clear();
+    }
 }
 
 #[cfg(desktop)]
 #[tauri::command]
-fn has_token() -> bool {
-    token::has()
+fn has_token(window: tauri::WebviewWindow) -> bool {
+    desktop::trusted(&window).is_ok() && token::has()
 }
 
 #[cfg(desktop)]
 fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     tray::build(&handle)?;
-    reminders::start(handle.clone());
     let args: Vec<String> = std::env::args().collect();
+    desktop::apply_flag(&handle, &args);
+    reminders::start(handle.clone());
+    desktop::check_update(handle.clone());
     if !has_flag(&args, "--hidden") {
         tray::show_main(&handle);
     }
@@ -62,6 +76,7 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            desktop::apply_flag(app, &args);
             if has_flag(&args, "--capture") {
                 tray::capture(app);
             } else if !has_flag(&args, "--hidden") {
@@ -73,7 +88,16 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![set_token, clear_token, has_token])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            set_token,
+            clear_token,
+            has_token,
+            desktop::set_server
+        ])
+        .on_page_load(|webview, payload| {
+            desktop::on_page_load(webview, payload.url(), payload.event());
+        })
         .setup(|app| setup_desktop(app))
         .on_window_event(|window, event| {
             // Closing hides to tray; Quit in the tray menu exits.
