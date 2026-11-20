@@ -15,6 +15,7 @@
 | --- | --- |
 | `--hidden` | Start without showing the window (used by autostart). |
 | `--capture` | Show the window and open quick capture. If Orbit is already running, the running instance does it. |
+| `--server <url>` | Save the server address and open it (see Server address). |
 
 ## Hyprland
 
@@ -34,4 +35,14 @@ Autostart through the app itself (`tauri-plugin-autostart`) also launches it wit
 
 ## Server address
 
-The Rust side talks to the origin the window was loaded from, so run the app against your Orbit server (`devUrl` in development).
+The packaged app bundles only a launcher. On first start it shows a server-address page; enter your Orbit server URL (`http://` or `https://`, e.g. `https://orbit.example.com`) and the window loads the UI your server hosts (`ORBIT_WEB`). Sign in there as usual. The URL is saved in `$XDG_DATA_HOME/orbit/server`, next to `replica.db`, so later launches go straight to the server. If the saved server does not answer, the address page comes back with a Retry button.
+
+The server-hosted page may call only the token commands, the notification plugin and the tray/capture events. The background replica and reminders sync with the saved server, whatever origin the window is on.
+
+To change the server later, run `orbit-app --server https://other.example.com`. It saves the address and, if Orbit is already running, opens it in that window. Switching to a different server also drops the stored Device token; sign in again to create a new one. (Or delete `$XDG_DATA_HOME/orbit/server` and restart to get the address page.) In development, `devUrl` is used as before.
+
+## Updates
+
+The AppImage updates itself with `tauri-plugin-updater`. At start the app checks `https://github.com/moneytosms/orbit/releases/latest/download/latest.json`; a newer, signature-checked AppImage is downloaded and installed, and a notification says "Orbit updated, restart to apply". It never restarts on its own, and failures are only logged to stderr. The `.deb` is not updated this way.
+
+Releases are signed with a minisign key kept outside the repo (`~/.config/orbit/updater.key`; the public key is in `tauri.conf.json`). CI reads it from the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets and publishes `latest.json` and the `.sig` with the AppImage.

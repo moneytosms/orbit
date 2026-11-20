@@ -10,5 +10,11 @@
     "beforeBuildCommand": "pnpm build"
   },
   "app": { "windows": [{ "label": "main", "title": "Orbit", "visible": false }] },
-  "bundle": { "active": true, "targets": ["deb", "appimage"], "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico", "icons/icon.png"] }
+  "bundle": { "active": true, "createUpdaterArtifacts": true, "targets": ["deb", "appimage"], "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico", "icons/icon.png"] },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCRTg4RjI2QkM5MDhFQkMKUldTOGpwQzhKby9vaTlQMXp2Z3BEZHVrSTE4Qk5UdUFORGRSby9obURIVGJTbE5WTDk4SUZjV0kK",
+      "endpoints": ["https://github.com/moneytosms/orbit/releases/latest/download/latest.json"]
+    }
+  }
 }
