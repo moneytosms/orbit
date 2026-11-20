@@ -1,0 +1,7 @@
+{
+  "identifier": "android-remote",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "remote": { "urls": ["http://*", "https://*"] },
+  "permissions": ["core:default"]
+}
