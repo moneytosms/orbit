@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-done 1  "done " 
+.SH NAME
+orbit\-done \- Complete a task
+.SH SYNOPSIS
+\fBorbit done\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+.SH DESCRIPTION
+Complete a task
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+A row number from the last listing, or an id prefix of 6+ characters
+.SH EXTRA
+Examples:
+  orbit done 1
+  orbit done 3f2b9c
+  orbit done 1 \-\-dry\-run

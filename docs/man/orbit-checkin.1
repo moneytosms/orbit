@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-checkin 1  "checkin " 
+.SH NAME
+orbit\-checkin \- Check a routine in for a day (default today)
+.SH SYNOPSIS
+\fBorbit checkin\fR [\fB\-\-date\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+.SH DESCRIPTION
+Check a routine in for a day (default today)
+.SH OPTIONS
+.TP
+\fB\-\-date\fR \fI<DATE>\fR
+YYYY\-MM\-DD
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+
+.SH EXTRA
+Examples:
+  orbit checkin 1
+  orbit checkin 1 \-\-date 2026\-11\-19
+  orbit checkin 1 \-\-dry\-run

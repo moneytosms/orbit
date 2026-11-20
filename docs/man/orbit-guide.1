@@ -1,0 +1,20 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-guide 1  "guide " 
+.SH NAME
+orbit\-guide \- Print a short reference: commands, refs, listings, JSON shapes and exit codes
+.SH SYNOPSIS
+\fBorbit guide\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Print a short reference: commands, refs, listings, JSON shapes and exit codes
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  orbit guide
+  orbit \-\-json guide

@@ -26,6 +26,10 @@ web: wasm
     pnpm -C app install
     pnpm -C app dev
 
+# Regenerate docs/cli.md and the man pages in docs/man from the CLI definitions
+docs:
+    cargo run -q -p orbit-cli -- docs docs
+
 # Run `just check` before every push
 hooks:
     git config core.hooksPath .githooks

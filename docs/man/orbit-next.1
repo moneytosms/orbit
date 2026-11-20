@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-next 1  "next " 
+.SH NAME
+orbit\-next \- Show what to do next
+.SH SYNOPSIS
+\fBorbit next\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Show what to do next
+.SH OPTIONS
+.TP
+\fB\-\-all\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  orbit next
+  orbit next \-\-all
+  orbit \-\-json next

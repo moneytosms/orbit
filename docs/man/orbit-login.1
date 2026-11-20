@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-login 1  "login " 
+.SH NAME
+orbit\-login \- Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin
+.SH SYNOPSIS
+\fBorbit login\fR [\fB\-\-json\fR] [\fB\-\-totp\fR] [\fB\-\-name\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIURL\fR> 
+.SH DESCRIPTION
+Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-totp\fR \fI<TOTP>\fR
+The current two\-factor code, if the account has one
+.TP
+\fB\-\-name\fR \fI<NAME>\fR [default: orbit\-cli]
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIURL\fR>
+
+.SH EXTRA
+Examples:
+  orbit login https://orbit.example.com
+  orbit login https://orbit.example.com \-\-totp 123456
+  echo "$PASSWORD" | orbit login https://orbit.example.com \-\-name laptop
