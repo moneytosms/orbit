@@ -13,14 +13,33 @@ fn call(app: &tauri::AppHandle, cmd: &str, args: Value) -> Result<Value, String>
         .map_err(|e| e.to_string())
 }
 
+/// Commands run only for the bundled launcher pages or the saved server: the capability allows any
+/// http(s) origin, so a page the WebView wandered to must not reach the token or the server setting.
+fn trusted(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
+    let url = window.url().map_err(|e| e.to_string())?;
+    if url.host_str() == Some("tauri.localhost") {
+        return Ok(());
+    }
+    let saved = call(app, "getServer", json!({})).ok();
+    let saved: Option<tauri::Url> = saved
+        .as_ref()
+        .and_then(|v| v["server"].as_str()?.parse().ok());
+    match saved {
+        Some(s) if s.origin() == url.origin() => Ok(()),
+        _ => Err("untrusted origin".into()),
+    }
+}
+
 // Async so they run off the main thread, which the Kotlin side needs to answer.
 #[tauri::command]
 async fn set_token(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     server: String,
     device: String,
     token: String,
 ) -> Result<(), String> {
+    trusted(&app, &window)?;
     call(
         &app,
         "setToken",
@@ -30,18 +49,25 @@ async fn set_token(
 }
 
 #[tauri::command]
-async fn clear_token(app: tauri::AppHandle) {
+async fn clear_token(app: tauri::AppHandle, window: tauri::WebviewWindow) {
+    if trusted(&app, &window).is_err() {
+        return;
+    }
     let _ = call(&app, "clearToken", json!({}));
 }
 
 #[tauri::command]
-async fn has_token(app: tauri::AppHandle) -> bool {
-    call(&app, "hasToken", json!({})).is_ok_and(|v| v["has"] == true)
+async fn has_token(app: tauri::AppHandle, window: tauri::WebviewWindow) -> bool {
+    trusted(&app, &window).is_ok()
+        && call(&app, "hasToken", json!({})).is_ok_and(|v| v["has"] == true)
 }
 
 /// The link a widget tap left (`#/task/<id>` or `#/goals`), once; empty if none.
 #[tauri::command]
-async fn take_link(app: tauri::AppHandle) -> String {
+async fn take_link(app: tauri::AppHandle, window: tauri::WebviewWindow) -> String {
+    if trusted(&app, &window).is_err() {
+        return String::new();
+    }
     call(&app, "takeLink", json!({})).map_or_else(
         |_| String::new(),
         |v| v["link"].as_str().unwrap_or_default().into(),
@@ -59,6 +85,7 @@ async fn set_server(
     if !matches!(url.scheme(), "http" | "https") {
         return Err("use an http or https URL".into());
     }
+    trusted(&app, &window)?;
     call(
         &app,
         "setServer",

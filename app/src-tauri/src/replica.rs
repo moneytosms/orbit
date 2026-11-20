@@ -230,7 +230,7 @@ fn title_of(row: &Row) -> &str {
 fn display_row<'a>(row: &'a Row, idx: &Index<'a>) -> Value {
     let chain = ancestry(row, idx);
     let area = chain.iter().skip(1).find_map(|r| match r {
-        Row::Area(a) => Some(&a.name),
+        Row::Area(a) => Some(a),
         _ => None,
     });
     let project = chain.iter().skip(1).find_map(|r| match r {
@@ -254,7 +254,8 @@ fn display_row<'a>(row: &'a Row, idx: &Index<'a>) -> Value {
                 "has_reminder": !t.reminders.is_empty(),
                 "sub_done": subs.iter().filter(|s| s.completed_at.is_some()).count(),
                 "sub_total": subs.len(),
-                "area": area,
+                "area": area.map(|a| &a.name),
+                "area_color": area.map(|a| &a.color),
                 "project": project,
                 "completed": t.completed_at.is_some(),
             })
@@ -269,7 +270,8 @@ fn display_row<'a>(row: &'a Row, idx: &Index<'a>) -> Value {
             "has_reminder": false,
             "sub_done": 0,
             "sub_total": 0,
-            "area": area,
+            "area": area.map(|a| &a.name),
+            "area_color": area.map(|a| &a.color),
             "project": project,
             "completed": matches!(row, Row::Goal(g) if g.completed_at.is_some()),
         }),
@@ -451,8 +453,12 @@ pub fn goals(dir: &str, today: &str, area: &str) -> Result<Value> {
         let mut out = vec![];
         for r in &rows {
             let Row::Goal(g) = r else { continue };
-            // A Goal in the Trash is gone from the widgets, so a card pointing at it shows "gone".
-            if g.trashed_at.is_some() || area.is_some_and(|a| a != g.parent_id) {
+            // Only active Goals: one in the Trash, archived or completed is gone from the widgets, so a card pointing at it shows "gone".
+            if g.trashed_at.is_some()
+                || g.archived_at.is_some()
+                || g.completed_at.is_some()
+                || area.is_some_and(|a| a != g.parent_id)
+            {
                 continue;
             }
             let progress = goal::progress(g, &rows);

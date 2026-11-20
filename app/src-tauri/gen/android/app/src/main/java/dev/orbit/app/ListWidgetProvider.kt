@@ -253,7 +253,9 @@ class ListWidgetProvider : AppWidgetProvider() {
             views.setViewVisibility(R.id.row_meta, if (meta.isEmpty()) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.row_meta, meta)
             views.setViewVisibility(R.id.row_dot, if (area == null) View.GONE else View.VISIBLE)
-            views.setInt(R.id.row_dot, "setColorFilter", accent(ctx))
+            // An Area's own colour (`#rrggbb`, from #72) when it has one.
+            val dot = row.str("area_color")?.let { runCatching { Color.parseColor(it) }.getOrNull() }
+            views.setInt(R.id.row_dot, "setColorFilter", dot ?: accent(ctx))
 
             views.setOnClickFillInIntent(R.id.row_circle, fill(ListWidget.ACTION_COMPLETE, taskId))
             views.setOnClickFillInIntent(R.id.row_root, fill(ListWidget.ACTION_OPEN, taskId))
