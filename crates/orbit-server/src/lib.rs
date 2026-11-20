@@ -24,6 +24,7 @@ const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 mod auth;
 mod blobs;
+mod todoist;
 pub use auth::reset_password;
 
 pub(crate) struct Shared {
@@ -36,6 +37,9 @@ pub(crate) struct Shared {
     /// The one-time first-run code; `None` once the user exists.
     setup: Mutex<Option<String>>,
     limits: Mutex<HashMap<std::net::IpAddr, auth::Limit>>,
+    /// The Todoist API v1 base URL.
+    todoist: String,
+    jobs: Mutex<HashMap<String, todoist::Job>>,
 }
 type St = Arc<Shared>;
 
@@ -60,8 +64,14 @@ fn open(data_dir: &Path) -> rusqlite::Result<Connection> {
 /// Opens (or creates) `<data_dir>/orbit.db` and returns the HTTP app, plus the setup code
 /// to print when no user exists yet. Serve it with `into_make_service_with_connect_info::<SocketAddr>`.
 pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
+    app_with(data_dir, todoist::BASE)
+}
+
+/// `app` reading Todoist at `todoist_base` instead of the real API. For tests.
+pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router, Option<String>)> {
     let conn = open(data_dir)?;
     auth::migrate(&conn)?;
+    todoist::migrate(&conn)?;
     // `clocks` is the row's per-field last-writer HLCs (JSON); it never leaves the server.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rows (id TEXT PRIMARY KEY, data TEXT NOT NULL, clocks TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -93,6 +103,8 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
         max_blob,
         setup: Mutex::new(setup.clone()),
         limits: Mutex::default(),
+        todoist: todoist_base.into(),
+        jobs: Mutex::default(),
     };
     let router = Router::new()
         .route("/sync", post(sync))
@@ -106,6 +118,9 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
         .route("/auth/totp/confirm", post(auth::totp_confirm))
         .route("/devices", get(auth::devices).post(auth::create_token))
         .route("/devices/{id}", delete(auth::revoke))
+        .route("/import/todoist", post(todoist::start))
+        .route("/import/todoist/{job}", get(todoist::status))
+        .route("/import/todoist/{job}/commit", post(todoist::commit))
         .route(
             "/blobs/{hash}",
             put(blobs::put)

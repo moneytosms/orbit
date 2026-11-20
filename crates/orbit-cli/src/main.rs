@@ -85,6 +85,11 @@ enum Cmd {
         #[arg(long)]
         all: bool,
     },
+    /// Bring data in from another app.
+    Import {
+        #[command(subcommand)]
+        from: Import,
+    },
     /// Check a routine in for a day (default today).
     Checkin {
         r: String,
@@ -93,6 +98,20 @@ enum Cmd {
         date: Option<String>,
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum Import {
+    /// Import active Todoist items. The token is read from ORBIT_TODOIST_TOKEN or stdin, used once
+    /// and never stored. Without --yes it only previews the mapping.
+    Todoist {
+        /// Change where a Todoist project goes: ID=area:NAME, ID=project:AREA/NAME or ID=inbox.
+        #[arg(long = "map")]
+        maps: Vec<String>,
+        /// Import for real.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -114,6 +133,9 @@ fn run(command: Cmd) -> Done {
             dry_run,
         } => cmd::edit(&r, title.as_deref(), description.as_deref(), dry_run),
         Cmd::Search { words, all } => cmd::search(&words, all),
+        Cmd::Import {
+            from: Import::Todoist { maps, yes },
+        } => cmd::import_todoist(&maps, yes),
         Cmd::Checkin { r, date, dry_run } => cmd::checkin(&r, date.as_deref(), dry_run),
     }
 }

@@ -557,3 +557,143 @@ pub fn checkin(r: &str, date: Option<&str>, dry_run: bool) -> Done {
         json!({ "routine": routine.id, "name": routine.name, "date": date, "changed": true, "dry_run": false }),
     ))
 }
+
+/// `ID=area:NAME`, `ID=project:AREA/NAME` or `ID=inbox` as a project mapping.
+fn parse_map(spec: &str) -> R<Value> {
+    let bad = || {
+        usage(format!(
+            "`{spec}` is not ID=area:NAME, ID=project:AREA/NAME or ID=inbox"
+        ))
+    };
+    let (id, target) = spec.split_once('=').ok_or_else(bad)?;
+    let (kind, rest) = target.split_once(':').unwrap_or((target, ""));
+    let (area, name) = match kind {
+        "area" if !rest.is_empty() => (rest, ""),
+        "project" => rest
+            .split_once('/')
+            .filter(|(a, n)| !a.is_empty() && !n.is_empty())
+            .ok_or_else(bad)?,
+        "inbox" if rest.is_empty() => ("", ""),
+        _ => return Err(bad()),
+    };
+    Ok(json!({ "id": id, "kind": kind, "area": area, "name": name }))
+}
+
+fn todoist_token() -> R<String> {
+    if let Some(t) = std::env::var("ORBIT_TODOIST_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+    {
+        return Ok(t);
+    }
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        eprint!("todoist token: ");
+        std::io::stderr().flush().ok();
+    }
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line).map_err(internal)?;
+    let t = line.trim().to_string();
+    if t.is_empty() {
+        return Err(fail(
+            "token_required",
+            "no Todoist token given",
+            Some("set ORBIT_TODOIST_TOKEN or pipe the token on stdin"),
+        ));
+    }
+    Ok(t)
+}
+
+fn target_text(p: &Value) -> String {
+    let (area, name) = (
+        p["area"].as_str().unwrap_or(""),
+        p["name"].as_str().unwrap_or(""),
+    );
+    match p["kind"].as_str() {
+        Some("area") => format!("Area {area}"),
+        Some("project") => format!("Project {area} / {name}"),
+        _ => "Inbox".into(),
+    }
+}
+
+pub fn import_todoist(maps: &[String], yes: bool) -> Done {
+    let maps = maps.iter().map(|m| parse_map(m)).collect::<R<Vec<_>>>()?;
+    let ctx = open()?;
+    if !ctx.client.is_signed_in().map_err(internal)? {
+        return Err(fail(
+            "signed_out",
+            "this device is signed out",
+            Some("run `orbit login <url>`"),
+        ));
+    }
+    let token = todoist_token()?;
+    let net = |e: Box<dyn Error + Send + Sync>| {
+        if is_signed_out(&*e) {
+            fail(
+                "signed_out",
+                "the server no longer accepts this device",
+                Some("run `orbit login <url>`"),
+            )
+        } else {
+            fail("import_failed", e.to_string(), Some("nothing was imported"))
+        }
+    };
+    runtime()?.block_on(async {
+        let job = ctx.client.call("/import/todoist", Some(json!({ "token": token }))).await.map_err(net)?;
+        let path = format!("/import/todoist/{}", job["job"].as_str().unwrap_or_default());
+        let mut preview = loop {
+            let p = ctx.client.call(&path, None).await.map_err(net)?;
+            match p["status"].as_str() {
+                Some("running") => tokio::time::sleep(std::time::Duration::from_millis(500)).await,
+                Some("ready") => break p,
+                _ => {
+                    let why = p["error"].as_str().unwrap_or("unknown error").to_string();
+                    return Err(fail("todoist", why, Some("check the token; nothing was imported")));
+                }
+            }
+        };
+        for p in preview["projects"].as_array_mut().into_iter().flatten() {
+            if let Some(m) = maps.iter().find(|m| m["id"] == p["id"]) {
+                for f in ["kind", "area", "name"] {
+                    p[f] = m[f].clone();
+                }
+            }
+        }
+        if !yes {
+            let rows: Vec<Vec<String>> = preview["projects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|p| {
+                    vec![
+                        p["id"].as_str().unwrap_or("").into(),
+                        p["path"].as_str().unwrap_or("").into(),
+                        target_text(p),
+                        format!("{} ({} new)", p["tasks"], p["tasks"].as_u64().unwrap_or(0) - p["imported"].as_u64().unwrap_or(0)),
+                    ]
+                })
+                .collect();
+            let human = format!(
+                "{}\npass --yes to import; change a target with --map ID=area:NAME",
+                table(&["ID", "TODOIST", "BECOMES", "TASKS"], &rows)
+            );
+            return Ok((human, json!({ "committed": false, "preview": preview })));
+        }
+        let report = ctx
+            .client
+            .call(&format!("{path}/commit"), Some(json!({ "projects": preview["projects"] })))
+            .await
+            .map_err(net)?;
+        let mut human = format!(
+            "imported {} tasks, {} sections, {} projects, {} areas, {} labels, {} pages, {} reminders ({} tasks were already imported)",
+            report["tasks"], report["sections"], report["projects"], report["areas"], report["labels"],
+            report["pages"], report["reminders"], report["existing_tasks"]
+        );
+        for issue in report["issues"].as_array().into_iter().flatten() {
+            human.push_str(&format!("\nnot imported as-is: {}", issue.as_str().unwrap_or("")));
+        }
+        let dropped: Vec<&str> = report["dropped"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        human.push_str(&format!("\nnever imported: {}\nrun `orbit sync` to fetch the new items", dropped.join(", ")));
+        Ok((human, json!({ "committed": true, "report": report })))
+    })
+}
