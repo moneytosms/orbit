@@ -6,6 +6,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import MermaidImport from '$lib/MermaidImport.svelte'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
+  import Backlinks from '$lib/Backlinks.svelte'
   import RoadmapCanvas from '$lib/RoadmapCanvas.svelte'
   import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
   import {
@@ -320,6 +321,7 @@
       <MermaidImport onimport={runImport} />
     </Dialog.Content>
   </Dialog.Root>
+  <Backlinks id={roadmap.id} />
 {:else if loaded}
   <p class="text-sm text-muted">This roadmap no longer exists.</p>
 {/if}

@@ -2,6 +2,9 @@
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Banner from './lib/Banner.svelte'
+  import Backlinks from './lib/Backlinks.svelte'
+  import RoadmapBuilder from './lib/RoadmapBuilder.svelte'
+  import { Button } from './lib/components/ui/button'
   import Area from './lib/screens/Area.svelte'
   import Goals from './lib/screens/Goals.svelte'
   import Roadmap from './lib/screens/Roadmap.svelte'
@@ -49,6 +52,7 @@
   let linkedTask = $state(readTaskLink())
   let toast = $state('')
   let version = $state(0)
+  let building = $state(false)
   let hide: ReturnType<typeof setTimeout>
 
   onRejected((code) => {
@@ -196,6 +200,13 @@
           {/if}
         {/if}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
+        {#if screen.name === 'project'}
+          <div>
+            <Button variant="ghost" size="sm" onclick={() => (building = true)}>Start from 30-day plan</Button>
+          </div>
+          <RoadmapBuilder bind:open={building} {areas} ownerId={screen.id} ownerName={title} onchange={refresh} />
+          <Backlinks id={screen.id} {version} />
+        {/if}
       {:else if screen.name === 'goals'}
         <Goals {areas} />
       {:else if screen.name === 'routines'}
