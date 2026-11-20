@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="dev.orbit.app.ListWidgetConfigActivity"
+    android:description="@string/list_widget_desc"
+    android:initialLayout="@layout/widget_list"
+    android:label="@string/list_widget_label"
+    android:minWidth="180dp"
+    android:minHeight="180dp"
+    android:resizeMode="horizontal|vertical"
+    android:previewLayout="@layout/widget_list"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

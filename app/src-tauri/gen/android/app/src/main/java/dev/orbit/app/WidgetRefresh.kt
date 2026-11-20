@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 
 object WidgetRefresh {
     /** The AppWidgetProvider classes to refresh. Each widget ticket adds its own. */
-    val providers: List<Class<*>> = emptyList()
+    val providers: List<Class<*>> = listOf(QuickAddWidgetProvider::class.java, ListWidgetProvider::class.java)
 
     /** Asks every placed widget to redraw from the replica. */
     fun all(ctx: Context) {

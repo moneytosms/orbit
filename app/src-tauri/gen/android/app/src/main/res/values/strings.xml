@@ -10,4 +10,18 @@
     <string name="battery_message">"Some phone makers pause apps to save battery, which can delay or drop reminders. Set Orbit to Unrestricted battery use (Battery, under App info)."</string>
     <string name="battery_open">"Open app info"</string>
     <string name="battery_later">"Later"</string>
+    <!-- #70 -->
+    <string name="quick_add_title">"Add task"</string>
+    <string name="quick_add_label">"Add task"</string>
+    <string name="quick_add_hint">"Task, @Area or #label"</string>
+    <string name="quick_add_submit">"Add"</string>
+    <string name="quick_add_failed">"Could not add the task"</string>
+    <string name="quick_add_widget_label">"Quick add"</string>
+    <string name="quick_add_widget_desc">"Tap to add a task to Orbit"</string>
+    <string name="list_widget_label">"Task list"</string>
+    <string name="list_widget_desc">"Show a view, area, project or label as a list"</string>
+    <string name="list_config_title">"Choose a list"</string>
+    <string name="list_empty">"Nothing to show"</string>
+    <string name="widget_complete">"Complete task"</string>
+    <string name="widget_add">"Add task"</string>
 </resources>

@@ -27,3 +27,17 @@ Create a Task due a few minutes ahead with a timed due (or a reminder at a set t
 6. **Permission.** On Android 13+, a fresh install asks for notification permission on first open. Deny it, then confirm in Settings that the app shows no notifications; allow it and confirm they appear.
 7. **Battery guidance.** On first open a dialog explains unrestricted battery use; "Open app info" opens the app's settings page. It must not appear again after dismissing it.
 8. **OEM battery saver (Samsung, Xiaomi, Huawei, etc.).** Set the app to unrestricted battery use, leave the phone idle for 30 minutes, and confirm the reminder still fires on time.
+
+## #70 Widgets
+
+Add the Quick add and Task list widgets to the home screen.
+
+1. **Quick add.** Tap the Quick add widget, type `Buy milk @Home`, submit. Expect the sheet to close and the task to appear in Orbit after the next sync.
+   - Log: `adb logcat -s Orbit` shows the capture; the widget redraws.
+2. **List source.** Tap the Task list header. Pick a view, then an area. Expect the rows to change to that source. The + button opens the sheet with the source prefilled (`@Area`); for built-in views it is empty.
+3. **Circle undo.** Tap a row's circle. Expect a strike-through and a filled circle. Tap it again within 2 seconds: the row returns to normal and the task is not completed. Tap once and wait: after 2 seconds the task leaves the list.
+4. **Row open.** Tap a row's title. Expect Orbit to open on that task.
+5. **Upcoming groups.** On the Upcoming view, expect day header rows (Overdue and No date included) and the due chip, glyphs, and Area and Project line on each row.
+6. **Refresh timing.** Change a task in Orbit, then check the widget within 15 minutes (the periodic refresh) or sooner after a sync. Day start is covered by the same 15-minute refresh, so the widget may show yesterday's Today list for up to 15 minutes after midnight.
+7. **Resize.** Resize the Quick add widget from 1 to 5 cells wide, and the Task list in both directions. Expect no clipped controls.
+8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. The accent is the system accent on Android 12+ and a fixed blue below.
