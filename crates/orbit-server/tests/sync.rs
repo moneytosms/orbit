@@ -1220,3 +1220,29 @@ async fn placements_converge_on_one_row_and_an_archived_roadmap_is_read_only() {
     assert_eq!(row(&res, &now_ph)["completed_at"], Value::Null);
     assert!(row(&res, &roadmap)["archived_at"].is_u64());
 }
+
+#[tokio::test]
+async fn an_area_rename_converges_by_last_writer_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let t0 = snap["token"].clone();
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xd1), "area.create", json!({ "id": AREA, "name": "Home", "order": "a" }), 1000),
+            cmd(&c(0xd2), "area.update", json!({ "id": AREA, "name": "Work" }), 3000),
+            cmd(&c(0xd3), "area.update", json!({ "id": AREA, "name": "Old" }), 2000),
+            cmd(&c(0xd4), "area.update", json!({ "id": TASK, "name": "Nope" }), 4000),
+        ]}),
+    )
+    .await;
+    for n in [0xd1, 0xd2, 0xd3] {
+        assert_eq!(res["statuses"][c(n)], json!({ "status": "ok" }), "{n:x}");
+    }
+    assert_eq!(
+        res["statuses"][c(0xd4)],
+        json!({ "status": "error", "code": "not_found" })
+    );
+    assert_eq!(row(&res, AREA)["name"], "Work");
+}

@@ -249,7 +249,7 @@ export type RoutineStats = {
   paused: boolean
 }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
-type Row =
+export type Row =
   | Area
   | Project
   | Section
@@ -1173,3 +1173,8 @@ export async function runFilter(node: Node): Promise<Row[]> {
   const groups: ViewGroup[] = JSON.parse(evaluate_view(JSON.stringify(view), JSON.stringify(rows), localToday()))
   return groups.flatMap((g) => g.ids.flatMap((i) => byId.get(i) ?? []))
 }
+
+/** Renames an Area. */
+export const updateArea = (id: string, patch: { name?: string }) => enqueue('area.update', { id, ...patch })
+/** Every row that is not trashed or archived (nor under something that is). */
+export const visibleSnapshot = () => visibleRows()

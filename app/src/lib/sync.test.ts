@@ -71,6 +71,7 @@ import {
   placeItem,
   setPhaseDone,
   roadmapSummary,
+  updateArea,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -739,4 +740,11 @@ test('the rows hook reports a local write', async () => {
   const t = await createTask('hooked', INBOX)
   expect(seen).toContain(t)
   onRowsChanged(() => {})
+})
+
+test('an Area renames through area.update', async () => {
+  await createArea('Before')
+  const id = (await tree()).find((a) => a.area.name === 'Before')!.area.id
+  await updateArea(id, { name: 'After' })
+  expect((await tree()).find((a) => a.area.id === id)?.area.name).toBe('After')
 })
