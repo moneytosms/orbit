@@ -11,7 +11,5 @@ path = "src/main.rs"
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.6.11"
 clap_mangen = "0.3.3"
-orbit-client = { version = "0.0.0", path = "../orbit-client" }
-orbit-core = { version = "0.0.0", path = "../orbit-core" }
 orbit-client = { version = "0.0.1", path = "../orbit-client" }
 orbit-core = { version = "0.0.1", path = "../orbit-core" }
