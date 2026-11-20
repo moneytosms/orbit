@@ -7,6 +7,7 @@ import {
   spendReminder,
   type Fire,
 } from './sync'
+import { inTauri, startDesktop } from './desktop'
 
 const KEY = 'orbit.notify'
 const shown = new Set<string>()
@@ -95,7 +96,8 @@ async function show(f: Fire) {
 /** Shows every reminder that is due and schedules a timer for the next one. */
 export async function refreshNotifier() {
   clearTimeout(timer)
-  if (!notifyEnabled()) return
+  // The desktop app's Rust side fires reminders; the web path would duplicate them.
+  if (inTauri() || !notifyEnabled()) return
   const now = await localMinute()
   const fires = await reminderSchedule()
   let next: Fire | undefined
@@ -121,6 +123,7 @@ export async function refreshNotifier() {
 export function startNotifier() {
   if (started) return
   started = true
+  startDesktop()
   navigator.serviceWorker?.addEventListener('message', (e) => {
     if (e.data?.type === 'orbit-notify') void handleAction(e.data.action, e.data.task_id)
   })

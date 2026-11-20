@@ -9,6 +9,6 @@
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
   },
-  "app": { "windows": [{ "title": "Orbit" }] },
-  "bundle": { "active": true, "icon": ["icons/icon.png"] }
+  "app": { "windows": [{ "label": "main", "title": "Orbit", "visible": false }] },
+  "bundle": { "active": true, "targets": ["deb", "appimage"], "icon": ["icons/icon.png"] }
 }
