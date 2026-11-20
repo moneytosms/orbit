@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
 import android.widget.ArrayAdapter
+import android.view.WindowInsets
 import android.widget.ListView
 
 class GoalConfigActivity : Activity() {
@@ -41,6 +42,13 @@ class GoalConfigActivity : Activity() {
             GoalWidgetProvider.render(this, AppWidgetManager.getInstance(this), intArrayOf(widget))
             setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widget))
             finish()
+        }
+        // Android 15 draws edge to edge: keep the first row out from under the status bar.
+        list.clipToPadding = false
+        list.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            v.setPadding(0, bars.top, 0, bars.bottom)
+            insets
         }
         setContentView(list)
     }

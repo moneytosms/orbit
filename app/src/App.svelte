@@ -14,7 +14,8 @@
   import Profile from './lib/screens/Profile.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
-  import { readScreen, routes, type Screen } from './lib/routes'
+  import { readScreen, readTaskLink, routes, type Screen } from './lib/routes'
+  import TaskDrawer from './lib/TaskDrawer.svelte'
   import {
     awardUp,
     badgeShelf,
@@ -43,6 +44,7 @@
   let rows: Awaited<ReturnType<typeof tasksIn>> = $state([])
   let allViews = $state<ViewRow[]>([])
   let screen: Screen = $state(readScreen())
+  let linkedTask = $state(readTaskLink())
   let toast = $state('')
   let version = $state(0)
   let hide: ReturnType<typeof setTimeout>
@@ -141,6 +143,7 @@
 <svelte:window
   onhashchange={() => {
     screen = readScreen()
+    linkedTask = readTaskLink()
     refresh()
   }}
 />
@@ -192,6 +195,16 @@
       {/if}
     {/snippet}
   </Shell>
+{/if}
+
+{#if gate === 'app'}
+  <TaskDrawer
+    taskId={linkedTask}
+    onclose={() => {
+      linkedTask = null
+      history.replaceState(null, '', location.pathname)
+    }}
+  />
 {/if}
 
 {#if toast}

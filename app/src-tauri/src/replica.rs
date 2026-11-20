@@ -380,7 +380,8 @@ pub fn view_sources(dir: &str) -> Result<Value> {
         out.push(json!({ "kind": "next", "id": "", "name": "What's next", "prefill": "" }));
         for r in &rows {
             match r {
-                Row::Area(a) if a.trashed_at.is_none() => out.push(
+                // The Inbox area is the Inbox view's own list, already offered above.
+                Row::Area(a) if a.trashed_at.is_none() && a.id != orbit_core::INBOX => out.push(
                     json!({ "kind": "area", "id": a.id, "name": a.name, "prefill": format!("@{}", a.name) }),
                 ),
                 Row::Project(p) if p.trashed_at.is_none() => out.push(

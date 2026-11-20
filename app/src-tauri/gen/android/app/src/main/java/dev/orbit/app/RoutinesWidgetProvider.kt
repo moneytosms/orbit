@@ -127,6 +127,7 @@ class RoutinesCommitWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
         RoutinesPending.set(applicationContext, id, false)
         val out = Core.checkin(Core.dir(applicationContext), id, WidgetData.today(), "done")
         Log.i(TAG, "routine check-in $id: $out")
+        Sync.now(applicationContext)
         WidgetRefresh.all(applicationContext)
         return Result.success()
     }

@@ -36,3 +36,9 @@ export const readScreen = (): Screen => {
     ? { name: m[1] as 'project' | 'area' | 'page' | 'view' | 'roadmap', id: decodeURIComponent(m[2]) }
     : { name: readRoute() }
 }
+
+/** A Task named by the address bar (`#/task/<id>`), which opens its drawer over whatever screen is up. */
+export const readTaskLink = (): string | null => {
+  const m = location.hash.match(/^#\/task\/([^/]+)$/)
+  return m ? decodeURIComponent(m[1]) : null
+}

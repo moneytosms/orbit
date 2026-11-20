@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-take-link"
+description = "Enables the take_link command without any pre-configured scope."
+commands.allow = ["take_link"]
+
+[[permission]]
+identifier = "deny-take-link"
+description = "Denies the take_link command without any pre-configured scope."
+commands.deny = ["take_link"]

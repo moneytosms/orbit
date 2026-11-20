@@ -23,11 +23,28 @@ async function provisionToken() {
   }
 }
 
+/** Android: a widget tap leaves a link (`#/task/<id>`) for the app to open once the window is up. */
+async function takeLink(retries = 0) {
+  try {
+    const link = await invoke<string>('take_link')
+    if (link) return void (location.hash = link)
+  } catch {
+    return // Not Android, or not signed in yet.
+  }
+  // The window can gain focus a moment before the activity hands over the new intent.
+  if (retries < 3) setTimeout(() => void takeLink(retries + 1), 400)
+}
+
 export function startDesktop() {
   if (started || !inTauri()) return
   started = true
   void listen('orbit://capture', () => ui.newTask())
   void listen('orbit://sync', () => void sync())
   void provisionToken()
-  window.addEventListener('focus', () => void provisionToken())
+  const android = navigator.userAgent.includes('Android')
+  if (android) void takeLink()
+  window.addEventListener('focus', () => {
+    void provisionToken()
+    if (android) void takeLink()
+  })
 }

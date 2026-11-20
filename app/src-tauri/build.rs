@@ -6,6 +6,7 @@ fn main() {
             "clear_token",
             "has_token",
             "set_server",
+            "take_link",
         ]),
     ))
     .unwrap();

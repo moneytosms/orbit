@@ -3,21 +3,41 @@ package dev.orbit.app
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.webkit.WebView
+import android.content.Intent
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
+  private var web: WebView? = null
+
+  override fun onWebViewCreate(webView: WebView) {
+    web = webView
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    Link.set(intent)
     Sync.schedule(this)
     WidgetRefresh.schedule(this)
     askNotificationPermission()
     BatteryGuidance.maybeShow(this)
   }
 
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    // A running page gets the link at once; a page still loading finds it with `take_link`.
+    val link = Link.set(intent) ?: return
+    val page = web ?: return
+    Link.take()
+    page.post { page.evaluateJavascript("location.hash = '$link'", null) }
+  }
+
   override fun onStart() {
     super.onStart()
     ReminderScheduler.rearmAsync(this)
+    // Opening the app repaints widgets that Android blanked (force-stop, update).
+    Thread { WidgetRefresh.all(applicationContext) }.start()
   }
 
   /** Android 13+ asks before any notification is shown; reminders need it. */
@@ -26,4 +46,25 @@ class MainActivity : TauriActivity() {
     val perm = "android.permission.POST_NOTIFICATIONS"
     if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(perm), 69)
   }
+}
+
+/** What a widget tap asked the app to open, as a web hash route, until the page takes it. */
+object Link {
+  @Volatile private var pending: String? = null
+  private val id = Regex("[0-9a-f-]{36}")
+
+  /** The hash route a widget tap asked for, or null. Ids are checked: the extra is not ours to trust. */
+  fun set(intent: Intent?): String? {
+    val link = intent?.getStringExtra(ListWidget.EXTRA_LINK)?.removePrefix("orbit://task/")
+    val goal = intent?.getStringExtra(GoalWidgetProvider.EXTRA_OPEN)
+    val route = when {
+      link != null && id.matches(link) -> "#/task/$link"
+      goal != null && goal.startsWith("goal:") && id.matches(goal.removePrefix("goal:")) -> "#/goals"
+      else -> return null
+    }
+    pending = route
+    return route
+  }
+
+  fun take(): String = pending.also { pending = null } ?: ""
 }

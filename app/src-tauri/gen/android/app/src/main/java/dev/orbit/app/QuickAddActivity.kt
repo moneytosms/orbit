@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
@@ -14,6 +15,8 @@ class QuickAddActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         setContentView(R.layout.activity_quick_add)
+        // A dialog theme wraps to its content, which leaves the field a few words wide.
+        window.setLayout((resources.displayMetrics.widthPixels * 0.92).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
         val field = findViewById<EditText>(R.id.quick_text)
         val prefill = intent?.getStringExtra(EXTRA_PREFILL).orEmpty()
         if (prefill.isNotEmpty()) field.setText("$prefill ")

@@ -34,4 +34,7 @@ class OrbitPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun getServer(invoke: Invoke) = invoke.resolve(JSObject().put("server", Store.server(activity) ?: ""))
+
+    @Command
+    fun takeLink(invoke: Invoke) = invoke.resolve(JSObject().put("link", Link.take()))
 }

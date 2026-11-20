@@ -39,6 +39,15 @@ async fn has_token(app: tauri::AppHandle) -> bool {
     call(&app, "hasToken", json!({})).is_ok_and(|v| v["has"] == true)
 }
 
+/// The link a widget tap left (`#/task/<id>` or `#/goals`), once; empty if none.
+#[tauri::command]
+async fn take_link(app: tauri::AppHandle) -> String {
+    call(&app, "takeLink", json!({})).map_or_else(
+        |_| String::new(),
+        |v| v["link"].as_str().unwrap_or_default().into(),
+    )
+}
+
 /// Saves the server URL (from the first-run page) and opens it in the window.
 #[tauri::command]
 async fn set_server(
@@ -73,7 +82,8 @@ pub fn builder() -> tauri::Builder<Wry> {
             set_token,
             clear_token,
             has_token,
-            set_server
+            set_server,
+            take_link
         ])
         // The bundled index.html is only a launcher: once it has loaded, send the window to the saved
         // server, or to the server-URL page. A navigation sooner than this is dropped.
