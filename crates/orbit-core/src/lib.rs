@@ -1,3 +1,4 @@
+pub mod badge;
 pub mod filter_text;
 pub mod goal;
 pub mod link;
@@ -20,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Builder;
 
+pub use badge::Award;
 pub use goal::{Goal, Milestone, Progress};
 pub use page::Page;
 pub use recur::Recurrence;
@@ -267,6 +269,9 @@ pub struct Settings {
     /// Finished vacations as closed date ranges.
     #[serde(default)]
     pub vacations: Option<Vec<[String; 2]>>,
+    /// Gamification: Stardust, Levels, Badges, Patches and their toasts; `None` is on.
+    #[serde(default)]
+    pub gamification: Option<bool>,
 }
 
 /// One Home dashboard widget on the fixed-row grid.
@@ -305,6 +310,7 @@ pub enum Row {
     Roadmap(roadmap::Roadmap),
     Phase(roadmap::Phase),
     Placement(roadmap::Placement),
+    Award(Award),
 }
 
 impl Row {
@@ -327,6 +333,7 @@ impl Row {
             Row::Roadmap(r) => r.id,
             Row::Phase(p) => p.id,
             Row::Placement(p) => p.id,
+            Row::Award(a) => a.id,
         }
     }
 
@@ -338,6 +345,7 @@ impl Row {
             | Row::Settings(_)
             | Row::Completion(_)
             | Row::Purged(_)
+            | Row::Award(_)
             | Row::View(_) => None,
             Row::Project(p) => Some(p.parent_id),
             Row::Section(s) => Some(s.parent_id),
@@ -620,6 +628,17 @@ pub enum Op {
         vacation_from: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         vacations: Option<Vec<[String; 2]>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gamification: Option<bool>,
+    },
+    /// Records a Badge or Patch earned by the server. Never revoked.
+    #[serde(rename = "award.grant")]
+    AwardGrant {
+        id: Uuid,
+        badge: String,
+        key: String,
+        earned_at: u64,
+        points: u32,
     },
     #[serde(rename = "view.create")]
     ViewCreate {
@@ -941,6 +960,7 @@ impl Op {
             | Op::ReminderSnooze { task_id, .. }
             | Op::ReminderSpend { task_id, .. } => *task_id,
             Op::SettingsUpdate { .. } => SETTINGS,
+            Op::AwardGrant { id, .. } => *id,
         }
     }
 
@@ -958,6 +978,7 @@ impl Op {
                 | Op::RoutineCreate { .. }
                 | Op::RoadmapCreate { .. }
                 | Op::PhaseCreate { .. }
+                | Op::AwardGrant { .. }
         )
     }
 
@@ -995,7 +1016,8 @@ impl Op {
             | Op::RoutineCreate { .. }
             | Op::RoadmapCreate { .. }
             | Op::PhaseCreate { .. }
-            | Op::LabelCreate { .. } => vec![],
+            | Op::LabelCreate { .. }
+            | Op::AwardGrant { .. } => vec![],
             Op::ViewDelete { .. } => vec!["trashed_at"],
             Op::ViewReset { .. } => vec![
                 "name",
@@ -1136,6 +1158,7 @@ impl Op {
                 dashboard,
                 vacation_from,
                 vacations,
+                gamification,
             } => [
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
@@ -1154,6 +1177,7 @@ impl Op {
                 ("dashboard", dashboard.is_some()),
                 ("vacation_from", vacation_from.is_some()),
                 ("vacations", vacations.is_some()),
+                ("gamification", gamification.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -1456,6 +1480,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 Some(
                     Row::Phase(_)
                     | Row::Placement(_)
+                    | Row::Award(_)
                     | Row::Label(_)
                     | Row::Settings(_)
                     | Row::Completion(_)
@@ -1568,6 +1593,22 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::PhaseComplete { .. }
         | Op::PhaseUncomplete { .. }
         | Op::PlacementSet { .. } => roadmap::apply(existing, cmd),
+        Op::AwardGrant {
+            id,
+            badge,
+            key,
+            earned_at,
+            points,
+        } => match existing {
+            Some(_) => Err(ErrorCode::Exists),
+            None => Ok(Row::Award(Award {
+                id: *id,
+                badge: badge.clone(),
+                key: key.clone(),
+                earned_at: *earned_at,
+                points: *points,
+            })),
+        },
         Op::GoalCreate {
             id,
             parent_id,
@@ -1829,6 +1870,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             dashboard,
             vacation_from,
             vacations,
+            gamification,
         } => {
             let old = match existing {
                 Some(Row::Settings(s)) => s,
@@ -1852,6 +1894,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     dashboard: None,
                     vacation_from: None,
                     vacations: None,
+                    gamification: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -1877,6 +1920,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     None => old.vacation_from,
                 },
                 vacations: vacations.clone().or(old.vacations),
+                gamification: gamification.or(old.gamification),
             }))
         }
     }
@@ -2812,7 +2856,8 @@ mod tests {
                 week_start: None,
                 dashboard: None,
                 vacation_from: None,
-                vacations: None
+                vacations: None,
+                gamification: None,
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();

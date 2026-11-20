@@ -16,6 +16,9 @@
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, routes, type Screen } from './lib/routes'
   import {
+    awardUp,
+    badgeShelf,
+    getGamification,
     getSettings,
     levelUp,
     onRejected,
@@ -81,11 +84,19 @@
     allViews = await views()
     void refreshNotifier()
     version++
-    const sd = await stardust()
-    if (levelUp(sd.level.n)) {
-      toast = `Level up! You reached ${sd.level.name}.`
-      clearTimeout(hide)
-      hide = setTimeout(() => (toast = ''), 5000)
+    if (await getGamification()) {
+      const sd = await stardust()
+      const shelf = await badgeShelf()
+      const earned = shelf.badges.reduce((n, b) => n + b.count, 0) + shelf.patches
+      if (levelUp(sd.level.n)) {
+        toast = `Level up! You reached ${sd.level.name}.`
+        clearTimeout(hide)
+        hide = setTimeout(() => (toast = ''), 5000)
+      } else if (awardUp(earned)) {
+        toast = 'New Badge earned.'
+        clearTimeout(hide)
+        hide = setTimeout(() => (toast = ''), 5000)
+      }
     }
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
     const remote = await getSettings()

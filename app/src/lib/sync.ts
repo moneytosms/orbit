@@ -22,6 +22,7 @@ import {
   whats_next,
   reminder_schedule,
   stardust_summary,
+  badge_shelf,
   routine_days,
   parse_mermaid,
 } from '../../wasm/orbit_wasm'
@@ -117,6 +118,7 @@ export type Settings = {
   dashboard?: DashboardWidget[] | null
   vacation_from?: string | null
   vacations?: [string, string][] | null
+  gamification?: boolean | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -282,6 +284,8 @@ export type RoutineStats = {
   paused: boolean
 }
 type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
+/** A Badge earned once (or once per repeat key); never revoked. */
+export type Award = { kind: 'award'; id: string; badge: string; key: string; earned_at: number; points: number }
 export type Row =
   | Area
   | Project
@@ -299,6 +303,7 @@ export type Row =
   | Roadmap
   | Phase
   | Placement
+  | Award
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
 type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc: Hlc }
@@ -476,7 +481,7 @@ export const deleteItem = (id: string) => enqueue('item.delete', { id })
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })
 export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
-export type Trashed = Exclude<Row, Completion | Label | Settings | View | Checkin | Placement>
+export type Trashed = Exclude<Row, Completion | Label | Settings | View | Checkin | Placement | Award>
 /** Items deleted by hand (their own `trashed_at`), newest first. */
 export async function trashed(): Promise<Trashed[]> {
   return (await allRows())
@@ -1155,6 +1160,12 @@ export async function getDefaultReminder(): Promise<boolean> {
   return row?.default_reminder !== false
 }
 export const setDefaultReminder = (default_reminder: boolean) => enqueue('settings.update', { default_reminder })
+/** Whether Stardust, Levels, the ring, Badges, Patches and their toasts show (on unless turned off). */
+export async function getGamification(): Promise<boolean> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return row?.gamification !== false
+}
+export const setGamification = (gamification: boolean) => enqueue('settings.update', { gamification })
 /** `YYYY-MM-DDTHH:MM` in the synced timezone at `now`. */
 export async function localMinute(now = Date.now()): Promise<string> {
   const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
@@ -1242,7 +1253,30 @@ export const setTargets = (t: {
   vacation?: boolean
 }) => enqueue('settings.update', t)
 
+export type ShelfItem = {
+  id: string
+  name: string
+  tier: string
+  points: number
+  repeatable: boolean
+  condition: string
+  count: number
+}
+export type Shelf = { badges: ShelfItem[]; patches: number }
+/** Every catalog Badge with how often it was earned, plus the Patch count, from core. */
+export async function badgeShelf(): Promise<Shelf> {
+  return JSON.parse(badge_shelf(JSON.stringify(await allRows())))
+}
+
 const LEVEL_KEY = 'orbit.level'
+const AWARDS_KEY = 'orbit.awards'
+/** Whether more Awards were earned than announced before; the first run only records. Same rule as `levelUp`. */
+export function awardUp(n: number): boolean {
+  const seen = Number(localStorage.getItem(AWARDS_KEY) ?? 0)
+  if (n === seen) return false
+  localStorage.setItem(AWARDS_KEY, String(Math.max(n, seen)))
+  return seen > 0 && n > seen
+}
 /** The Level to announce, once: set when the stored Level is lower; the first run only records. */
 export function levelUp(n: number): boolean {
   const seen = Number(localStorage.getItem(LEVEL_KEY) ?? 0)

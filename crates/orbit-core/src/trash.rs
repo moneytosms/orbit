@@ -29,7 +29,8 @@ impl Row {
             | Row::Completion(_)
             | Row::Purged(_)
             | Row::Checkin(_)
-            | Row::Placement(_) => None,
+            | Row::Placement(_)
+            | Row::Award(_) => None,
         }
     }
 
@@ -64,7 +65,8 @@ impl Row {
             | Row::Completion(_)
             | Row::Purged(_)
             | Row::Checkin(_)
-            | Row::Placement(_) => return false,
+            | Row::Placement(_)
+            | Row::Award(_) => return false,
         }
         true
     }

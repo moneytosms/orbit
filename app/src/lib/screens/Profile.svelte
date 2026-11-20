@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { setTargets, setVacation, stardust, type Stardust } from '$lib/sync'
+  import { badgeShelf, getGamification, setTargets, setVacation, stardust, type Shelf, type Stardust } from '$lib/sync'
 
   let { version = 0 }: { version?: number } = $props()
   let data = $state<Stardust>()
+  let shelf = $state<Shelf>()
+  let gamification = $state(true)
 
   $effect(() => {
     void version
+    getGamification().then((on) => (gamification = on))
     stardust().then((d) => (data = d))
+    badgeShelf().then((s) => (shelf = s))
   })
 
   const R = 44
@@ -28,41 +32,43 @@
 
 <h1 class="page-title">Profile</h1>
 {#if data}
-  <div class="flex flex-col items-center gap-1 px-3 py-4 text-center">
-    <div class="relative size-28">
-      <svg viewBox="0 0 100 100" class="size-28 -rotate-90" aria-hidden="true">
-        <circle
-          cx="50"
-          cy="50"
-          r={R}
-          fill="none"
-          stroke="currentColor"
-          class="text-muted"
-          opacity="0.25"
-          stroke-width="6"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r={R}
-          fill="none"
-          stroke="currentColor"
-          class="text-accent"
-          stroke-width="6"
-          stroke-linecap="round"
-          stroke-dasharray={C}
-          stroke-dashoffset={C * (1 - frac)}
-        />
-      </svg>
-      <span class="absolute inset-0 flex items-center justify-center text-3xl font-semibold">O</span>
+  {#if gamification}
+    <div class="flex flex-col items-center gap-1 px-3 py-4 text-center">
+      <div class="relative size-28">
+        <svg viewBox="0 0 100 100" class="size-28 -rotate-90" aria-hidden="true">
+          <circle
+            cx="50"
+            cy="50"
+            r={R}
+            fill="none"
+            stroke="currentColor"
+            class="text-muted"
+            opacity="0.25"
+            stroke-width="6"
+          />
+          <circle
+            cx="50"
+            cy="50"
+            r={R}
+            fill="none"
+            stroke="currentColor"
+            class="text-accent"
+            stroke-width="6"
+            stroke-linecap="round"
+            stroke-dasharray={C}
+            stroke-dashoffset={C * (1 - frac)}
+          />
+        </svg>
+        <span class="absolute inset-0 flex items-center justify-center text-3xl font-semibold">O</span>
+      </div>
+      <p class="text-lg font-semibold">{data.level.name} · Level {data.level.n}</p>
+      <p class="text-muted">
+        {data.total.toLocaleString()} Stardust{data.level.next === null
+          ? ''
+          : ` · ${(data.level.next - data.total).toLocaleString()} to next Level`}
+      </p>
     </div>
-    <p class="text-lg font-semibold">{data.level.name} · Level {data.level.n}</p>
-    <p class="text-muted">
-      {data.total.toLocaleString()} Stardust{data.level.next === null
-        ? ''
-        : ` · ${(data.level.next - data.total).toLocaleString()} to next Level`}
-    </p>
-  </div>
+  {/if}
 
   <section class="panel" aria-label="Targets">
     <h2 class="panel-title">Targets</h2>
@@ -106,15 +112,37 @@
     </label>
   </section>
 
-  <section class="panel" aria-label="Stardust history">
-    <h2 class="panel-title">Last 30 days</h2>
-    <svg viewBox="0 0 300 80" class="h-24 w-full text-accent" role="img" aria-label="Stardust per day, last 30 days">
-      {#each data.history as h, i (h.day)}
-        {@const bar = (h.points / max) * 76}
-        <rect x={i * 10 + 1} y={80 - bar} width="8" height={bar} fill="currentColor" rx="1">
-          <title>{h.day}: {h.points}</title>
-        </rect>
-      {/each}
-    </svg>
-  </section>
+  {#if gamification && shelf}
+    <section class="panel" aria-label="Badges">
+      <h2 class="panel-title">Badges · {shelf.patches} Patch{shelf.patches === 1 ? '' : 'es'}</h2>
+      <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {#each shelf.badges as b (b.id)}
+          <li
+            class="rounded border p-2"
+            class:opacity-50={b.count === 0}
+            class:border-dashed={b.count === 0}
+            aria-label={b.count === 0 ? `${b.name}, locked` : b.name}
+          >
+            <p class="font-medium">{b.name}{b.repeatable && b.count > 0 ? ` x ${b.count}` : ''}</p>
+            <p class="text-xs text-muted">{b.tier} · {b.points.toLocaleString()} Stardust</p>
+            {#if b.count === 0}
+              <p class="text-xs text-muted">{b.condition}</p>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
+
+    <section class="panel" aria-label="Stardust history">
+      <h2 class="panel-title">Last 30 days</h2>
+      <svg viewBox="0 0 300 80" class="h-24 w-full text-accent" role="img" aria-label="Stardust per day, last 30 days">
+        {#each data.history as h, i (h.day)}
+          {@const bar = (h.points / max) * 76}
+          <rect x={i * 10 + 1} y={80 - bar} width="8" height={bar} fill="currentColor" rx="1">
+            <title>{h.day}: {h.points}</title>
+          </rect>
+        {/each}
+      </svg>
+    </section>
+  {/if}
 {/if}
