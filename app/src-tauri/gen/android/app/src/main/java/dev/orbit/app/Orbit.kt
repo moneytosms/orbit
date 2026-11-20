@@ -23,6 +23,17 @@ object Core {
     init { System.loadLibrary("orbit_app_lib") }
     @JvmStatic external fun capture(dir: String, text: String): String
     @JvmStatic external fun sync(dir: String, server: String, device: String, token: String): String
+    @JvmStatic external fun reminders(dir: String, nowLocal: String): String
+    @JvmStatic external fun view(dir: String, viewId: String, today: String): String
+    @JvmStatic external fun view_sources(dir: String): String
+    @JvmStatic external fun whats_next(dir: String, today: String, nowTime: String): String
+    @JvmStatic external fun routines(dir: String, today: String, area: String): String
+    @JvmStatic external fun goals(dir: String, today: String, area: String): String
+    @JvmStatic external fun complete(dir: String, taskId: String, today: String): String
+    @JvmStatic external fun checkin(dir: String, routineId: String, date: String, state: String): String
+    @JvmStatic external fun checkin_clear(dir: String, routineId: String, date: String): String
+    @JvmStatic external fun reminder_snooze(dir: String, taskId: String, untilLocal: String): String
+    @JvmStatic external fun enqueue(dir: String, opJson: String): String
 
     fun dir(ctx: Context) = File(ctx.filesDir, "orbit").path
 }
@@ -92,6 +103,8 @@ class SyncWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
         val r = JSONObject(Core.sync(Core.dir(applicationContext), auth.server, auth.device, auth.token))
         Log.i(TAG, "sync ${r.toString().replace(auth.token, "***")}")
         if (r.optBoolean("signed_out")) { Store.clearToken(applicationContext); return Result.success() }
-        return if (r.has("error")) Result.retry() else Result.success()
+        if (r.has("error")) return Result.retry()
+        WidgetRefresh.all(applicationContext)
+        return Result.success()
     }
 }
