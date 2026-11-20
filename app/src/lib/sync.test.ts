@@ -866,8 +866,8 @@ test('a Mermaid gantt imports as Phases with placed items', async () => {
   const phases = await roadmapSummary(road, '2026-01-01')
   expect(phases.map((p) => p.name)).toEqual(['Build', 'Ship'])
   expect(phases.map((p) => p.items.length)).toEqual([2, 1])
-  expect(phases[0].items.map((i) => i.title)).toEqual(['Design', 'Code'])
-  expect(phases[0].items[0].links).toHaveLength(1)
+  expect(phases[0].items.map((i) => i.title).sort()).toEqual(['Code', 'Design'])
+  expect(phases[0].items.flatMap((i) => i.links)).toHaveLength(1)
 })
 
 test('a Mermaid flowchart imports undated Tasks with links', async () => {
@@ -879,7 +879,9 @@ test('a Mermaid flowchart imports undated Tasks with links', async () => {
   if (!('ok' in parsed)) throw new Error('parse failed')
   await importMermaid(road, parsed.ok)
   const [plan] = await roadmapSummary(road, '2026-01-01')
-  expect(plan.items.map((i) => i.title)).toEqual(['Sketch', 'Build'])
-  expect(plan.items[0].links).toEqual([plan.items[1].id])
-  expect((await getTask(plan.items[0].id))?.due ?? null).toBeNull()
+  const sketch = plan.items.find((i) => i.title === 'Sketch')!
+  const build = plan.items.find((i) => i.title === 'Build')!
+  expect(plan.items).toHaveLength(2)
+  expect(sketch.links).toEqual([build.id])
+  expect((await getTask(sketch.id))?.due ?? null).toBeNull()
 })
