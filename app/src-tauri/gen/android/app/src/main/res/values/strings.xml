@@ -1,4 +1,13 @@
 <resources>
     <string name="app_name">"Orbit"</string>
     <string name="main_activity_title">"Orbit"</string>
+    <!-- #69 -->
+    <string name="reminders_channel">"Reminders"</string>
+    <string name="reminder_complete">"Complete"</string>
+    <string name="reminder_snooze">"Snooze 10 min"</string>
+    <string name="reminder_open">"Open"</string>
+    <string name="battery_title">"Let Orbit remind you on time"</string>
+    <string name="battery_message">"Some phone makers pause apps to save battery, which can delay or drop reminders. Set Orbit to Unrestricted battery use (Battery, under App info)."</string>
+    <string name="battery_open">"Open app info"</string>
+    <string name="battery_later">"Later"</string>
 </resources>
