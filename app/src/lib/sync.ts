@@ -163,7 +163,7 @@ export type View = {
   id: string
   name: string
   icon: string
-  entity: 'task' | 'project' | 'goal' | 'page' | 'plan'
+  entity: 'task' | 'project' | 'goal' | 'page' | 'plan' | 'roadmap' | 'phase'
   scope: string | null
   filter: Node
   sorts: Sort[]
@@ -590,7 +590,8 @@ export type ViewPatch = Partial<
     | 'hidden'
   >
 > & { kind?: View['entity'] }
-export const updateView = (id: string, patch: ViewPatch) => enqueue('view.update', { id, ...patch })
+export const updateView = (id: string, patch: ViewPatch & { kind?: View['entity'] }) =>
+  enqueue('view.update', { id, ...patch })
 /** Puts a built-in View back to its defaults. */
 export const resetView = (id: string) => enqueue('view.reset', { id })
 export const deleteView = (id: string) => enqueue('view.delete', { id })

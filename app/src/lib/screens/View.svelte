@@ -81,7 +81,7 @@
     loaded = true
   }
 
-  async function save(patch: ViewPatch) {
+  async function save(patch: ViewPatch & { kind?: ViewRow['entity'] }) {
     await updateView(id, patch)
     await load()
     onchange()
@@ -282,6 +282,16 @@
       >
         <ArrowUpDown size={14} /> Sort
       </Button>
+      <select
+        aria-label="Kind"
+        value={view.entity}
+        onchange={(e) => save({ kind: e.currentTarget.value as ViewRow['entity'] })}
+        class="h-8 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+      >
+        {#each ['task', 'project', 'goal', 'page', 'plan', 'roadmap', 'phase'] as k (k)}
+          <option value={k}>{k[0].toUpperCase() + k.slice(1)}s</option>
+        {/each}
+      </select>
       <select
         aria-label="Group by"
         value={view.group_by ?? ''}
