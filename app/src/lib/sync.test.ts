@@ -701,3 +701,12 @@ test('a file over the limit is refused with a clear message', async () => {
   const big = new File([new Uint8Array(25 * 1024 * 1024 + 1)], 'big.bin')
   await expect(addFile(big)).rejects.toThrow(/at most 25 MB/)
 })
+
+test('the rows hook reports a local write', async () => {
+  const { onRowsChanged } = await import('./sync')
+  const seen: string[] = []
+  onRowsChanged((rows) => seen.push(...rows.map((r) => r.id)))
+  const t = await createTask('hooked', INBOX)
+  expect(seen).toContain(t)
+  onRowsChanged(() => {})
+})

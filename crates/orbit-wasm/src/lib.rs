@@ -246,3 +246,60 @@ pub fn reminder_schedule(
         &rows, now_local, &cfg,
     ))?)
 }
+
+/// The search index: one instance lives in JS, fed row by row.
+#[wasm_bindgen]
+pub struct SearchIndex(orbit_core::search::Index);
+
+#[wasm_bindgen]
+impl SearchIndex {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> SearchIndex {
+        SearchIndex(orbit_core::search::Index::new())
+    }
+
+    pub fn upsert(&mut self, row_json: &str) -> Result<(), JsError> {
+        let row: Row = serde_json::from_str(row_json)?;
+        self.0.upsert(&row);
+        Ok(())
+    }
+
+    pub fn remove(&mut self, id: &str) -> Result<(), JsError> {
+        self.0
+            .remove(id.parse().map_err(|_| JsError::new("bad id"))?);
+        Ok(())
+    }
+
+    /// `[{id, kind, title, score}]`, best first. Empty `text` lists recents.
+    pub fn query(&self, text: &str, now_ms: f64, limit: usize) -> Result<String, JsError> {
+        Ok(serde_json::to_string(&self.0.query(
+            text,
+            now_ms as u64,
+            limit,
+        ))?)
+    }
+
+    pub fn record_open(&mut self, id: &str, now_ms: f64) -> Result<(), JsError> {
+        self.0.record_open(
+            id.parse().map_err(|_| JsError::new("bad id"))?,
+            now_ms as u64,
+        );
+        Ok(())
+    }
+
+    /// Restores a saved open record for `id`.
+    pub fn set_opens(&mut self, id: &str, count: u32, last_ms: f64) -> Result<(), JsError> {
+        self.0.set_opens(
+            id.parse().map_err(|_| JsError::new("bad id"))?,
+            count,
+            last_ms as u64,
+        );
+        Ok(())
+    }
+}
+
+impl Default for SearchIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}

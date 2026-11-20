@@ -8,6 +8,7 @@ pub mod parse;
 pub mod recur;
 pub mod reminder;
 pub mod routine;
+pub mod search;
 pub mod theme;
 pub mod trash;
 pub mod view;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Menu from '@lucide/svelte/icons/menu'
+  import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
   import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import type { Snippet } from 'svelte'
@@ -7,6 +8,8 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import * as Dialog from '$lib/components/ui/dialog'
   import Composer from './Composer.svelte'
+  import Palette from './Palette.svelte'
+  import { ui } from '$lib/actions'
   import DropTarget from './DropTarget.svelte'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
@@ -48,6 +51,7 @@
   } = $props()
   let drawer = $state(false)
   let composing = $state(false)
+  let palette = $state(false)
   let prefill = $state('')
   let wide = $state(false)
 
@@ -90,8 +94,26 @@
   function newTask() {
     open()
   }
+  ui.newTask = newTask
+  function openPalette() {
+    drawer = false
+    palette = true
+  }
   function onkeydown(e: KeyboardEvent) {
     const t = e.target as HTMLElement
+    if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      e.preventDefault()
+      openPalette()
+    } else if (
+      e.key === '/' &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !t.closest('input, textarea, select, [contenteditable]')
+    ) {
+      e.preventDefault()
+      openPalette()
+    }
     if (e.key === 'q' && !e.ctrlKey && !e.metaKey && !e.altKey && !t.closest('input, textarea, [contenteditable]')) {
       e.preventDefault()
       newTask()
@@ -307,7 +329,9 @@
       <Button variant="ghost" class="hidden desk:inline-flex" onclick={newTask}>
         <Plus /> New task <kbd class="rounded-sm bg-sunk px-1.5 text-[11.5px] text-muted">Q</kbd>
       </Button>
-      <span class="size-8 desk:hidden"></span>
+      <Button variant="ghost" size="icon" aria-label="Search" onclick={openPalette}>
+        <Search />
+      </Button>
     </header>
     <main class="flex-1 overflow-y-auto">
       <div class="mx-auto max-w-[860px] px-4 pt-2 pb-28 desk:px-10 desk:pb-16">{@render children(open)}</div>
@@ -332,6 +356,13 @@
         </button>
       </div>
     {:else if t === 'browse'}
+      <button
+        type="button"
+        onclick={openPalette}
+        class="flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
+      >
+        <Search size={20} class="text-icon" /> Search
+      </button>
       <button
         type="button"
         onclick={() => (drawer = true)}
@@ -364,6 +395,8 @@
   <Dialog.Title class="sr-only">New task</Dialog.Title>
   <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
 {/snippet}
+
+<Palette bind:open={palette} {parentId} />
 
 {#if wide}
   <Dialog.Root bind:open={composing}>

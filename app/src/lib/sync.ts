@@ -312,7 +312,12 @@ export const completeTask = (id: string) => enqueue('task.complete', { id, today
 export const updateProject = (id: string, patch: { goal_id: string | null }) =>
   enqueue('project.update', { id, ...patch })
 export const updateTask = (id: string, patch: TaskPatch) => enqueue('task.update', { id, ...patch })
-export const getTask = (id: string) => tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
+export const getTask = (id: string) => {
+  lastTask = id
+  return tx(['rows'], (s) => req<Task | undefined>(s('rows').get(id)))
+}
+/** The Task last read by the Task drawer; the command palette acts on it while that drawer is open. */
+export let lastTask: string | null = null
 
 /** Creates a flat, global Label and returns its id. */
 export async function createLabel(name: string): Promise<string> {
@@ -660,6 +665,7 @@ async function enqueue(type: string, args: Command['args']) {
     s('meta').put(hlc, 'hlc')
     s('outbox').put(cmd)
   })
+  await emitRows([(type.startsWith('reminder.') ? args.task_id : args.id) as string | undefined])
   changed()
   clearTimeout(debounce)
   debounce = setTimeout(sync, 2000)
@@ -710,6 +716,7 @@ async function flush() {
     } = await res.json()
     const codes: string[] = []
     let answered = 0
+    let prior: string[] = []
     await tx(['rows', 'outbox', 'meta'], async (s) => {
       for (const cmd of commands) {
         const status = body.statuses[cmd.uuid]
@@ -725,7 +732,10 @@ async function flush() {
         }
         s('outbox').delete(cmd.uuid)
       }
-      if (body.full) s('rows').clear()
+      if (body.full) {
+        prior = (await req<IDBValidKey[]>(s('rows').getAllKeys())) as string[]
+        s('rows').clear()
+      }
       for (const row of body.delta) {
         if (row.kind === 'purged') s('rows').delete(row.id)
         else s('rows').put(row)
@@ -742,6 +752,13 @@ async function flush() {
       }
     })
     codes.forEach(rejected)
+    const queued = await tx(['outbox'], (s) => req<Command[]>(s('outbox').getAll()))
+    await emitRows(
+      [...body.delta.map((r) => r.id), ...commands, ...queued].map((x) =>
+        typeof x === 'string' ? x : ((x as Command).args.task_id ?? (x as Command).args.id),
+      ) as string[],
+      prior,
+    )
     changed()
     // A partly answered batch would be resent as-is: stop rather than loop.
     if (commands.length < 100 || answered < commands.length) return
@@ -1008,4 +1025,43 @@ export async function reminderSchedule(now = Date.now()): Promise<Fire[]> {
   return JSON.parse(
     reminder_schedule(JSON.stringify(await allRows()), await localMinute(now), JSON.stringify({ default_reminder })),
   )
+}
+
+let rowsChanged = (_rows: Row[], _removed: string[]) => {}
+/** Called with the rows that now exist and the ids that no longer do, after each local write and sync. */
+export const onRowsChanged = (fn: (rows: Row[], removed: string[]) => void) => (rowsChanged = fn)
+/** Every stored row, for the first load of the search index. */
+export const rowsSnapshot = () => allRows()
+async function emitRows(ids: (string | undefined)[], gone: string[] = []) {
+  const want = [...new Set(ids.filter((i): i is string => !!i))]
+  const found = await tx(['rows'], (s) => Promise.all(want.map((i) => req<Row | undefined>(s('rows').get(i)))))
+  const rows = found.filter((r): r is Row => !!r)
+  const have = new Set(rows.map((r) => r.id))
+  rowsChanged(rows, [...want.filter((i) => !have.has(i)), ...gone.filter((i) => !have.has(i) && !want.includes(i))])
+}
+
+/** Runs a typed-filter tree over every Task, as `runView` does, with this device's local date. */
+export async function runFilter(node: Node): Promise<Row[]> {
+  const view = {
+    id: '00000000-0000-7000-8000-0000000001ff',
+    name: 'Filter',
+    icon: '',
+    entity: 'task',
+    scope: null,
+    filter: node,
+    sorts: [],
+    group_by: null,
+    layout: 'list',
+    fields: [],
+    show_completed: false,
+    pinned: false,
+    hidden: false,
+    order: '',
+    trashed_at: null,
+    builtin: null,
+  }
+  const rows = await allRows()
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const groups: ViewGroup[] = JSON.parse(evaluate_view(JSON.stringify(view), JSON.stringify(rows), localToday()))
+  return groups.flatMap((g) => g.ids.flatMap((i) => byId.get(i) ?? []))
 }
