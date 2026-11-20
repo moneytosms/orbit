@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
@@ -51,6 +52,7 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val pct = percent(goal)
                         views.setTextViewText(R.id.card_title, goal.getString("name"))
                         views.setProgressBar(R.id.card_bar, 100, pct, false)
+                        views.setColorStateList(R.id.card_bar, "setProgressTintList", barTint(ctx, goal))
                         views.setTextViewText(R.id.card_percent, ctx.getString(R.string.goal_percent, pct))
                         views.setTextViewText(R.id.card_numbers, counts(goal) ?: "")
                         views.setViewVisibility(R.id.card_chip, visible(goal.optBoolean("behind")))
@@ -73,6 +75,7 @@ class GoalWidgetProvider : AppWidgetProvider() {
                         val row = RemoteViews(ctx.packageName, R.layout.widget_goal_row)
                         row.setTextViewText(R.id.name, g.getString("name"))
                         row.setProgressBar(R.id.bar, 100, pct, false)
+                        row.setColorStateList(R.id.bar, "setProgressTintList", barTint(ctx, g))
                         row.setTextViewText(R.id.percent, ctx.getString(R.string.goal_percent, pct))
                         row.setTextViewText(R.id.counts, counts(g) ?: "")
                         row.setViewVisibility(R.id.counts, visible(!g.isNull("total")))
@@ -95,6 +98,10 @@ class GoalWidgetProvider : AppWidgetProvider() {
             Intent(ctx, MainActivity::class.java).putExtra(EXTRA_OPEN, "goal:$goalId"),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        /** Accent normally, the warning colour once a Goal is behind pace. */
+        private fun barTint(ctx: Context, g: JSONObject): ColorStateList =
+            ColorStateList.valueOf(ctx.getColor(if (g.optBoolean("behind")) R.color.widget_warn else R.color.widget_accent))
 
         /** "3/10" for a counted or target Goal, null for a Manual one. */
         private fun counts(g: JSONObject): String? {

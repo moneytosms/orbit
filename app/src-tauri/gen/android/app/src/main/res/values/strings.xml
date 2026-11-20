@@ -29,7 +29,7 @@
     <string name="routines_widget_description">"Today's Routines. Tap one to check it in."</string>
     <string name="routines_done_today">"All done today"</string>
     <string name="routines_undo">"Undo"</string>
-    <string name="routines_streak">"Streak %1$d"</string>
+    <string name="routines_streak">"%1$d-day streak"</string>
     <string name="routines_config_all">"All areas"</string>
     <string name="goal_widget_label">"Goal"</string>
     <string name="goal_widget_description">"A Goal as a card, or a list of Goals. Tap to open it in Orbit."</string>

@@ -12,6 +12,7 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     web = webView
+    webView.padForSystemBars()
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {

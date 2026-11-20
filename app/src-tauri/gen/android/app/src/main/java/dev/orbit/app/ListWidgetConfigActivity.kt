@@ -23,6 +23,9 @@ class ListWidgetConfigActivity : Activity() {
             return
         }
         val list = findViewById<ListView>(R.id.config_list)
+        list.clipToPadding = false
+        list.padForSystemBars()
+        barIconsFollowTheme()
         // Core JNI can wait on the connection during a sync, so the list loads off the main thread.
         Thread {
             val all = ListWidget.sources(applicationContext)

@@ -57,16 +57,16 @@ class RoutinesWidgetProvider : AppWidgetProvider() {
                 val area = prefs(ctx).getString("area_$widget", "") ?: ""
                 val items = RemoteViews.RemoteCollectionItems.Builder().setHasStableIds(true).setViewTypeCount(1)
                 var count = 0
-                for (r in WidgetData.objects(Core.routines(dir, today, area))) {
+                val all = WidgetData.objects(Core.routines(dir, today, area))
+                for (r in all) {
                     if (!WidgetData.unchecked(r, today)) continue
                     val rid = r.getString("id")
                     val isPending = rid in pending
                     val row = RemoteViews(ctx.packageName, R.layout.widget_routines_row)
                     row.setTextViewText(R.id.name, r.getString("name"))
-                    row.setTextViewText(
-                        R.id.streak,
-                        ctx.getString(R.string.routines_streak, r.getJSONObject("stats").optInt("current_streak"))
-                    )
+                    val streak = r.getJSONObject("stats").optInt("current_streak")
+                    row.setTextViewText(R.id.streak, ctx.getString(R.string.routines_streak, streak))
+                    row.setViewVisibility(R.id.streak, if (streak > 0) View.VISIBLE else View.GONE)
                     row.setInt(
                         R.id.name, "setPaintFlags",
                         Paint.ANTI_ALIAS_FLAG or (if (isPending) Paint.STRIKE_THRU_TEXT_FLAG else 0)
@@ -82,6 +82,8 @@ class RoutinesWidgetProvider : AppWidgetProvider() {
                 views.setPendingIntentTemplate(R.id.list, template)
                 views.setViewVisibility(R.id.list, if (count == 0) View.GONE else View.VISIBLE)
                 views.setViewVisibility(R.id.empty, if (count == 0) View.VISIBLE else View.GONE)
+                views.setProgressBar(R.id.day_bar, 100, if (all.isEmpty()) 0 else (all.size - count) * 100 / all.size, false)
+                views.setViewVisibility(R.id.day_bar, if (all.isEmpty()) View.GONE else View.VISIBLE)
                 views.setTextViewText(R.id.left, ctx.getString(R.string.routines_left, count))
                 views.setViewVisibility(R.id.left, if (count == 0) View.GONE else View.VISIBLE)
                 mgr.updateAppWidget(widget, views)

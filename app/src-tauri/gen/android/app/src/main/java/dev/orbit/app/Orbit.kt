@@ -6,6 +6,10 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import android.app.Activity
+import android.content.res.Configuration
+import android.view.View
+import android.view.WindowInsets
 import androidx.work.*
 import org.json.JSONObject
 import java.io.File
@@ -109,4 +113,24 @@ class SyncWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
         ReminderScheduler.rearm(applicationContext)
         return Result.success()
     }
+}
+
+/** Pads a view by the system bars, cutout and keyboard so edge-to-edge content stays clear of them. */
+fun View.padForSystemBars() {
+    setOnApplyWindowInsetsListener { v, insets ->
+        val b = insets.getInsets(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime()
+        )
+        v.setPadding(b.left, b.top, b.right, b.bottom)
+        insets
+    }
+}
+
+/** Dark status-bar icons on the light theme, light ones on the dark theme (edge-to-edge screens draw under the bar). */
+fun Activity.barIconsFollowTheme() {
+    val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    window.insetsController?.setSystemBarsAppearance(
+        if (night) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+    )
 }

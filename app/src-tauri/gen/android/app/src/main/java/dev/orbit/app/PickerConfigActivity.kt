@@ -5,7 +5,6 @@ import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
-import android.view.WindowInsets
 import android.widget.ArrayAdapter
 import android.widget.ListView
 
@@ -34,11 +33,8 @@ abstract class PickerConfigActivity : Activity() {
         }
         // Android 15 draws edge to edge: keep the first row out from under the status bar.
         list.clipToPadding = false
-        list.setOnApplyWindowInsetsListener { v, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            v.setPadding(0, bars.top, 0, bars.bottom)
-            insets
-        }
+        list.padForSystemBars()
         setContentView(list)
+        barIconsFollowTheme() // needs the decor view, so after setContentView
     }
 }
