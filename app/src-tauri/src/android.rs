@@ -75,27 +75,28 @@ pub fn builder() -> tauri::Builder<Wry> {
             has_token,
             set_server
         ])
-        .setup(|app| {
-            // The bundled index.html is the Svelte app, which needs an Orbit server to talk to.
-            // Off the setup thread: the Kotlin plugin answers on the main thread.
-            let app = app.handle().clone();
+        // The bundled index.html is only a launcher: once it has loaded, send the window to the saved
+        // server, or to the server-URL page. A navigation sooner than this is dropped.
+        .on_page_load(|webview, payload| {
+            let u = payload.url();
+            if payload.event() != tauri::webview::PageLoadEvent::Finished
+                || u.host_str() != Some("tauri.localhost")
+                || u.path() != "/"
+            {
+                return;
+            }
+            let webview = webview.clone();
+            // Off this thread: the Kotlin plugin answers on the main thread.
             tauri::async_runtime::spawn_blocking(move || {
-                // A navigation issued before the first page finishes loading is dropped.
-                std::thread::sleep(std::time::Duration::from_millis(1500));
-                let Some(w) = app.get_webview_window("main") else {
-                    return;
-                };
-                let server = call(&app, "getServer", json!({})).ok();
+                let server = call(webview.app_handle(), "getServer", json!({})).ok();
                 let server = server.as_ref().and_then(|v| v["server"].as_str());
                 let to = match server {
-                    Some(s) if !s.is_empty() => s.parse().ok(),
-                    // The bundled assets origin on Android; `w.url()` is not a usable base this early.
-                    _ => "http://tauri.localhost/server.html".parse().ok(),
+                    Some(s) if !s.is_empty() => s,
+                    _ => "http://tauri.localhost/server.html",
                 };
-                if let Some(to) = to {
-                    let _ = w.navigate(to);
+                if let Ok(to) = to.parse() {
+                    let _ = webview.navigate(to);
                 }
             });
-            Ok(())
         })
 }

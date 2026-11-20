@@ -74,7 +74,7 @@ fn known(rows: &[Row]) -> parse::Known {
 }
 
 /// Queues an Inbox task offline, with quick-add syntax applied to its title, due, priority and
-/// labels. No network, no UI. Place, goal and page tokens are parsed but not applied yet.
+/// labels. No network, no UI. Goal and page tokens are parsed but not applied yet.
 pub fn capture(dir: &str, text: &str) -> Result<Value> {
     let text = text.trim();
     if text.is_empty() {
@@ -94,6 +94,24 @@ pub fn capture(dir: &str, text: &str) -> Result<Value> {
             })
             .collect();
         let id = c.create_task(&parsed.title, now_ms())?;
+        // `@Area` or `@project`, matched by name; an unknown name leaves the task in the Inbox.
+        let place = parsed.place.as_deref().and_then(|p| {
+            rows.iter().find_map(|r| match r {
+                Row::Area(a) if a.name.eq_ignore_ascii_case(p) => Some(a.id),
+                Row::Project(x) if x.name.eq_ignore_ascii_case(p) => Some(x.id),
+                _ => None,
+            })
+        });
+        if let Some(parent_id) = place {
+            c.enqueue(
+                Op::ItemMove {
+                    id,
+                    parent_id: Some(parent_id),
+                    order: String::new(),
+                },
+                now_ms(),
+            )?;
+        }
         let mut patch = serde_json::Map::new();
         if let Some(d) = &parsed.due {
             patch.insert("due".into(), json!({ "date": d.date, "time": d.time }));
@@ -765,6 +783,33 @@ mod tests {
         assert_eq!(task.title, "buy milk");
         assert_eq!(task.priority, 1);
         assert_eq!(task.label_ids, vec![Uuid::from_u128(7)]);
+    }
+
+    #[test]
+    fn capture_places_the_task_under_a_named_area() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_str().unwrap();
+        let home = Uuid::from_u128(9);
+        with(d, "", |c| {
+            c.enqueue(
+                Op::AreaCreate {
+                    color: String::new(),
+                    id: home,
+                    name: "Home".into(),
+                    order: "a".into(),
+                },
+                now_ms(),
+            )
+            .map(drop)
+        })
+        .unwrap();
+        let id: Uuid = capture(d, "buy bread @home").unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let task = with(d, "", |c| c.task(id)).unwrap().unwrap();
+        assert_eq!((task.title.as_str(), task.parent_id), ("buy bread", home));
     }
 
     #[test]
