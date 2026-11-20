@@ -852,3 +852,20 @@ test('a Phase gated by an undone Milestone is locked and never current, and step
   await setPhaseGate(one, null)
   expect((await roadmapSummary(road, '2026-01-01'))[0].gate_id).toBeNull()
 })
+
+test('a Mermaid gantt imports as Phases with placed items', async () => {
+  const { importMermaid, parseMermaid } = await import('./sync')
+  await createArea('Mermaid')
+  const area = (await tree()).find((x) => x.area.name === 'Mermaid')!.area
+  const road = await createRoadmap(area.id, 'Imported')
+  const parsed = parseMermaid(
+    'gantt\n  dateFormat YYYY-MM-DD\n  section Build\n  Design :a, 2026-03-01, 2026-03-05\n  Code :b, after a, 3d\n  section Ship\n  Release :c, 2026-03-10, 2026-03-12',
+  )
+  if (!('ok' in parsed)) throw new Error('parse failed')
+  await importMermaid(road, parsed.ok)
+  const phases = await roadmapSummary(road, '2026-01-01')
+  expect(phases.map((p) => p.name)).toEqual(['Build', 'Ship'])
+  expect(phases.map((p) => p.items.length)).toEqual([2, 1])
+  expect(phases[0].items.map((i) => i.title)).toEqual(['Design', 'Code'])
+  expect(phases[0].items[0].links).toHaveLength(1)
+})

@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import { areaStats, openCounts, roadmapsIn, upNextIn, type AreaStats } from '$lib/area'
   import {
     createGoal,
@@ -35,6 +36,7 @@
   let next = $state<NextItem[]>([])
   let counts = $state(new Map<string, number>())
   let maps = $state<Roadmap[]>([])
+  let building = $state(false)
   let pageList = $state<Page[]>([])
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
@@ -199,6 +201,11 @@
         </ul>
       </section>
     {/if}
+
+    <div>
+      <Button variant="ghost" size="sm" onclick={() => (building = true)}>New roadmap</Button>
+    </div>
+    <RoadmapBuilder bind:open={building} {areas} ownerId={id} ownerName={area.area.name} {onchange} />
 
     <div>
       <div class="mb-3 flex gap-1" role="tablist">

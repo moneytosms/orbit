@@ -1,19 +1,26 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import MermaidImport from '$lib/MermaidImport.svelte'
+  import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import RoadmapCanvas from '$lib/RoadmapCanvas.svelte'
+  import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
   import {
     archiveItem,
     createPhase,
     createRoadmap,
     deleteItem,
     getRoadmap,
+    importMermaid,
+    localDay,
     placeable,
     placeItem,
     renameRoadmap,
     roadmaps,
     roadmapSummary,
     setPhaseDone,
+    type MermaidPlan,
     type PhaseSummary,
     type Roadmap,
     type tree,
@@ -25,7 +32,10 @@
   let roadmap = $state<Roadmap | undefined>()
   let phases = $state<PhaseSummary[]>([])
   let choices = $state<{ id: string; kind: string; title: string }[]>([])
-  let mode = $state<'canvas' | 'list' | 'board'>('canvas')
+  let mode = $state<'canvas' | 'list' | 'board' | 'timeline'>('canvas')
+  let today = $state('')
+  let building = $state(false)
+  let importing = $state(false)
   let loaded = $state(false)
   let newName = $state('')
   let newPhase = $state('')
@@ -36,7 +46,8 @@
   async function load() {
     if (id) {
       roadmap = await getRoadmap(id)
-      phases = roadmap ? await roadmapSummary(id) : []
+      today = await localDay()
+      phases = roadmap ? await roadmapSummary(id, today) : []
       choices = roadmap ? await placeable() : []
     } else {
       list = await roadmaps()
@@ -68,6 +79,13 @@
     if (!id || !newPhase.trim()) return
     await createPhase(id, newPhase.trim())
     newPhase = ''
+    await load()
+  }
+  async function runImport(plan: MermaidPlan) {
+    if (!id) return
+    await importMermaid(id, plan)
+    importing = false
+    onchange()
     await load()
   }
   async function place(itemId: string, phaseId: string | null) {
@@ -140,6 +158,10 @@
     </select>
     <Button type="submit" variant="primary">Add</Button>
   </form>
+  <div class="mt-3">
+    <Button variant="ghost" onclick={() => (building = true)}>Start from 30-day plan</Button>
+  </div>
+  <RoadmapBuilder bind:open={building} {areas} {onchange} />
 {:else if roadmap}
   {#key roadmap.id}
     <input
@@ -155,6 +177,9 @@
     >
     <Button variant={mode === 'list' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'list')}>List</Button>
     <Button variant={mode === 'board' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'board')}>Board</Button>
+    <Button variant={mode === 'timeline' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'timeline')}
+      >Timeline</Button
+    >
   </div>
 
   {#snippet phaseHead(p: PhaseSummary)}
@@ -189,6 +214,12 @@
   {#if mode === 'canvas'}
     <div class="hidden desk:block">
       <RoadmapCanvas {id} {phases} {unplaced} onplace={place} onchange={load} />
+    </div>
+  {/if}
+
+  {#if mode === 'timeline'}
+    <div class="hidden desk:block">
+      <RoadmapTimeline {phases} {today} />
     </div>
   {/if}
 
@@ -272,9 +303,16 @@
     <Button type="submit" variant="primary">Add phase</Button>
   </form>
   <div class="mt-3 flex gap-2">
+    <Button variant="ghost" onclick={() => (importing = true)}>Import Mermaid…</Button>
     <Button variant="ghost" aria-label="Archive roadmap" onclick={archive}>Archive</Button>
     <Button variant="ghost" aria-label="Delete roadmap" onclick={remove}>Delete roadmap</Button>
   </div>
+  <Dialog.Root bind:open={importing}>
+    <Dialog.Content class="max-h-[85vh] overflow-y-auto">
+      <Dialog.Title>Import Mermaid</Dialog.Title>
+      <MermaidImport onimport={runImport} />
+    </Dialog.Content>
+  </Dialog.Root>
 {:else if loaded}
   <p class="text-sm text-muted">This roadmap no longer exists.</p>
 {/if}
