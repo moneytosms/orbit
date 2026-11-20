@@ -21,6 +21,7 @@ import {
 import { inbox_id } from '../../wasm/orbit_wasm'
 import { readScreen, routes, type Route } from './routes'
 import { getTheme, setTheme } from './theme'
+import { clearCursor, moveCursor, openCursor } from './keys'
 
 /** The item an action acts on: the open Task drawer, else the current screen's Area, Project, Page or View. */
 export type Target = { kind: 'task' | 'area' | 'project' | 'page' | 'view'; id: string }
@@ -37,6 +38,8 @@ export type Action = {
 /** Hooks the shell fills in for actions that open UI. */
 export const ui = {
   newTask: () => {},
+  openPalette: () => {},
+  openHelp: () => {},
 }
 let override: string | null = null
 /** Marks a Task as focused (the palette's own drawer); `null` clears it. */
@@ -50,8 +53,8 @@ const drawerOpen = () =>
 
 /** What is in focus now. */
 export function focused(): Target | null {
-  if (override) return { kind: 'task', id: override }
   if (lastTask && drawerOpen()) return { kind: 'task', id: lastTask }
+  if (override) return { kind: 'task', id: override }
   const s = readScreen()
   if (s.name === 'area' || s.name === 'project' || s.name === 'page' || s.name === 'view') {
     return { kind: s.name, id: s.id }
@@ -146,6 +149,11 @@ export async function actions(): Promise<Action[]> {
 
   add('theme.toggle', 'Toggle theme', 'App', toggleTheme)
   add('sync.now', 'Sync now', 'App', () => sync())
+  add('search.open', 'Search', 'App', () => ui.openPalette())
+  add('help.open', 'Keyboard shortcuts', 'App', () => ui.openHelp())
+  add('cursor.next', 'Next item', 'List', () => moveCursor(1, setFocusedTask))
+  add('cursor.prev', 'Previous item', 'List', () => moveCursor(-1, setFocusedTask))
+  add('cursor.open', 'Open item', 'List', () => openCursor())
   return all.filter((a) => !a.needs || (a.needs === 'task' ? here?.kind === 'task' : !!here))
 }
 
@@ -176,4 +184,12 @@ export function filterActions(list: Action[], text: string): Action[] {
     })
     .sort((x, y) => y.s - x.s)
     .map((x) => x.a)
+}
+
+/** Runs the action with this id (the keyboard's way in); a row the action removed drops the cursor. */
+export async function runAction(id: string) {
+  await (await actions()).find((a) => a.id === id)?.run()
+  setTimeout(() => {
+    if (override && !document.querySelector('[data-task-row][data-cursor]')) clearCursor(setFocusedTask)
+  }, 200)
 }

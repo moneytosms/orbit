@@ -185,7 +185,8 @@
 
 {#snippet line(task: Task, depth: number)}
   <div
-    class="group relative flex min-h-[42px] items-center gap-3 rounded-[9px] pr-2 hover:bg-hover"
+    data-task-row={task.id}
+    class="group relative flex min-h-[42px] items-center gap-3 rounded-[9px] pr-2 hover:bg-hover data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
     style:padding-left="{8 + depth * 24}px"
   >
     <button
@@ -198,6 +199,7 @@
     </button>
     <button
       type="button"
+      data-open
       onclick={() => (openId = task.id)}
       class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 py-2 text-left"
     >
