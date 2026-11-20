@@ -180,7 +180,8 @@
         {/key}
       {:else if parent}
         {#if screen.name === 'project'}
-          {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === screen.id)}
+          {@const pid = screen.id}
+          {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === pid)}
           {#if proj}
             {#key proj.id}
               <Banner
