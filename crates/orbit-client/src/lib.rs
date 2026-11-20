@@ -174,6 +174,38 @@ impl Client {
         row(&self.db, id)
     }
 
+    /// Every local row, for pure computations over the whole replica.
+    pub fn rows(&self) -> Result<Vec<Row>> {
+        let mut st = self.db.prepare("SELECT data FROM rows")?;
+        let data = st.query_map([], |r| r.get::<_, String>(0))?;
+        let mut out = vec![];
+        for d in data {
+            out.push(serde_json::from_str(&d?)?);
+        }
+        Ok(out)
+    }
+
+    /// Uses a Device made elsewhere (e.g. `POST /devices`) instead of logging in: its id becomes
+    /// this replica's HLC device and its token authorizes syncs.
+    pub fn set_auth(&mut self, device: Uuid, token: &str) -> Result<()> {
+        let hlc = match meta(&self.db, "hlc")? {
+            Some(s) => Hlc {
+                device,
+                ..serde_json::from_str(&s)?
+            },
+            None => Hlc {
+                wall: 0,
+                counter: 0,
+                device,
+            },
+        };
+        let tx = self.db.transaction()?;
+        set_meta(&tx, "hlc", &serde_json::to_string(&hlc)?)?;
+        set_meta(&tx, "auth", token)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn outbox_len(&self) -> Result<usize> {
         let n: i64 = self
             .db
