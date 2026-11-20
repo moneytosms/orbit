@@ -485,6 +485,7 @@ fn kind_name(row: &Row) -> &'static str {
         Row::Roadmap(_) => "roadmap",
         Row::Phase(_) => "phase",
         Row::Placement(_) => "placement",
+        Row::Award(_) => "award",
     }
 }
 

@@ -150,8 +150,33 @@ fn awards(rows: &[Row], utc_offset_min: i32, day_start: &str) -> Vec<Award> {
                 task: false,
             });
         }
+        if let Row::Award(a) = r {
+            out.push(Award {
+                day: local_day(a.earned_at, utc_offset_min, day_start),
+                points: a.points,
+                task: false,
+            });
+        }
     }
     out
+}
+
+/// Completed Tasks in all, and per local day (`YYYY-MM-DD`), counting the same as Stardust.
+pub fn task_counts(
+    rows: &[Row],
+    utc_offset_min: i32,
+    day_start: &str,
+) -> (u32, HashMap<String, u32>) {
+    let mut total = 0;
+    let mut per_day: HashMap<String, u32> = HashMap::new();
+    for a in awards(rows, utc_offset_min, day_start)
+        .iter()
+        .filter(|a| a.task)
+    {
+        total += 1;
+        *per_day.entry(a.day.clone()).or_insert(0) += 1;
+    }
+    (total, per_day)
 }
 
 /// Stardust per completion record that still counts, as `(record id, points)`.
@@ -402,6 +427,7 @@ mod tests {
             dashboard: None,
             vacation_from: None,
             vacations: None,
+            gamification: None,
         };
         f(&mut s);
         s
@@ -607,6 +633,23 @@ mod tests {
         );
         let h = day_totals(&rows, 0, "", "2026-03-11", 2);
         assert_eq!(h[1].points, 15);
+    }
+
+    #[test]
+    fn gamification_off_still_computes_awards() {
+        let rows = vec![
+            Row::Settings(settings(|s| s.gamification = Some(false))),
+            Row::Award(crate::badge::Award {
+                id: uid(30),
+                badge: "tasks-10".into(),
+                key: "tasks-10".into(),
+                earned_at: NOON,
+                points: 50,
+            }),
+        ];
+        let s = summary(&rows, "2026-03-10", 0, "");
+        assert_eq!(s.total, 50);
+        assert_eq!(s.level.n, 1);
     }
 
     #[test]

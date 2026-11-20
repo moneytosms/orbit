@@ -12,7 +12,9 @@
   import {
     getDaySettings,
     getDefaultReminder,
+    getGamification,
     setDefaultReminder,
+    setGamification,
     getSettings,
     setDayStart,
     setStartView,
@@ -128,6 +130,8 @@
   let notify = $state(notifyEnabled())
   let defaultReminder = $state(true)
   getDefaultReminder().then((v) => (defaultReminder = v))
+  let gamification = $state(true)
+  getGamification().then((v) => (gamification = v))
   let weekStart = $state('1')
   getWeekStart().then((v) => (weekStart = String(v)))
   views().then((v) => (allViews = v))
@@ -398,6 +402,10 @@
       <Label class="font-normal">
         <Checkbox bind:checked={defaultReminder} onCheckedChange={(v) => setDefaultReminder(v === true)} />
         Remind at the due time of a Task with a time
+      </Label>
+      <Label class="font-normal">
+        <Checkbox bind:checked={gamification} onCheckedChange={(v) => setGamification(v === true)} />
+        Gamification: Stardust, Levels, Badges and Patches
       </Label>
     </div>
   </section>

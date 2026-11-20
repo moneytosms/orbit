@@ -332,6 +332,13 @@ pub fn stardust_summary(
     Ok(serde_json::to_string(&s)?)
 }
 
+/// `{badges, patches}` for the Profile shelf over `rows_json` (a Row array).
+#[wasm_bindgen]
+pub fn badge_shelf(rows_json: &str) -> Result<String, JsError> {
+    let rows: Vec<Row> = serde_json::from_str(rows_json)?;
+    Ok(serde_json::to_string(&orbit_core::badge::shelf(&rows))?)
+}
+
 /// Dates in `from..=to` (`YYYY-MM-DD`) on which Routine `routine_id` is due, as a JSON array.
 #[wasm_bindgen]
 pub fn routine_days(

@@ -434,6 +434,7 @@ fn run_command(
                         complete_descendants(&tx, *id, cmd)?;
                     }
                 }
+                award_badges(&tx, cmd, now)?;
                 Status::Ok
             }
             Err(code) => Status::Error { code },
@@ -668,6 +669,59 @@ fn save_conflict(
 fn log_completion(conn: &Connection, old: &Row, cmd: &Command) -> rusqlite::Result<()> {
     if let Some(c) = orbit_core::completion_for(old, cmd) {
         write(conn, &Row::Completion(c), &Clocks::new())?;
+    }
+    Ok(())
+}
+
+/// Every live row, read inside `conn`'s transaction.
+fn all_rows(conn: &Connection) -> rusqlite::Result<Vec<Row>> {
+    let mut stmt =
+        conn.prepare("SELECT data FROM rows WHERE json_extract(data, '$.kind') != 'purged'")?;
+    let mut rows = Vec::new();
+    for data in stmt.query_map([], |r| r.get::<_, String>(0))? {
+        rows.push(serde_json::from_str(&data?).map_err(json_err)?);
+    }
+    Ok(rows)
+}
+
+/// Open Inbox Tasks: not done and not in the Trash.
+fn open_inbox(rows: &[Row]) -> usize {
+    rows.iter()
+        .filter(|r| {
+            matches!(r, Row::Task(t) if t.parent_id == orbit_core::INBOX
+                && t.completed_at.is_none()
+                && t.trashed_at.is_none())
+        })
+        .count()
+}
+
+/// Writes the Awards `cmd` newly earns. The server has no time zone, so days are UTC.
+fn award_badges(conn: &Connection, cmd: &Command, now: i64) -> rusqlite::Result<()> {
+    if matches!(cmd.op, Op::AwardGrant { .. }) {
+        return Ok(());
+    }
+    let rows = all_rows(conn)?;
+    let emptied = match cmd.op {
+        Op::TaskComplete { .. } if open_inbox(&rows) == 0 => Some(cmd.uuid),
+        _ => None,
+    };
+    let now = now as u64;
+    let today = orbit_core::page::utc_date(now);
+    for a in orbit_core::badge::earned(&rows, now, 0, "", &today, emptied) {
+        let grant = Command {
+            op: Op::AwardGrant {
+                id: a.id,
+                badge: a.badge,
+                key: a.key,
+                earned_at: a.earned_at,
+                points: a.points,
+            },
+            ..cmd.clone()
+        };
+        let mut clocks = Clocks::new();
+        if let Ok(row) = apply_lww(None, &mut clocks, &grant) {
+            write(conn, &row, &clocks)?;
+        }
     }
     Ok(())
 }
