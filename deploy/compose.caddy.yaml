@@ -1,0 +1,30 @@
+# orbit-server behind Caddy with automatic HTTPS. Run from this directory:
+# `docker compose -f compose.caddy.yaml up -d`. Set your domain in Caddyfile first.
+# Needs DNS pointing at this host and ports 80 and 443 open.
+services:
+  orbit:
+    image: ghcr.io/moneytosms/orbit:latest
+    # To build the image from this checkout instead, comment `image:` and uncomment:
+    # build: ..
+    expose:
+      - "8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - orbit
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

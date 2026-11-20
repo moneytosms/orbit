@@ -1,0 +1,12 @@
+# orbit-server for personal use. Run from this directory: `docker compose up -d`.
+# Data lives in ./data (created on first start; must be writable by uid 10001).
+services:
+  orbit:
+    image: ghcr.io/moneytosms/orbit:latest
+    # To build the image from this checkout instead, comment `image:` and uncomment:
+    # build: ..
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

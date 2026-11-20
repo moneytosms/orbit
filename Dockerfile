@@ -1,7 +1,7 @@
 # orbit-server image. Multi-arch via buildx (see scripts/release.sh).
 FROM rust:1-bookworm AS web
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
- && npm i -g pnpm \
+ && npm i -g pnpm@12 \
  && rustup target add wasm32-unknown-unknown \
  && cargo install --locked wasm-pack
 # vite 8 / rolldown needs node >= 20.19; bookworm apt has 18
