@@ -869,3 +869,17 @@ test('a Mermaid gantt imports as Phases with placed items', async () => {
   expect(phases[0].items.map((i) => i.title)).toEqual(['Design', 'Code'])
   expect(phases[0].items[0].links).toHaveLength(1)
 })
+
+test('a Mermaid flowchart imports undated Tasks with links', async () => {
+  const { importMermaid, parseMermaid } = await import('./sync')
+  await createArea('Flow')
+  const area = (await tree()).find((x) => x.area.name === 'Flow')!.area
+  const road = await createRoadmap(area.id, 'Flow import')
+  const parsed = parseMermaid('flowchart LR\n  subgraph Plan\n    A[Sketch] --> B[Build]\n  end')
+  if (!('ok' in parsed)) throw new Error('parse failed')
+  await importMermaid(road, parsed.ok)
+  const [plan] = await roadmapSummary(road, '2026-01-01')
+  expect(plan.items.map((i) => i.title)).toEqual(['Sketch', 'Build'])
+  expect(plan.items[0].links).toEqual([plan.items[1].id])
+  expect((await getTask(plan.items[0].id))?.due ?? null).toBeNull()
+})

@@ -1371,7 +1371,10 @@ export async function importMermaid(roadmapId: string, plan: MermaidPlan): Promi
       if (item.milestone && goal) id = await createMilestone(goal.id, item.title, item.end || item.start)
       else {
         id = await createTask(item.title, area)
-        await updateTask(id, { due: { date: item.end || item.start }, ...(goal ? { goal_id: goal.id } : {}) })
+        const date = item.end || item.start
+        // Flowchart nodes carry no dates, so they import undated.
+        if (date || goal)
+          await updateTask(id, { ...(date ? { due: { date } } : {}), ...(goal ? { goal_id: goal.id } : {}) })
         if (item.done) await completeTask(id)
       }
       await placeItem(roadmapId, id, phaseId)
