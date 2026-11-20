@@ -327,10 +327,13 @@ export const orderAfter = (last?: string) => order_between(last, undefined)
 export const orderBetween = (a?: string, b?: string) => order_between(a, b)
 
 /** Order after the last child of `parentId` (null: top level). Ids are UUIDv7 but orders decide. */
+// Milestones and Phases hang off `goal_id` / `roadmap_id` instead of `parent_id`.
+const ownerOf = (r: Row) =>
+  r.kind === 'milestone' ? r.goal_id : r.kind === 'phase' ? r.roadmap_id : 'parent_id' in r ? r.parent_id : null
 const appendOrder = async (parentId: string | null) =>
   orderAfter(
     (await allRows())
-      .flatMap((r) => ('order' in r && ('parent_id' in r ? r.parent_id : null) === parentId ? [r.order] : []))
+      .flatMap((r) => ('order' in r && ownerOf(r) === parentId ? [r.order] : []))
       .sort()
       .at(-1),
   )
