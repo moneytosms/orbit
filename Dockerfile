@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
  && npm i -g pnpm \
  && rustup target add wasm32-unknown-unknown \
  && cargo install --locked wasm-pack
+# vite 8 / rolldown needs node >= 20.19; bookworm apt has 18
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 WORKDIR /src
 COPY . .
 RUN wasm-pack build crates/orbit-wasm --target web --out-dir ../../app/wasm --no-pack \
