@@ -19,14 +19,14 @@
             android:id="@+id/name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/widget_text"
             android:textSize="16sp" />
 
         <TextView
             android:id="@+id/streak"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#9AA0A6"
+            android:textColor="@color/widget_muted"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -36,7 +36,7 @@
         android:layout_height="wrap_content"
         android:paddingStart="8dp"
         android:text="@string/routines_undo"
-        android:textColor="#9AA0A6"
+        android:textColor="@color/widget_muted"
         android:textSize="12sp"
         android:visibility="gone" />
 </LinearLayout>

@@ -2,6 +2,6 @@
 <!-- #71 Goal widget background. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#CC1E2124" />
+    <solid android:color="@color/widget_panel" />
     <corners android:radius="16dp" />
 </shape>

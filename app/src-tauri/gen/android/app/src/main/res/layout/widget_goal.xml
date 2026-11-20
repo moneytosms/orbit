@@ -17,7 +17,7 @@
             android:id="@+id/card_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/widget_text"
             android:textSize="18sp" />
 
         <TextView
@@ -25,7 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/goal_behind"
-            android:textColor="#F2B8B5"
+            android:textColor="@color/widget_warn"
             android:textSize="12sp"
             android:visibility="gone" />
 
@@ -41,14 +41,14 @@
             android:id="@+id/card_numbers"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#9AA0A6"
+            android:textColor="@color/widget_muted"
             android:textSize="12sp" />
 
         <TextView
             android:id="@+id/card_target"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#9AA0A6"
+            android:textColor="@color/widget_muted"
             android:textSize="12sp"
             android:visibility="gone" />
     </LinearLayout>

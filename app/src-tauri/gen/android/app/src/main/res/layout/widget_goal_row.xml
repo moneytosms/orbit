@@ -19,7 +19,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/widget_text"
             android:textSize="16sp" />
 
         <TextView
@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:paddingStart="8dp"
             android:text="@string/goal_behind"
-            android:textColor="#F2B8B5"
+            android:textColor="@color/widget_warn"
             android:textSize="12sp"
             android:visibility="gone" />
     </LinearLayout>
@@ -45,6 +45,6 @@
         android:id="@+id/percent"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#9AA0A6"
+        android:textColor="@color/widget_muted"
         android:textSize="12sp" />
 </LinearLayout>

@@ -451,7 +451,8 @@ pub fn goals(dir: &str, today: &str, area: &str) -> Result<Value> {
         let mut out = vec![];
         for r in &rows {
             let Row::Goal(g) = r else { continue };
-            if area.is_some_and(|a| a != g.parent_id) {
+            // A Goal in the Trash is gone from the widgets, so a card pointing at it shows "gone".
+            if g.trashed_at.is_some() || area.is_some_and(|a| a != g.parent_id) {
                 continue;
             }
             let progress = goal::progress(g, &rows);
@@ -1045,5 +1046,33 @@ mod tests {
             .unwrap();
         assert_eq!(g["start"], "2026-01-01");
         assert_eq!(g["target_date"], "2026-06-30");
+    }
+
+    #[test]
+    fn trashed_goals_leave_the_widgets() {
+        let dir = sample();
+        let d = dir.path().to_str().unwrap();
+        seed(
+            d,
+            Op::GoalCreate {
+                id: uid(41),
+                parent_id: uid(10),
+                name: "Gone".into(),
+                progress: None,
+                start: None,
+                target_date: None,
+                done_condition: String::new(),
+                order: String::new(),
+            },
+        );
+        seed(d, Op::ItemDelete { id: uid(41) });
+        let listed = goals(d, "2026-11-20", "").unwrap();
+        assert!(
+            listed
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|g| g["id"] != json!(uid(41)))
+        );
     }
 }
