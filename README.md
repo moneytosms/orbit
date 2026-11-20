@@ -2,6 +2,8 @@
 
 Orbit is a self-hostable personal planner. You capture tasks quickly, then organise them under Areas and Projects and tie them to Goals and Routines. A small Rust server holds the data in SQLite. The web app, a Linux desktop app, an Android app and a CLI sync with it, and each keeps an offline copy.
 
+**Install:** set up the server with [docs/deploy.md](docs/deploy.md), then install the clients (web, Linux, Android, CLI) with [docs/install.md](docs/install.md).
+
 ## Features
 
 Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked draft). Some items there are planned, not built.
@@ -14,6 +16,8 @@ Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked dra
 - Android widgets (quick add, task list, routines, goals) and a share target.
 - Single-user login with password, optional TOTP, and revocable Devices.
 - Todoist import (`orbit import todoist`), an MCP server (`orbit mcp`), and server backup/restore commands.
+
+Status: all v1 features listed above are built. Android is verified on an emulator; the real-device checklist ([docs/android-checklist.md](docs/android-checklist.md)) is still pending.
 
 ## Architecture
 
@@ -54,19 +58,19 @@ cargo run --release -p orbit-server
 
 First run: with no user yet, the server prints `First run: open the app and enter setup code <code>` to stderr (check `docker logs`). Open the app and enter the code to create the account. Lost password: `orbit-server reset-password` (reads the new password from stdin; signs out every Device). Other subcommands: `orbit-server backup <dir>` and `orbit-server restore <snapshot>` (stop the server first). The server also snapshots daily into `ORBIT_DATA/backups`.
 
-Put it behind TLS (a reverse proxy) before exposing it.
+Put it behind HTTPS before exposing it. Tailscale serve and Caddy with a domain are both covered in [docs/deploy.md](docs/deploy.md).
 
 ### Web / PWA
 
-Open the server's address in a browser; it can be installed as a PWA. Browser reminders only fire while a tab is open.
+Open the server's address in a browser; it can be installed as a PWA. Browser reminders only fire while a tab is open. Steps: [docs/install.md](docs/install.md#2-web--pwa-any-desktop-or-phone-browser).
 
 ### Linux desktop
 
-Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage; an AUR package (`orbit-bin`) is prepared in `packaging/aur`. Details and flags: [docs/linux-desktop.md](docs/linux-desktop.md).
+Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage; an AUR package (`orbit-bin`) is prepared in `packaging/aur`. Install steps: [docs/install.md](docs/install.md#3-linux-desktop). Details and flags: [docs/linux-desktop.md](docs/linux-desktop.md).
 
 ### Android
 
-Android 12+ (minSdk 31). Download `Orbit-<version>-android.apk` from the GitHub Release and sideload it (Obtainium can track releases). On first launch the app shows a page asking for your server URL, saves it, then opens it. The manual test plan is [docs/android-checklist.md](docs/android-checklist.md).
+Android 12+ (minSdk 31). Download `Orbit-<version>-android.apk` from the GitHub Release and sideload it (Obtainium can track releases). On first launch the app shows a page asking for your server URL, saves it, then opens it. The release APK only talks to HTTPS servers. Install steps, widgets and battery settings: [docs/install.md](docs/install.md#4-android). The manual test plan is [docs/android-checklist.md](docs/android-checklist.md).
 
 Status: verified on an emulator only. It has not yet been tested on real devices, so OEM battery behaviour and reminder reliability are unconfirmed.
 
@@ -84,7 +88,7 @@ orbit sync
 orbit guide                              # short reference
 ```
 
-Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`.
+Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`. Install and MCP setup: [docs/install.md](docs/install.md#5-cli-and-mcp).
 
 ## Development
 

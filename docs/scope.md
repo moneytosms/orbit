@@ -113,7 +113,7 @@ Scheduled on each device from synced data; no server involved.
 | Android | Signed `.apk` you sideload | Tauri 2 (same Svelte UI) + Kotlin module for widget, share, alarms, background sync |
 | Windows, macOS | `.msi`/`.exe`, `.dmg` | Same Tauri build, later phase |
 
-**Tauri is locked** for desktop and Android: one Svelte UI serves web, Linux and Android, and the Rust shell shares `orbit-core` with the server, so it is the least-work route to all three installable clients. A native GPUI desktop client stays an idea for later (research ticket "GPUI desktop client maturity", not run).
+**Tauri is locked** for desktop and Android: one Svelte UI serves web, Linux and Android, and the Rust shell shares `orbit-core` with the server, so it is the least-work route to all three installable clients. A native GPUI desktop client stays an idea for later (research ticket "GPUI desktop client maturity", answered in issue #10: not viable now; revisit when the conditions listed there hold).
 
 ## UI layer
 
