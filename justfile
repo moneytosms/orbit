@@ -1,3 +1,5 @@
+import 'release.just'
+
 # fmt, clippy, cargo test, wasm build, svelte-check, vitest, web build
 check: wasm
     pnpm -C app install --frozen-lockfile
