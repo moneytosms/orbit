@@ -64,13 +64,18 @@
     </thead>
     <tbody>
       {#each rows as r (r.id)}
-        <tr class="cursor-pointer border-b border-line hover:bg-hover" onclick={() => onopen(r)}>
+        <tr
+          data-task-row={r.kind === 'task' ? r.id : undefined}
+          class="cursor-pointer border-b border-line hover:bg-hover data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
+          onclick={() => onopen(r)}
+        >
           {#each columns as f (f)}
             <td class="max-w-[320px] truncate px-2 py-2 {f === 'title' ? '' : 'text-muted'}">
               {#if f === 'title'}
                 <button
                   type="button"
                   class="text-left"
+                  data-open
                   onclick={(e) => {
                     e.stopPropagation()
                     onopen(r)

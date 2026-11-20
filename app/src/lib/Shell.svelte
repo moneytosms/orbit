@@ -9,7 +9,9 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import Composer from './Composer.svelte'
   import Palette from './Palette.svelte'
-  import { ui } from '$lib/actions'
+  import { runAction, setFocusedTask, ui } from '$lib/actions'
+  import { clearCursor, isTyping, matcher } from '$lib/keys'
+  import Shortcuts from './Shortcuts.svelte'
   import DropTarget from './DropTarget.svelte'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
@@ -52,6 +54,7 @@
   let drawer = $state(false)
   let composing = $state(false)
   let palette = $state(false)
+  let help = $state(false)
   let prefill = $state('')
   let wide = $state(false)
 
@@ -95,29 +98,25 @@
     open()
   }
   ui.newTask = newTask
+  ui.openPalette = openPalette
+  ui.openHelp = () => (help = true)
   function openPalette() {
     drawer = false
     palette = true
   }
+  const keys = matcher()
   function onkeydown(e: KeyboardEvent) {
+    const id = keys.press(
+      { key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, typing: isTyping(e.target) },
+      e.timeStamp,
+    )
+    if (!id) return
     const t = e.target as HTMLElement
-    if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.altKey) {
-      e.preventDefault()
-      openPalette()
-    } else if (
-      e.key === '/' &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey &&
-      !t.closest('input, textarea, select, [contenteditable]')
-    ) {
-      e.preventDefault()
-      openPalette()
-    }
-    if (e.key === 'q' && !e.ctrlKey && !e.metaKey && !e.altKey && !t.closest('input, textarea, [contenteditable]')) {
-      e.preventDefault()
-      newTask()
-    }
+    // A focused button or link handles Enter itself; list keys leave an open dialog alone.
+    if (id === 'cursor.open' && t.closest('button, a, [role="button"]')) return
+    if (id.startsWith('cursor.') && document.querySelector('[role="dialog"]')) return
+    e.preventDefault()
+    runAction(id)
   }
   const isHidden = (id: string) => hiddenViews.some((v) => v.id === id)
   let tabs: (Route | 'add' | 'browse')[] = $derived(
@@ -163,7 +162,7 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onhashchange={() => clearCursor(setFocusedTask)} />
 
 {#snippet row(r: Route, count?: number)}
   {@const Icon = routes[r].icon}
@@ -397,6 +396,7 @@
 {/snippet}
 
 <Palette bind:open={palette} {parentId} />
+<Shortcuts bind:open={help} />
 
 {#if wide}
   <Dialog.Root bind:open={composing}>

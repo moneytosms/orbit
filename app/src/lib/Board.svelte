@@ -260,8 +260,14 @@
         onfinalize={(e) => finalize(c, e)}
       >
         {#each c.rows as r (r.id)}
-          <li aria-label={rowTitle(r)} class="rounded-[9px] border border-line bg-surface p-2 shadow-1">
-            <button type="button" class="block w-full text-left" onclick={() => onopen(r)}>{rowTitle(r)}</button>
+          <li
+            aria-label={rowTitle(r)}
+            data-task-row={r.kind === 'task' ? r.id : undefined}
+            class="rounded-[9px] border border-line bg-surface p-2 shadow-1 data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
+          >
+            <button type="button" data-open class="block w-full text-left" onclick={() => onopen(r)}
+              >{rowTitle(r)}</button
+            >
             {#if chips(r).length}
               <div class="mt-1 flex flex-wrap gap-1">
                 {#each chips(r) as x (x.f)}

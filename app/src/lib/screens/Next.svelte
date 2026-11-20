@@ -50,7 +50,10 @@
 {/if}
 <ul class="grid gap-0.5">
   {#each items as i (i.id)}
-    <li class="flex min-h-[42px] items-center gap-3 rounded-[9px] px-2 hover:bg-hover">
+    <li
+      data-task-row={i.kind === 'task' ? i.id : undefined}
+      class="flex min-h-[42px] items-center gap-3 rounded-[9px] px-2 hover:bg-hover data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
+    >
       <button
         type="button"
         aria-label="Complete {i.title}"
@@ -60,7 +63,7 @@
       >
       <div class="min-w-0 flex-1">
         {#if i.kind === 'task'}
-          <button type="button" class="block max-w-full truncate text-left" onclick={() => (openId = i.id)}
+          <button type="button" data-open class="block max-w-full truncate text-left" onclick={() => (openId = i.id)}
             >{i.title}</button
           >
         {:else}
