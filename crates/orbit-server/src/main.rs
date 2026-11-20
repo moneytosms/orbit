@@ -1,6 +1,5 @@
+use orbit_server::backup;
 use std::{env, io::BufRead, net::SocketAddr, path::PathBuf, time::Duration};
-
-mod backup;
 
 const KEEP_SNAPSHOTS: usize = 7;
 

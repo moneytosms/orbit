@@ -34,7 +34,7 @@ fn valid(hash: &str) -> bool {
 }
 
 /// Where the blob with this (valid) hash lives.
-fn path(data: &Path, hash: &str) -> PathBuf {
+pub(crate) fn path(data: &Path, hash: &str) -> PathBuf {
     data.join("blobs")
         .join(&hash[..2])
         .join(&hash[2..4])
@@ -124,7 +124,7 @@ pub(crate) async fn get(
 }
 
 /// Every blob file under `<data>/blobs` as `(hash, path)`.
-fn on_disk(data: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn on_disk(data: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
     let mut dirs = vec![data.join("blobs")];
     while let Some(dir) = dirs.pop() {

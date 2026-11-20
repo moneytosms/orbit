@@ -8,6 +8,8 @@ use std::{
 
 use rusqlite::Connection;
 
+use crate::blobs;
+
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// Milliseconds since the Unix epoch, for snapshot names.
@@ -24,9 +26,25 @@ pub fn snapshot(data: &Path, dir: &Path, now_ms: u64) -> rusqlite::Result<PathBu
     let target = dir.join(format!("orbit-{now_ms}.db"));
     let quoted = target.to_string_lossy().replace('\'', "''");
     let conn = Connection::open(data.join("orbit.db"))?;
-    // shortcut: no blobs yet, add with #56
     conn.execute_batch(&format!("VACUUM INTO '{quoted}'"))?;
+    copy_blobs(data, dir).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     Ok(target)
+}
+
+/// Copies blobs in `<from>/blobs` that `<to>/blobs` lacks. Blobs are immutable, so existing
+/// files are never rewritten.
+fn copy_blobs(from: &Path, to: &Path) -> std::io::Result<()> {
+    for (hash, src) in blobs::on_disk(from) {
+        let dest = blobs::path(to, &hash);
+        if dest.is_file() {
+            continue;
+        }
+        fs::create_dir_all(dest.parent().unwrap())?;
+        let tmp = dest.with_extension("part");
+        fs::copy(&src, &tmp)?;
+        fs::rename(tmp, dest)?;
+    }
+    Ok(())
 }
 
 /// Snapshot number from an `orbit-<n>.db` file name.
@@ -52,6 +70,7 @@ fn listed(dir: &Path) -> std::io::Result<Vec<(u64, PathBuf)>> {
 }
 
 /// Deletes all but the `keep` newest snapshots in `dir`.
+// shortcut: the shared `<dir>/blobs` is never pruned; blobs are small and immutable
 pub fn prune(dir: &Path, keep: usize) -> std::io::Result<()> {
     for (_, path) in listed(dir)?.into_iter().skip(keep) {
         fs::remove_file(path)?;
@@ -70,7 +89,11 @@ pub fn restore(data: &Path, snapshot: &Path) -> std::io::Result<()> {
             Err(e) => return Err(e),
         }
     }
-    fs::rename(staged, data.join("orbit.db"))
+    fs::rename(staged, data.join("orbit.db"))?;
+    if let Some(dir) = snapshot.parent() {
+        copy_blobs(dir, data)?;
+    }
+    Ok(())
 }
 
 /// True when `dir` has no snapshot, or the newest is older than 24 h.

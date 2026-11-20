@@ -23,6 +23,7 @@ use std::{
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 mod auth;
+pub mod backup;
 mod blobs;
 mod todoist;
 pub use auth::reset_password;
@@ -158,17 +159,10 @@ async fn sync(
     })
 }
 
-/// A zip of every row's data as `items.json`.
+/// A zip of every row's data as `items.json`, each live Page as `pages/<name>.md` and every
+/// blob live rows reference as `blobs/<hash>`.
 async fn export(State(st): State<St>, _: auth::Device) -> Result<Response, StatusCode> {
-    // shortcut: no Pages/blobs yet, add with #54/#56
-    let items = {
-        let conn = lock(&st.db);
-        items_json(&conn).map_err(|e| {
-            eprintln!("export failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-    };
-    let zipped = zip_items(&items).map_err(|e| {
+    let zipped = build_export(&st).map_err(|e| {
         eprintln!("export failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -185,6 +179,78 @@ async fn export(State(st): State<St>, _: auth::Device) -> Result<Response, Statu
         .into_response())
 }
 
+fn build_export(st: &St) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let (items, pages, hashes) = {
+        let conn = lock(&st.db);
+        (
+            items_json(&conn)?,
+            live_pages(&conn)?,
+            live_blob_hashes(&conn)?,
+        )
+    };
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("items.json", options)?;
+    zip.write_all(&items)?;
+    let mut used = std::collections::HashSet::new();
+    for (id, title, body) in pages {
+        let slug = slug(&title);
+        let name = if slug.is_empty() || used.contains(&slug) {
+            id
+        } else {
+            slug
+        };
+        used.insert(name.clone());
+        zip.start_file(format!("pages/{name}.md"), options)?;
+        zip.write_all(body.as_bytes())?;
+    }
+    for hash in hashes {
+        if !blobs::exists(&st.data, &hash) {
+            continue;
+        }
+        zip.start_file(format!("blobs/{hash}"), options)?;
+        zip.write_all(&std::fs::read(blobs::path(&st.data, &hash))?)?;
+    }
+    Ok(zip.finish()?.into_inner())
+}
+
+/// `(id, title, body)` of every Page not in the Trash.
+fn live_pages(conn: &Connection) -> rusqlite::Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT json_extract(data, '$.id'), json_extract(data, '$.title'),
+                COALESCE(json_extract(data, '$.body'), '')
+         FROM rows
+         WHERE json_extract(data, '$.kind') = 'page'
+           AND json_extract(data, '$.trashed_at') IS NULL
+         ORDER BY id",
+    )?;
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect()
+}
+
+/// Every blob hash a live row references.
+fn live_blob_hashes(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT j.value FROM rows, json_each(rows.data, '$.blobs') j
+         WHERE json_extract(rows.data, '$.kind') != 'purged' ORDER BY j.value",
+    )?;
+    stmt.query_map([], |r| r.get(0))?.collect()
+}
+
+/// A file-name-safe lowercase form of `title`, empty if nothing is left.
+fn slug(title: &str) -> String {
+    let mut out = String::new();
+    for c in title.chars() {
+        if c.is_alphanumeric() {
+            out.extend(c.to_lowercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').chars().take(60).collect()
+}
+
 /// Every row's `data` as a JSON array, ordered by id.
 fn items_json(conn: &Connection) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut stmt = conn.prepare(
@@ -195,15 +261,6 @@ fn items_json(conn: &Connection) -> Result<Vec<u8>, Box<dyn std::error::Error>> 
         items.push(serde_json::from_str::<serde_json::Value>(&data?)?);
     }
     Ok(serde_json::to_vec(&items)?)
-}
-
-fn zip_items(items: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-    zip.start_file("items.json", options)?;
-    zip.write_all(items)?;
-    Ok(zip.finish()?.into_inner())
 }
 
 /// Free bytes on the disk holding the data dir.

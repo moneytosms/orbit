@@ -404,3 +404,32 @@ fn completions_print_for_each_shell() {
         assert!(o.stdout.contains("orbit"), "{shell} completions name orbit");
     }
 }
+
+#[test]
+fn export_writes_a_zip_with_items() {
+    let (url, _server) = server();
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit(d.path(), &["login", &url]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    orbit(d.path(), &["add", "exported task"]);
+    assert_eq!(orbit(d.path(), &["sync"]).code, 0);
+
+    let file = d.path().join("out.zip");
+    let o = orbit(d.path(), &["--json", "export", file.to_str().unwrap()]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let body = o.json();
+    let bytes = std::fs::read(&file).unwrap();
+    assert_eq!(body["v"], 1);
+    assert_eq!(body["path"], file.to_str().unwrap());
+    assert_eq!(body["bytes"], bytes.len());
+    assert_eq!(&bytes[..2], b"PK");
+    assert!(bytes.windows(10).any(|w| w == b"items.json"));
+}
+
+#[test]
+fn export_without_login_explains_itself() {
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit(d.path(), &["--json", "export", "x.zip"]);
+    assert_eq!(o.code, 1);
+    assert_eq!(o.json()["error"]["code"], "no_server");
+}
