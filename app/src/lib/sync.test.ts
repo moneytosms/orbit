@@ -59,6 +59,7 @@ import {
   printFilter,
   checkIn,
   clearCheckIn,
+  archivedRoutines,
   createRoutine,
   localDay,
   routineStats,
@@ -613,6 +614,28 @@ test('a skipped day keeps the streak and is left out of the completion rate', as
   expect(stats.best_streak).toBe(3)
   expect(stats.completion_rate).toBe(1)
   expect(stats.days.map((d) => d[1])).toEqual(['done', 'skipped', 'done', 'done'])
+})
+
+test('a Routine past its length is archived by the next sync, and not again', async () => {
+  const [{ area }] = (await tree()).filter((x) => x.area.name === 'Health')
+  const id = await createRoutine(area.id, {
+    name: 'Course',
+    schedule: { kind: 'daily' },
+    length_days: 2,
+    time: null,
+    goal_id: null,
+  })
+  const today = await localDay()
+  await tx(['rows'], async (s) => {
+    const row = await req<any>(s('rows').get(id))
+    s('rows').put({ ...row, start: shiftDay(today, -10) })
+  })
+  expect((await routines()).map((r) => r.id)).toContain(id)
+  await sync()
+  expect((await routines()).map((r) => r.id)).not.toContain(id)
+  expect((await archivedRoutines()).map((r) => r.id)).toContain(id)
+  await sync()
+  expect((await archivedRoutines()).filter((r) => r.id === id)).toHaveLength(1)
 })
 
 test("pin moves a task to the top of today's What's next; not_today hides it", async () => {

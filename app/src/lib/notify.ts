@@ -1,6 +1,8 @@
 import {
+  checkIn,
   completeTask,
   getDaySettings,
+  localDay,
   localMinute,
   reminderSchedule,
   snoozeTask,
@@ -57,8 +59,9 @@ const inMinutes = async (m: number) => {
 }
 
 /** Runs a notification action (also used for clicks on the notification body). */
-export async function handleAction(action: string, taskId?: string) {
-  if (action === 'complete' && taskId) await completeTask(taskId)
+export async function handleAction(action: string, taskId?: string, routineId?: string) {
+  if (action === 'checkin' && routineId) await checkIn(routineId, await localDay(), 'done')
+  else if (action === 'complete' && taskId) await completeTask(taskId)
   else if (action === 'snooze10' && taskId) await snoozeTask(taskId, await inMinutes(10))
   else if (action === 'snooze60' && taskId) await snoozeTask(taskId, await inMinutes(60))
   else if (action === 'tomorrow' && taskId) await snoozeTask(taskId, await tomorrowAtDayStart())
@@ -70,7 +73,7 @@ async function show(f: Fire) {
   const options: NotificationOptions & { actions?: { action: string; title: string }[] } = {
     body: f.late ? `Was due ${f.at.replace('T', ' ')}` : f.at.slice(11),
     tag: fireKey(f),
-    data: { task_id: f.task_id },
+    data: { task_id: f.task_id, routine_id: f.routine_id },
     ...(f.task_id
       ? {
           actions: [
@@ -80,10 +83,13 @@ async function show(f: Fire) {
             { action: 'tomorrow', title: 'Tomorrow' },
           ],
         }
-      : {}),
+      : f.routine_id
+        ? // No Routine snooze exists, so only Done.
+          { actions: [{ action: 'checkin', title: 'Done' }] }
+        : {}),
   }
   const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined
-  if (reg && f.task_id) await reg.showNotification(f.title, options)
+  if (reg && (f.task_id || f.routine_id)) await reg.showNotification(f.title, options)
   else {
     const n = new Notification(f.title, options)
     n.onclick = () => {
@@ -125,7 +131,7 @@ export function startNotifier() {
   started = true
   startDesktop()
   navigator.serviceWorker?.addEventListener('message', (e) => {
-    if (e.data?.type === 'orbit-notify') void handleAction(e.data.action, e.data.task_id)
+    if (e.data?.type === 'orbit-notify') void handleAction(e.data.action, e.data.task_id, e.data.routine_id)
   })
   const q = new URLSearchParams(location.search)
   if (q.has('notify')) {
