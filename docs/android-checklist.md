@@ -14,6 +14,16 @@ adb -s <serial> reboot                                        # reboot
 adb -s <serial> shell date -s "<YYYY-MM-DD HH:MM:SS>"        # root/emulator only: move the clock
 ```
 
+## #68 Android app and JNI bridge
+
+Install the signed release APK on a real device for this section.
+
+1. **Install and log in.** Install the signed release APK, set the server URL, and log in. Expect the Today view to load.
+2. **Share while offline.** Turn on airplane mode. Share text from another app into Orbit. Expect an Inbox Task to be created. Turn airplane mode off: the Task appears on the server after reconnect.
+3. **Outbox after force-stop.** Turn on airplane mode and create several tasks. Kill the process with `adb -s <serial> shell am force-stop dev.orbit.app` (kill -9 equivalent). Turn airplane mode off. Expect the outbox to flush in order: the tasks appear on the server in the order they were created.
+4. **Outbox after reboot.** Turn on airplane mode and create several tasks. Run `adb -s <serial> reboot`. Turn airplane mode off. Expect the outbox to flush: all tasks appear on the server.
+5. **Token survives restart.** Force-stop the app and reopen it. Expect no login prompt: the session token is still in use.
+
 ## #69 Reminders
 
 Create a Task due a few minutes ahead with a timed due (or a reminder at a set time).
@@ -40,7 +50,7 @@ Add the Quick add and Task list widgets to the home screen.
 5. **Upcoming groups.** On the Upcoming view, expect day header rows (Overdue and No date included) and the due chip, glyphs, and Area and Project line on each row.
 6. **Refresh timing.** Change a task in Orbit, then check the widget within 15 minutes (the periodic refresh) or sooner after a sync. Day start is covered by the same 15-minute refresh, so the widget may show yesterday's Today list for up to 15 minutes after midnight.
 7. **Resize.** Resize the Quick add widget from 1 to 5 cells wide, and the Task list in both directions. Expect no clipped controls.
-8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. The accent is the system accent on Android 12+ and a fixed blue below.
+8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. Widgets follow the system light and dark theme and use the app's terracotta accent on all Android versions.
 ## #71 Routines and Goal widgets
 
 Add each widget from the launcher's widget picker. Routines needs Android 12 (API 31) or later for the list.
