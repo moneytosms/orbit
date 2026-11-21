@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import { initSync, parse_quick_add } from '../../wasm/orbit_wasm'
 import { login } from './auth'
 import { req, tx } from './db'
+import { currentUpdates, loadUpdates } from './updates'
 import { addFile } from './blobs'
 import {
   completeTask,
@@ -113,6 +114,16 @@ vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
   const body: Body = JSON.parse(init.body as string)
   requests.push(body)
   await gate
+  if (httpStatus === 426)
+    return new Response(
+      JSON.stringify({
+        error: 'upgrade_required',
+        client_protocol: 1,
+        min_client_protocol: 2,
+        upgrade: 'https://example.test/update',
+      }),
+      { status: httpStatus },
+    )
   if (httpStatus !== 200) return new Response('', { status: httpStatus })
   const status = rejectWith ? { status: 'error', code: rejectWith } : { status: 'ok' }
   const statuses = Object.fromEntries(body.commands.map((c) => [c.uuid, status]))
@@ -218,9 +229,18 @@ test('an old protocol version (426) keeps the outbox for after an update', async
   await createTask('Kept')
   httpStatus = 426
   await sync()
+  expect(currentUpdates().upgrade).toEqual({
+    error: 'upgrade_required',
+    client_protocol: 1,
+    min_client_protocol: 2,
+    upgrade: 'https://example.test/update',
+  })
+  expect(await tx(['outbox'], (s) => req(s('outbox').count()))).toBe(1)
+  expect((await loadUpdates()).upgrade?.min_client_protocol).toBe(2)
   httpStatus = 200
   await sync()
   expect(requests.at(-1)!.commands).toMatchObject([{ type: 'task.create', args: { title: 'Kept' } }])
+  expect(currentUpdates().upgrade).toBeNull()
 })
 
 test('a 401 keeps the outbox and reports it; logging in replays it as the new Device', async () => {

@@ -30,6 +30,7 @@ import { req, tx } from './db'
 import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
 import { defaultLayout } from './dashboard'
+import { clearUpgrade, setUpgrade, type UpgradeRequired } from './updates'
 
 export type Due = { date: string; time?: string | null }
 export type Recurrence = { rule: string; from_completion: boolean }
@@ -804,11 +805,24 @@ async function flush() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ v: 1, token, commands }),
     })
+    if (res.status === 426) {
+      const body = (await res.json()) as UpgradeRequired
+      if (
+        body.error === 'upgrade_required' &&
+        Number.isInteger(body.client_protocol) &&
+        Number.isInteger(body.min_client_protocol) &&
+        typeof body.upgrade === 'string'
+      ) {
+        await setUpgrade(body)
+        return
+      }
+    }
     if (res.status === 401) {
       // The outbox stays; logging in again sends it.
       return signedOut(await tx(['outbox'], (s) => req(s('outbox').count())))
     }
     if (!res.ok) throw new Error(`sync: HTTP ${res.status}`)
+    await clearUpgrade()
     type Status = { status: 'ok' } | { status: 'error'; code: string }
     const body: {
       statuses: Record<string, Status>

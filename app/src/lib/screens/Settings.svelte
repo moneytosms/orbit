@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import Laptop from '@lucide/svelte/icons/laptop'
   import Smartphone from '@lucide/svelte/icons/smartphone'
   import Globe from '@lucide/svelte/icons/globe'
@@ -9,6 +10,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
   import * as auth from '$lib/auth'
   import TodoistImport from '$lib/TodoistImport.svelte'
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
@@ -126,6 +128,12 @@
     )
 
   let exporting = $state(false)
+  let updates: UpdateState = $state(currentUpdates())
+  onMount(() => {
+    const off = onUpdates((value) => (updates = value))
+    void checkServerVersion().catch(() => {})
+    return off
+  })
   let exportMsg = $state('')
   async function exportAll() {
     exporting = true
@@ -195,6 +203,7 @@
     ['account', 'Account and devices'],
     ['targets', 'Productivity'],
     ['data', 'Data'],
+    ['about', 'About'],
     ['advanced', 'Advanced'],
   ]
   const jump = (id: string) => {
@@ -690,6 +699,36 @@
       {/snippet}
       {@render row('Export', 'Download every item as a zip of JSON. Keep it as a backup.', exportControl)}
       {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
+    </section>
+
+    <section id="about" class="panel scroll-mt-4">
+      <h2 class="panel-title">About Orbit</h2>
+      <dl class="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+        <dt class="text-muted">App build</dt>
+        <dd>{uiHash}</dd>
+        <dt class="text-muted">Server build</dt>
+        <dd>{updates.version?.built ?? 'Unavailable'}</dd>
+        <dt class="text-muted">Server UI build</dt>
+        <dd>{updates.version?.ui ?? 'Unavailable'}</dd>
+        <dt class="text-muted">Sync protocol</dt>
+        <dd>
+          {updates.version ? `${updates.version.min_client_protocol}–${updates.version.protocol}` : 'Unavailable'}
+        </dd>
+      </dl>
+      {#if updates.upgrade}
+        <p role="status" class="mt-3 text-sm text-muted">
+          Update required: server requires protocol {updates.upgrade.min_client_protocol}; this app is protocol {updates
+            .upgrade.client_protocol}. Queued changes remain stored on this device.
+        </p>
+        <a class="link mt-2 inline-block" href={updates.upgrade.upgrade} target="_blank" rel="noreferrer"
+          >Get the required update</a
+        >
+      {:else if updates.version?.ui && updates.version.ui !== 'unknown' && updates.version.ui !== uiHash}
+        <p role="status" class="mt-3 text-sm text-muted">A newer Web/PWA build is deployed. Reload to use it.</p>
+      {/if}
+      {#if updates.version?.min_shell_version && updates.version.min_shell_version !== '0.0.0'}
+        <p class="mt-2 text-sm text-muted">Minimum shell version: {updates.version.min_shell_version}</p>
+      {/if}
     </section>
 
     <TodoistImport />

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "ui-hash": "node ../scripts/orbit-ui-hash.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "format": "prettier --write",
@@ -32,6 +33,7 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.6",
     "vite-plugin-pwa": "^2.0.0",
+    "workbox-window": "7.4.1",
     "vitest": "^5.1.0"
   },
   "dependencies": {

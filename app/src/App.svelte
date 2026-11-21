@@ -39,6 +39,7 @@
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { refreshNotifier, startNotifier } from './lib/notify'
   import { inbox_id } from '../wasm/orbit_wasm'
+  import UpdateNotice from './lib/UpdateNotice.svelte'
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
   let pending = $state(0)
@@ -228,6 +229,8 @@
     }}
   />
 {/if}
+
+<UpdateNotice />
 
 {#if toast}
   <p
