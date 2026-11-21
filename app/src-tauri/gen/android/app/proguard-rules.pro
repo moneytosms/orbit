@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Release (R8) crashed on launch: WorkManager's Room database constructor was stripped (issue #80).
+-keep class androidx.work.impl.WorkDatabase_Impl { <init>(...); }
+-keep class * extends androidx.room.RoomDatabase { <init>(...); }
+# Rust finds these by name (JNI natives, Tauri plugin reflection, @InvokeArg parsing).
+-keep class dev.orbit.app.** { *; }
