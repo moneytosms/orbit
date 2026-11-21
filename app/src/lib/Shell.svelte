@@ -2,6 +2,7 @@
   import Menu from '@lucide/svelte/icons/menu'
   import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
+  import Check from '@lucide/svelte/icons/check'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import ChevronRight from '@lucide/svelte/icons/chevron-right'
   import X from '@lucide/svelte/icons/x'
@@ -63,6 +64,9 @@
 
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
+  let addingArea = $state(false)
+  let areaOpener: HTMLElement | null = null
+  let areaSection: HTMLElement | null = null
   let newProject = $state<Record<string, string>>({})
   let areaExpansion = $state<Record<string, boolean>>({})
   let pinned = $state<View[]>([])
@@ -180,6 +184,37 @@
     if (!newArea.trim()) return
     await createArea(newArea)
     newArea = ''
+    addingArea = false
+    restoreAreaFocus()
+  }
+  function beginArea(e: MouseEvent) {
+    areaOpener = e.currentTarget as HTMLElement
+    areaSection = areaOpener.closest('section')
+    newArea = ''
+    addingArea = true
+    void tick().then(() => areaSection?.querySelector<HTMLInputElement>('[aria-label="New area name"]')?.focus())
+  }
+  function cancelArea() {
+    addingArea = false
+    newArea = ''
+    restoreAreaFocus()
+  }
+  function restoreAreaFocus() {
+    const opener = areaOpener
+    const section = areaSection
+    areaOpener = null
+    areaSection = null
+    void tick().then(() => {
+      const target = opener?.isConnected ? opener : section?.querySelector<HTMLElement>('[aria-label="New area"]')
+      target?.focus()
+    })
+  }
+  function areaKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      cancelArea()
+    }
   }
   async function addProject(e: SubmitEvent, areaId: string) {
     e.preventDefault()
@@ -218,7 +253,30 @@
 
 {#snippet areaTree(instance: string)}
   <section class="flex flex-col gap-1">
-    <h2 class="px-2.5 pb-1 text-[0.7812rem] font-semibold text-muted">Areas</h2>
+    <div class="flex items-center gap-1 px-2.5 pb-1">
+      {#if addingArea}
+        <form onsubmit={addArea} class="flex min-w-0 flex-1 items-center gap-1 text-muted focus-within:text-text">
+          <input
+            bind:value={newArea}
+            placeholder="Area name"
+            aria-label="New area name"
+            onkeydown={areaKeydown}
+            class="h-7 min-w-0 flex-1 bg-transparent text-[0.8438rem] outline-none placeholder:text-muted"
+          />
+          <Button type="submit" variant="ghost" size="icon-sm" aria-label="Create area" disabled={!newArea.trim()}>
+            <Check size={14} />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Cancel adding area" onclick={cancelArea}>
+            <X size={14} />
+          </Button>
+        </form>
+      {:else}
+        <h2 class="flex-1 text-[0.7812rem] font-semibold text-muted">Areas</h2>
+        <Button variant="ghost" size="icon-sm" aria-label="New area" onclick={beginArea}>
+          <Plus size={14} />
+        </Button>
+      {/if}
+    </div>
     <ul
       use:dndzone={{ items: areaOrder, flipDurationMs: 150, delayTouchStart: 200 }}
       onconsider={considerAreas}
@@ -289,19 +347,12 @@
       <p class="px-2.5 text-[0.8125rem] text-muted">
         No areas yet. Name your first one below, for example Work or Home.
       </p>
+      {#if !addingArea}
+        <Button variant="ghost" size="sm" class="mx-2 self-start" onclick={beginArea}>
+          <Plus size={14} /> Add area
+        </Button>
+      {/if}
     {/if}
-    <form
-      onsubmit={addArea}
-      class="mx-2 flex items-center gap-1.5 rounded-[7px] border border-dashed border-line-strong px-2 text-muted focus-within:border-accent focus-within:text-text"
-    >
-      <Plus size={14} aria-hidden="true" />
-      <input
-        bind:value={newArea}
-        placeholder="Add area"
-        aria-label="Add area"
-        class="h-8 w-full bg-transparent text-[0.8438rem] outline-none placeholder:text-muted"
-      />
-    </form>
   </section>
 {/snippet}
 
