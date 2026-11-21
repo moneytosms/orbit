@@ -265,8 +265,12 @@
             data-task-row={r.kind === 'task' ? r.id : undefined}
             class="rounded-[9px] border border-line bg-surface p-2 shadow-1 data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
           >
-            <button type="button" data-open class="block w-full text-left" onclick={() => onopen(r)}
-              >{rowTitle(r)}</button
+            <button
+              type="button"
+              data-open
+              class="task-title-2 block w-full text-left"
+              title={rowTitle(r)}
+              onclick={() => onopen(r)}>{rowTitle(r)}</button
             >
             {#if chips(r).length}
               <div class="mt-1 flex flex-wrap gap-1">

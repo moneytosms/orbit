@@ -126,6 +126,48 @@ fn add_applies_quick_add_syntax() {
 }
 
 #[test]
+fn add_normalizes_markdown_links_and_keeps_url_in_description() {
+    let d = tempfile::tempdir().unwrap();
+    let added = orbit(
+        d.path(),
+        &[
+            "--json",
+            "add",
+            "[Notion – all-in-one](https://notion.so/workspace?ref=abc)",
+        ],
+    )
+    .json();
+    assert_eq!(added["title"], "Notion – all-in-one");
+    let task = &orbit(d.path(), &["--json", "show", added["id"].as_str().unwrap()]).json()["task"];
+    assert_eq!(task["description"], "https://notion.so/workspace?ref=abc");
+}
+
+#[test]
+fn add_normalizes_only_url_only_titles() {
+    let d = tempfile::tempdir().unwrap();
+    let added = orbit(d.path(), &["--json", "add", "https://example.test/task"]).json();
+    assert_eq!(added["title"], "example.test/task");
+    let task = &orbit(d.path(), &["--json", "show", added["id"].as_str().unwrap()]).json()["task"];
+    assert_eq!(task["description"], "https://example.test/task");
+
+    let mixed = orbit(
+        d.path(),
+        &[
+            "--json",
+            "add",
+            "https://example.test/task and remember this",
+        ],
+    )
+    .json();
+    assert_eq!(
+        mixed["title"],
+        "https://example.test/task and remember this"
+    );
+    let task = &orbit(d.path(), &["--json", "show", mixed["id"].as_str().unwrap()]).json()["task"];
+    assert_eq!(task["description"], "");
+}
+
+#[test]
 fn add_with_id_is_idempotent() {
     let d = tempfile::tempdir().unwrap();
     let first = orbit(d.path(), &["--json", "add", "--id", A, "once"]).json();

@@ -391,7 +391,7 @@
           style={moving ? `transform: translate(${drag!.dx}px, ${drag!.dy}px)` : ''}
         >
           {@render icon(c.kind, 0)}
-          <span class="min-w-0 flex-1 truncate">{c.title}</span>
+          <span class="task-title-1 flex-1" title={c.title}>{c.title}</span>
         </div>
       {/each}
     </div>

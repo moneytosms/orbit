@@ -664,6 +664,7 @@ export async function reorderViews(id: string, beforeId: string | null) {
 /** A quick-add line as parsed by core `parse::parse` (`parse_quick_add`). */
 export type Parsed = {
   title: string
+  description: string
   tokens: {
     kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date' | 'reminder'
     text: string
@@ -718,6 +719,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
   }
   const id = await createTask(quickTitle(p), place || fallbackParentId)
   const patch: TaskPatch = {}
+  if (p.description) patch.description = p.description
   if (p.priority != null) patch.priority = p.priority as Task['priority']
   if (p.due) patch.due = p.due
   if (p.recurrence) patch.recurrence = p.recurrence

@@ -5,6 +5,8 @@ use crate::recur::{self, Recurrence};
 use crate::reminder::{Anchor, Trigger};
 use serde::{Deserialize, Serialize};
 
+pub const TITLE_MAX: usize = 120;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct Known {
     /// Areas and Projects.
@@ -53,6 +55,8 @@ pub struct Due {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Parsed {
     pub title: String,
+    #[serde(default)]
+    pub description: String,
     pub tokens: Vec<Token>,
     pub priority: Option<u8>,
     pub due: Option<Due>,
@@ -64,6 +68,166 @@ pub struct Parsed {
     /// From `!` tokens; the app gives each an id.
     #[serde(default)]
     pub reminders: Vec<Trigger>,
+}
+
+/// Capture-only title cleanup. Existing stored task titles are never passed through this.
+pub fn normalize_capture(input: &str, existing_description: &str) -> (String, String) {
+    let raw = input.trim();
+    let mut description = if existing_description.is_empty() {
+        Vec::new()
+    } else {
+        vec![existing_description.to_string()]
+    };
+    let mut title = raw.to_string();
+
+    if let Some(url) = bare_url(raw) {
+        push_description(&mut description, url.to_string());
+        title = readable_url(url);
+    } else {
+        let mut labels = Vec::new();
+        let mut urls = Vec::new();
+        let mut rest = raw;
+        while let Some(open) = rest.find('[') {
+            let after_open = &rest[open + 1..];
+            let Some(close) = after_open.find("](") else {
+                break;
+            };
+            let label = &after_open[..close];
+            let after_label = &after_open[close + 2..];
+            let Some(end) = after_label.find(')') else {
+                break;
+            };
+            let url = &after_label[..end];
+            if url.starts_with("http://") || url.starts_with("https://") {
+                labels.push(label.to_string());
+                urls.push(url.to_string());
+                rest = &after_label[end + 1..];
+            } else {
+                rest = after_label;
+            }
+        }
+        if !urls.is_empty() {
+            title = labels.first().cloned().unwrap_or_default();
+            if title.trim().is_empty() {
+                title = readable_url(&urls[0]);
+            }
+            for url in urls {
+                push_description(&mut description, url);
+            }
+        }
+    }
+
+    let original_title = title.clone();
+    title = strip_block_marker(&title).to_string();
+    title = title.replace("**", "").replace(['*', '`'], "");
+    title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title != original_title.trim() && !description.iter().any(|line| line == raw) {
+        description.push(raw.to_string());
+    }
+    if title.chars().count() > TITLE_MAX {
+        if !description.iter().any(|d| d == raw) {
+            description.push(raw.to_string());
+        }
+        title = cap_title(&title);
+    }
+    if title.trim().is_empty() {
+        title = description
+            .first()
+            .and_then(|d| bare_url(d))
+            .map(readable_url)
+            .filter(|title| !title.is_empty())
+            .or_else(|| {
+                let fallback: String = raw.chars().take(60).collect();
+                (!fallback.trim().is_empty()).then_some(fallback)
+            })
+            .unwrap_or_default();
+    }
+    (title, description.join("\n"))
+}
+
+fn bare_url(input: &str) -> Option<&str> {
+    let rest = input
+        .strip_prefix("https://")
+        .or_else(|| input.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    (!authority.is_empty() && !input.chars().any(char::is_whitespace)).then_some(input)
+}
+
+fn push_description(description: &mut Vec<String>, value: String) {
+    if !description
+        .iter()
+        .any(|line| line.lines().any(|existing| existing == value))
+    {
+        description.push(value);
+    }
+}
+
+fn readable_url(url: &str) -> String {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = rest[..host_end]
+        .strip_prefix("www.")
+        .unwrap_or(&rest[..host_end]);
+    let path = rest[host_end..]
+        .strip_prefix('/')
+        .unwrap_or(&rest[host_end..]);
+    let segment = path.split(['/', '?', '#']).next().unwrap_or("");
+    let mut title = if segment.is_empty() {
+        host.to_string()
+    } else {
+        format!("{host}/{segment}")
+    };
+    if path.contains(['/', '?', '#']) {
+        title.push('…');
+    }
+    cap_title(&title)
+}
+
+fn strip_block_marker(input: &str) -> &str {
+    let mut rest = input.trim_start();
+    loop {
+        let mut stripped = false;
+        for marker in ["###", "##", "#", "-", "*", ">", "1."] {
+            if let Some(next) = rest.strip_prefix(marker)
+                && next.chars().next().is_some_and(char::is_whitespace)
+            {
+                rest = next.trim_start();
+                stripped = true;
+                break;
+            }
+        }
+        if !stripped {
+            return rest;
+        }
+    }
+}
+
+fn only_leading_block_markers(input: &str) -> bool {
+    let mut rest = input.trim_start();
+    while !rest.is_empty() {
+        let Some(next) = ["###", "##", "#", "-", "*", ">", "1."]
+            .iter()
+            .find_map(|marker| rest.strip_prefix(marker))
+            .filter(|next| next.chars().next().is_some_and(char::is_whitespace))
+        else {
+            return false;
+        };
+        rest = next.trim_start();
+    }
+    true
+}
+
+fn cap_title(input: &str) -> String {
+    if input.chars().count() <= TITLE_MAX {
+        return input.to_string();
+    }
+    let limit = TITLE_MAX - 1;
+    let prefix: String = input.chars().take(limit).collect();
+    let boundary = prefix.rfind(char::is_whitespace).unwrap_or(prefix.len());
+    format!("{}…", prefix[..boundary].trim_end())
 }
 
 struct Word<'a> {
@@ -354,6 +518,7 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     let today = parse_now(now);
     let mut out = Parsed {
         title: String::new(),
+        description: String::new(),
         tokens: Vec::new(),
         priority: None,
         due: None,
@@ -372,6 +537,17 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     while i < ws.len() {
         let w = &ws[i];
         let first = w.text.chars().next().unwrap_or(' ');
+        if matches!(w.text, "##" | "###")
+            && only_leading_block_markers(&input[..w.start])
+            && input[w.end..]
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace)
+        {
+            title.push(w.text.to_string());
+            i += 1;
+            continue;
+        }
         // Escaped sigil stays literal.
         if first == '\\' && w.text[1..].chars().next().is_some_and(is_sigil) {
             title.push(w.text[1..].to_string());
@@ -506,7 +682,9 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         title.push(w.text.to_string());
         i += 1;
     }
-    out.title = title.join(" ");
+    let (normalized, description) = normalize_capture(&title.join(" "), "");
+    out.title = normalized;
+    out.description = description;
     if let (Some(rec), Some(today)) = (&out.recurrence, today) {
         match &mut out.due {
             Some(due) => due.time = due.time.take().or(rec_time),
@@ -846,5 +1024,107 @@ mod tests {
     fn parsed_serializes_with_lowercase_kinds() {
         let s = serde_json::to_string(&p("#errand")).unwrap();
         assert!(s.contains("\"kind\":\"label\""));
+    }
+
+    #[test]
+    fn capture_normalization_strips_markdown_and_preserves_source() {
+        let r = p("[Notion – all-in-one](https://notion.so/workspace?ref=abc)");
+        assert_eq!(r.title, "Notion – all-in-one");
+        assert_eq!(r.description, "https://notion.so/workspace?ref=abc");
+        assert_eq!(
+            normalize_capture(&r.title, &r.description),
+            (r.title, r.description)
+        );
+    }
+
+    #[test]
+    fn capture_normalization_keeps_first_label_and_all_link_urls() {
+        let (title, description) = normalize_capture(
+            "[First](https://one.test/a) then [Second](https://two.test/b)",
+            "",
+        );
+        assert_eq!(title, "First");
+        assert_eq!(description, "https://one.test/a\nhttps://two.test/b");
+    }
+
+    #[test]
+    fn capture_links_without_labels_remain_readable_and_nonempty() {
+        for input in [
+            "[](https://notion.so/8-Weeks-to-Build/project?ref=abc)",
+            "https://youtube.com/playlist?list=abc",
+        ] {
+            let r = p(input);
+            assert!(!r.title.is_empty());
+            assert!(
+                r.title.starts_with("notion.so/8-Weeks-to-Build")
+                    || r.title == "youtube.com/playlist…"
+            );
+            assert_eq!(r.description, input.trim_matches(['[', ']', '(', ')']));
+            assert_eq!(
+                normalize_capture(&r.title, &r.description),
+                (r.title, r.description)
+            );
+        }
+    }
+
+    #[test]
+    fn capture_normalization_only_shortens_url_only_input() {
+        let input = "https://example.test/task and remember the context";
+        let r = p(input);
+        assert_eq!(r.title, input);
+        assert!(r.description.is_empty());
+    }
+
+    #[test]
+    fn capture_normalization_strips_nested_block_markers_idempotently() {
+        for input in ["> # title", "- > ## title", "### - `title`"] {
+            let r = p(input);
+            assert_eq!(r.title, "title");
+            assert_eq!(r.description, input);
+            assert_eq!(
+                normalize_capture(&r.title, &r.description),
+                (r.title, r.description)
+            );
+        }
+    }
+
+    #[test]
+    fn empty_markdown_label_uses_its_url_and_preserves_existing_description() {
+        let url = "https://links.test/first/path?ref=abc";
+        let (title, description) = normalize_capture(&format!("[]({url})"), "existing notes");
+        assert_eq!(title, "links.test/first…");
+        assert_eq!(description, format!("existing notes\n{url}"));
+
+        let (_, description) = normalize_capture(&format!("[]({url})"), url);
+        assert_eq!(description, url);
+    }
+
+    #[test]
+    fn capture_normalization_strips_block_and_inline_markers() {
+        let r = p("## **Scope discipline** `keep` this");
+        assert_eq!(r.title, "Scope discipline keep this");
+        assert_eq!(r.description, "## **Scope discipline** `keep` this");
+        assert_eq!(p("### heading").title, "heading");
+    }
+
+    #[test]
+    fn capture_titles_cap_at_word_boundary_and_preserve_full_text() {
+        let input = format!("{} final", "word ".repeat(TITLE_MAX));
+        let r = p(&input);
+        assert!(r.title.chars().count() <= TITLE_MAX);
+        assert!(r.title.ends_with('…'));
+        assert_eq!(
+            r.description,
+            input.split_whitespace().collect::<Vec<_>>().join(" ")
+        );
+    }
+
+    #[test]
+    fn capture_normalization_keeps_plain_text_and_has_an_empty_fallback() {
+        assert_eq!(p("buy milk").title, "buy milk");
+        assert_eq!(p("   ").title, "");
+        let (title, _) = normalize_capture("[]()", "");
+        assert_eq!(title, "[]()");
+        assert!(!normalize_capture("https://", "").0.is_empty());
     }
 }

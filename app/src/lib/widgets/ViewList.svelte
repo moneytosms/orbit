@@ -25,7 +25,7 @@
 <ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
   {#each rows as r (r.id)}
     <li class="flex min-h-[2rem] items-center gap-3 px-1">
-      <span class="min-w-0 flex-1 truncate">{label(r)}</span>
+      <span class="task-title-1 flex-1" title={label(r)}>{label(r)}</span>
       {#if due(r)}<span class="shrink-0 text-xs text-muted">{due(r)}</span>{/if}
     </li>
   {/each}

@@ -371,6 +371,26 @@ test('quickAdd applies priority, due and a known label in one update', async () 
   expect(sent).toMatchObject([{ args: { id, priority: 1, label_ids: [errand] } }])
 })
 
+test('quickAdd preserves normalized capture source in the task description', async () => {
+  const parsed = parseLine('[Notion – all-in-one](https://notion.so/workspace?ref=abc)')
+  expect(parsed).toMatchObject({
+    title: 'Notion – all-in-one',
+    description: 'https://notion.so/workspace?ref=abc',
+  })
+  const id = await quickAdd(parsed, INBOX)
+  expect(await getTask(id)).toMatchObject({
+    title: 'Notion – all-in-one',
+    description: 'https://notion.so/workspace?ref=abc',
+  })
+})
+
+test('URL-only capture gets a readable title and keeps the complete URL', () => {
+  expect(parseLine('https://youtube.com/playlist?list=abc')).toMatchObject({
+    title: 'youtube.com/playlist…',
+    description: 'https://youtube.com/playlist?list=abc',
+  })
+})
+
 test('quickAdd turns "every 3 days" into a recurrence with a first due', async () => {
   const id = await quickAdd(parseLine('water plants every 3 days'), INBOX)
   expect(await getTask(id)).toMatchObject({

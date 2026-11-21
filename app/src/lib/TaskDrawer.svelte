@@ -168,7 +168,7 @@
             value={task.title}
             onblur={saveTitle}
             onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
+            class="h-[2.125rem] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
           />
         </div>
 

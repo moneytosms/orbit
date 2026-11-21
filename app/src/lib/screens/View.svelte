@@ -472,7 +472,7 @@
               >
                 <Check size={12} strokeWidth={3} />
               </span>
-              <span class="min-w-0 flex-1 truncate text-muted line-through">{r.title}</span>
+              <span class="task-title-3 flex-1 text-muted line-through" title={r.title}>{r.title}</span>
             {:else}
               <button
                 type="button"
@@ -482,7 +482,7 @@
               >
                 <Check size={12} strokeWidth={3} />
               </button>
-              <span class="min-w-0 flex-1 truncate">{r.title}</span>
+              <span class="task-title-3 flex-1" title={r.title}>{r.title}</span>
               {#if r.recurrence}
                 <span class="text-xs text-muted" aria-label="Repeats {r.recurrence.rule}">↻</span>
               {/if}

@@ -51,11 +51,14 @@
       >
       <div class="min-w-0 flex-1">
         {#if i.kind === 'task'}
-          <button type="button" class="block max-w-full truncate text-left" onclick={() => (openId = i.id)}
-            >{i.title}</button
+          <button
+            type="button"
+            class="task-title-1 block max-w-full text-left"
+            title={i.title}
+            onclick={() => (openId = i.id)}>{i.title}</button
           >
         {:else}
-          <span class="block truncate">{i.title}</span>
+          <span class="task-title-1 block" title={i.title}>{i.title}</span>
         {/if}
       </div>
       <span class="shrink-0 rounded-full bg-accent-soft px-2 py-px text-xs text-accent-text">{i.reason}</span>

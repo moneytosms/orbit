@@ -70,11 +70,12 @@
           onclick={() => onopen(r)}
         >
           {#each columns as f (f)}
-            <td class="max-w-[320px] truncate px-2 py-2 {f === 'title' ? '' : 'text-muted'}">
+            <td class="max-w-[320px] px-2 py-2 {f === 'title' ? '' : 'text-muted'}">
               {#if f === 'title'}
                 <button
                   type="button"
-                  class="text-left"
+                  class="task-title-3 text-left"
+                  title={rowTitle(r)}
                   data-open
                   onclick={(e) => {
                     e.stopPropagation()

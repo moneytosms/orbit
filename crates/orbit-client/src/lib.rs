@@ -160,6 +160,9 @@ impl Client {
         if !label_ids.is_empty() {
             patch.insert("label_ids".into(), serde_json::json!(label_ids));
         }
+        if !parsed.description.is_empty() {
+            patch.insert("description".into(), serde_json::json!(parsed.description));
+        }
         if !patch.is_empty() {
             self.update_task(id, serde_json::Value::Object(patch), now_ms)?;
         }

@@ -200,7 +200,7 @@
               onmousemove={() => (active = i)}
               class="flex h-9 cursor-pointer items-center gap-2 rounded-[7px] px-2.5 aria-selected:bg-press"
             >
-              <span class="min-w-0 flex-1 truncate">{it.label}</span>
+              <span class="task-title-1 flex-1" title={it.label}>{it.label}</span>
               <span class="text-[0.7812rem] text-muted">{it.hint}</span>
             </li>
           {/each}

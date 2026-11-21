@@ -304,9 +304,9 @@
           <button
             type="button"
             onclick={() => onopen(i.row)}
-            class="flex min-h-[2.625rem] w-full items-center gap-3 rounded-[9px] px-2 text-left hover:bg-hover"
+            class="flex min-h-[2.625rem] w-full min-w-0 items-center gap-3 rounded-[9px] px-2 text-left hover:bg-hover"
           >
-            <span class="min-w-0 flex-1 truncate">{i.text}</span>
+            <span class="task-title-1 flex-1" title={i.text}>{i.text}</span>
             <span class="text-xs text-muted">{fmt(i.day)}</span>
           </button>
         </li>

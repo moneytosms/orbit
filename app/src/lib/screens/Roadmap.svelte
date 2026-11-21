@@ -240,7 +240,7 @@
             {#each p.items as i (i.id)}
               <li class="flex flex-col gap-1">
                 <div class="flex items-center gap-2 text-[0.8438rem]">
-                  <span class="min-w-0 flex-1 truncate">{i.title}</span>
+                  <span class="task-title-1 flex-1" title={i.title}>{i.title}</span>
                   <span class="text-[0.7188rem] text-muted">{i.kind}</span>
                   {@render move(i.id, p.id)}
                 </div>
@@ -281,7 +281,7 @@
               ondragend={() => (dragging = over = null)}
               class="flex cursor-grab flex-col gap-1 rounded-md border border-line bg-surface p-2 text-[0.8438rem] shadow-1"
             >
-              <span class="truncate">{i.title}</span>
+              <span class="task-title-2" title={i.title}>{i.title}</span>
               <span class="text-[0.7188rem] text-muted">{i.kind}</span>
               {#if p}{@render bar((i as PhaseSummary['items'][number]).progress)}{/if}
             </div>
@@ -297,7 +297,7 @@
       <ul class="flex flex-col gap-1">
         {#each unplaced as c (c.id)}
           <li class="flex items-center gap-2 text-[0.8438rem]">
-            <span class="min-w-0 flex-1 truncate">{c.title}</span>
+            <span class="task-title-1 flex-1" title={c.title}>{c.title}</span>
             <span class="text-[0.7188rem] text-muted">{c.kind}</span>
             {@render move(c.id, null)}
           </li>

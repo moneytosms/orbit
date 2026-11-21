@@ -174,7 +174,7 @@
         <ul class="grid gap-1">
           {#each next as i (i.id)}
             <li class="flex items-center gap-2 text-sm">
-              <span class="min-w-0 flex-1 truncate">{i.title}</span>
+              <span class="task-title-1 flex-1" title={i.title}>{i.title}</span>
               <span class="shrink-0 rounded-full bg-accent-soft px-2 py-px text-xs text-accent-text">{i.reason}</span>
             </li>
           {/each}
