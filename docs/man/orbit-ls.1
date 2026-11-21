@@ -2,11 +2,11 @@
 .el .ds Aq '
 .TH orbit-ls 1  "ls " 
 .SH NAME
-orbit\-ls \- List open tasks
+orbit\-ls \- List open tasks in a terminal\-width\-aware table
 .SH SYNOPSIS
-\fBorbit ls\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBorbit ls\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-\-wide\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
-List open tasks
+List open tasks in a terminal\-width\-aware table
 .SH OPTIONS
 .TP
 \fB\-\-all\fR
@@ -15,10 +15,17 @@ List open tasks
 \fB\-\-json\fR
 Print one JSON object per result, with `"v":1`, instead of text
 .TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-\-wide\fR
+Show ids and descriptions without truncating titles
+.TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .SH EXTRA
 Examples:
   orbit ls
   orbit ls \-\-all
+  orbit ls \-\-wide
   orbit \-\-json ls

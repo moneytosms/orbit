@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-checkin \- Check a routine in for a day (default today)
 .SH SYNOPSIS
-\fBorbit checkin\fR [\fB\-\-date\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+\fBorbit checkin\fR [\fB\-\-date\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
 .SH DESCRIPTION
 Check a routine in for a day (default today)
 .SH OPTIONS
@@ -17,6 +17,9 @@ Print one JSON object per result, with `"v":1`, instead of text
 .TP
 \fB\-\-dry\-run\fR
 
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

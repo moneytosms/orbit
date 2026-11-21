@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-done \- Complete a task
 .SH SYNOPSIS
-\fBorbit done\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
+\fBorbit done\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> 
 .SH DESCRIPTION
 Complete a task
 .SH OPTIONS
@@ -15,11 +15,14 @@ Complete a task
 \fB\-\-json\fR
 Print one JSON object per result, with `"v":1`, instead of text
 .TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .TP
 <\fIR\fR>
-A row number from the last listing, or an id prefix of 6+ characters
+A row number from the device listing, id prefix, or unique title words
 .SH EXTRA
 Examples:
   orbit done 1

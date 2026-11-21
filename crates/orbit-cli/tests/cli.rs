@@ -82,9 +82,26 @@ fn empty_list_says_no_tasks() {
     let o = orbit(d.path(), &["--json", "ls"]);
     assert_eq!(o.code, 0);
     assert_eq!(
+        o.stdout,
+        "{\"items\":[],\"shown\":0,\"total\":0,\"truncated\":false,\"v\":1}\n"
+    );
+    assert_eq!(
         o.json(),
         json!({ "v": 1, "items": [], "total": 0, "shown": 0, "truncated": false })
     );
+}
+
+#[test]
+fn no_args_print_help_and_show_names_missing_ref() {
+    let d = tempfile::tempdir().unwrap();
+    let no_args = orbit(d.path(), &[]);
+    assert_eq!(no_args.code, 0);
+    assert!(no_args.stdout.contains("Usage: orbit"));
+    assert!(no_args.stderr.is_empty());
+
+    let missing = orbit(d.path(), &["show"]);
+    assert_eq!(missing.code, 2);
+    assert!(missing.stderr.contains("<R>"), "{}", missing.stderr);
 }
 
 #[test]
@@ -107,7 +124,7 @@ fn add_then_ls_snapshot() {
     assert_eq!(body["truncated"], false);
 
     let human = orbit(d.path(), &["ls"]);
-    assert!(human.stdout.starts_with("#  ID"), "{}", human.stdout);
+    assert!(human.stdout.starts_with("#  TITLE"), "{}", human.stdout);
     assert!(human.stdout.contains("buy milk"));
 }
 
@@ -232,6 +249,51 @@ fn refs_by_row_number_and_prefix() {
 }
 
 #[test]
+fn wide_listing_prints_an_usable_short_id_and_raw_description() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(
+        d.path(),
+        &["add", "--id", A, "[source title](https://example.test/raw)"],
+    );
+    let listing = orbit(d.path(), &["ls", "--wide"]);
+    assert!(listing.stdout.contains("DESCRIPTION / SOURCE"));
+    assert!(listing.stdout.contains("https://example.test/raw"));
+    assert!(listing.stdout.contains("  aaaa  https://example.test/raw"));
+    let shown = orbit(d.path(), &["--json", "show", "aaaa"]);
+    assert_eq!(shown.json()["task"]["title"], "source title");
+}
+
+#[test]
+fn numeric_only_wide_prefix_resolves_as_id_after_row_lookup() {
+    let d = tempfile::tempdir().unwrap();
+    let id = "12345678-0000-4000-8000-000000000001";
+    orbit(d.path(), &["add", "--id", id, "numeric id"]);
+    let listing = orbit(d.path(), &["ls", "--wide"]);
+    let prefix = listing
+        .stdout
+        .lines()
+        .nth(1)
+        .unwrap()
+        .split_whitespace()
+        .last()
+        .unwrap();
+    assert_eq!(prefix, "1234");
+    let shown = orbit(d.path(), &["--json", "show", prefix]);
+    assert_eq!(shown.json()["task"]["id"], id);
+}
+
+#[test]
+fn unmatched_hex_words_fall_through_to_title_match() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "Cafe"]);
+    orbit(d.path(), &["add", "beef"]);
+    let cafe = orbit(d.path(), &["--json", "show", "Cafe"]);
+    assert_eq!(cafe.json()["task"]["title"], "Cafe");
+    let beef = orbit(d.path(), &["--json", "show", "beef"]);
+    assert_eq!(beef.json()["task"]["title"], "beef");
+}
+
+#[test]
 fn ambiguous_ref_is_an_error() {
     let d = tempfile::tempdir().unwrap();
     orbit(d.path(), &["add", "--id", A, "one"]);
@@ -239,6 +301,74 @@ fn ambiguous_ref_is_an_error() {
     let o = orbit(d.path(), &["--json", "done", "aaaaaa"]);
     assert_eq!(o.code, 1);
     assert_eq!(o.json()["error"]["code"], "ambiguous");
+    assert!(
+        o.json()["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("longer id prefix")
+    );
+}
+
+#[test]
+fn title_refs_and_ambiguous_candidates() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "buy oat milk"]);
+    orbit(d.path(), &["add", "buy almond milk"]);
+    orbit(d.path(), &["ls"]);
+    let unique = orbit(d.path(), &["--json", "show", "oat milk"]);
+    assert_eq!(unique.json()["task"]["title"], "buy oat milk");
+    let ambiguous = orbit(d.path(), &["--json", "show", "milk"]);
+    assert_eq!(ambiguous.json()["error"]["code"], "ambiguous");
+    let body = ambiguous.json();
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(message.contains("1: buy oat milk"), "{message}");
+    assert!(message.contains("2: buy almond milk"), "{message}");
+}
+
+#[test]
+fn stale_listing_explains_refresh() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "one"]);
+    orbit(d.path(), &["ls"]);
+    let path = d.path().join("listing.json");
+    let mut listing: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    listing["listed_at"] = json!(now - 3 * 24 * 60 * 60);
+    std::fs::write(&path, serde_json::to_vec(&listing).unwrap()).unwrap();
+    let stale = orbit(d.path(), &["--json", "show", "1"]);
+    assert_eq!(stale.code, 1);
+    assert_eq!(stale.json()["error"]["code"], "stale_listing");
+    assert!(
+        stale.json()["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("listing is 3 days old")
+    );
+    assert_eq!(stale.json()["error"]["hint"], "run `orbit ls`");
+}
+
+#[test]
+fn parallel_terminals_leave_a_valid_shared_listing() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "first"]);
+    orbit(d.path(), &["add", "second"]);
+    let dir = d.path().to_path_buf();
+    let readers: Vec<_> = (0..8)
+        .map(|_| {
+            let dir = dir.clone();
+            std::thread::spawn(move || orbit(&dir, &["ls"]))
+        })
+        .collect();
+    for reader in readers {
+        assert_eq!(reader.join().unwrap().code, 0);
+    }
+    let listing: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("listing.json")).unwrap()).unwrap();
+    assert_eq!(listing["ids"].as_array().unwrap().len(), 2);
+    assert!(listing["listed_at"].as_u64().is_some());
 }
 
 #[test]
@@ -271,18 +401,10 @@ fn search_finds_tasks() {
 fn error_envelope_snapshot_and_exit_codes() {
     let d = tempfile::tempdir().unwrap();
     let o = orbit(d.path(), &["--json", "done", "zzz"]);
-    assert_eq!(o.code, 2);
-    assert_eq!(
-        o.json(),
-        json!({
-            "v": 1,
-            "error": {
-                "code": "usage",
-                "message": "`zzz` is neither a row number nor an id prefix of 6+ characters",
-                "hint": "run `orbit --help`"
-            }
-        })
-    );
+    assert_eq!(o.code, 1);
+    assert_eq!(o.json()["v"], 1);
+    assert_eq!(o.json()["error"]["code"], "not_found");
+    assert_eq!(o.json()["error"]["hint"], "run `orbit ls`");
 
     let o = orbit(d.path(), &["--json", "done", "999"]);
     assert_eq!(o.code, 1);

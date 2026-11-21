@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-search \- Find tasks by words
 .SH SYNOPSIS
-\fBorbit search\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIWORDS\fR> 
+\fBorbit search\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-\-wide\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIWORDS\fR> 
 .SH DESCRIPTION
 Find tasks by words
 .SH OPTIONS
@@ -14,6 +14,12 @@ Find tasks by words
 .TP
 \fB\-\-json\fR
 Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-\-wide\fR
+
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
@@ -25,3 +31,4 @@ Examples:
   orbit search milk
   orbit search dentist tomorrow
   orbit search milk \-\-all
+  orbit search milk \-\-wide

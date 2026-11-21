@@ -2,11 +2,11 @@
 .el .ds Aq '
 .TH orbit-next 1  "next " 
 .SH NAME
-orbit\-next \- Show what to do next
+orbit\-next \- Show what to do next, with a reason for each item
 .SH SYNOPSIS
-\fBorbit next\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBorbit next\fR [\fB\-\-all\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-\-wide\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
-Show what to do next
+Show what to do next, with a reason for each item
 .SH OPTIONS
 .TP
 \fB\-\-all\fR
@@ -15,10 +15,17 @@ Show what to do next
 \fB\-\-json\fR
 Print one JSON object per result, with `"v":1`, instead of text
 .TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-\-wide\fR
+
+.TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .SH EXTRA
 Examples:
   orbit next
   orbit next \-\-all
+  orbit next \-\-wide
   orbit \-\-json next

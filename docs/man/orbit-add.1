@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-add \- Add a task. Quick\-add syntax applies: dates, p1\-p4, #label, @Area or @project
 .SH SYNOPSIS
-\fBorbit add\fR [\fB\-\-id\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITITLE\fR> 
+\fBorbit add\fR [\fB\-\-id\fR] [\fB\-\-json\fR] [\fB\-\-dry\-run\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITITLE\fR> 
 .SH DESCRIPTION
 Add a task. Quick\-add syntax applies: dates, p1\-p4, #label, @Area or @project
 .SH OPTIONS
@@ -17,6 +17,9 @@ Print one JSON object per result, with `"v":1`, instead of text
 .TP
 \fB\-\-dry\-run\fR
 
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

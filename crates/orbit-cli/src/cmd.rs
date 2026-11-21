@@ -287,28 +287,29 @@ fn open_tasks(client: &Client) -> R<Vec<Task>> {
     Ok(tasks)
 }
 
-fn detail(t: &Task) -> String {
-    let mut parts = vec![format!("P{}", t.priority)];
-    if let Some(due) = &t.due {
-        parts.push(match &due.time {
-            Some(time) => format!("due {} {time}", due.date),
-            None => format!("due {}", due.date),
-        });
-    }
-    if t.completed_at.is_some() {
-        parts.push("done".into());
-    }
-    parts.join(" ")
-}
-
 struct Entry {
     id: Uuid,
     title: String,
+    due: String,
+    priority: String,
+    context: String,
+    description: String,
+    reason: String,
     detail: String,
+    done: bool,
 }
 
 /// Prints a listing, saves it for ref lookups, and truncates to `LIMIT` unless `all`.
-fn present(dir: &Path, entries: Vec<Entry>, all: bool, empty: &str) -> Done {
+fn present(
+    dir: &Path,
+    entries: Vec<Entry>,
+    all: bool,
+    empty: &str,
+    wide: bool,
+    no_color: bool,
+    next: bool,
+    all_ids: &[Uuid],
+) -> Done {
     let total = entries.len();
     let shown = if all { total } else { total.min(LIMIT) };
     let entries = &entries[..shown];
@@ -322,15 +323,79 @@ fn present(dir: &Path, entries: Vec<Entry>, all: bool, empty: &str) -> Done {
             .iter()
             .enumerate()
             .map(|(i, e)| {
-                vec![
+                let mut row = vec![
                     (i + 1).to_string(),
-                    short(e.id),
                     e.title.clone(),
-                    e.detail.clone(),
-                ]
+                    e.due.clone(),
+                    e.priority.clone(),
+                ];
+                if next {
+                    row.push(e.reason.clone());
+                }
+                row.push(e.context.clone());
+                if wide {
+                    row.extend([id_prefix(e.id, all_ids, shown), e.description.clone()]);
+                }
+                if !no_color {
+                    if !e.due.is_empty() {
+                        let due_date = e.due.get(..10).unwrap_or(&e.due);
+                        let today = today_string((now_ms() / 86_400_000) as i64);
+                        let color = if due_date < today.as_str() {
+                            "\u{1b}[31m"
+                        } else if due_date == today.as_str() {
+                            "\u{1b}[33m"
+                        } else {
+                            ""
+                        };
+                        if !color.is_empty() {
+                            row[2] = format!("{color}{}\u{1b}[0m", row[2]);
+                        }
+                    }
+                    if next {
+                        let color = if e.reason == "Overdue" {
+                            "\u{1b}[31m"
+                        } else if e.reason == "Due today" {
+                            "\u{1b}[33m"
+                        } else {
+                            ""
+                        };
+                        if !color.is_empty() {
+                            row[4] = format!("{color}{}\u{1b}[0m", row[4]);
+                        }
+                    }
+                    if e.done {
+                        for cell in &mut row {
+                            *cell = format!("\u{1b}[2m{cell}\u{1b}[0m");
+                        }
+                    }
+                    if !e.context.is_empty() {
+                        let i = if next { 5 } else { 4 };
+                        row[i] = format!("\u{1b}[2m{}\u{1b}[0m", row[i]);
+                    }
+                }
+                row
             })
             .collect();
-        table(&["#", "ID", "TITLE", "DETAIL"], &rows)
+        let mut headers = vec!["#", "TITLE", "DUE", "P"];
+        if next {
+            headers.push("WHY");
+        }
+        headers.push("CONTEXT");
+        if wide {
+            headers.extend(["ID", "DESCRIPTION / SOURCE"]);
+        }
+        let term_width = std::env::var("COLUMNS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .or_else(|| {
+                terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| usize::from(w))
+            })
+            .unwrap_or(80);
+        table(
+            &headers,
+            &rows,
+            if wide { usize::MAX / 4 } else { term_width },
+        )
     };
     let mut body = json!({
         "items": entries.iter().enumerate().map(|(i, e)| json!({
@@ -348,24 +413,109 @@ fn present(dir: &Path, entries: Vec<Entry>, all: bool, empty: &str) -> Done {
     Ok((human, body))
 }
 
-fn task_entries(tasks: &[Task]) -> Vec<Entry> {
+fn task_entries(tasks: &[Task], client: &Client) -> Vec<Entry> {
     tasks
         .iter()
         .map(|t| Entry {
             id: t.id,
             title: t.title.clone(),
+            due: t
+                .due
+                .as_ref()
+                .map(|d| match &d.time {
+                    Some(time) => format!("{} {time}", d.date),
+                    None => d.date.clone(),
+                })
+                .unwrap_or_default(),
+            priority: format!("P{}", t.priority),
+            context: context(t, client),
+            description: t.description.clone(),
+            reason: String::new(),
             detail: detail(t),
+            done: t.completed_at.is_some(),
         })
         .collect()
 }
 
-pub fn ls(all: bool) -> Done {
-    let ctx = open()?;
-    let tasks = open_tasks(&ctx.client)?;
-    present(&ctx.dir, task_entries(&tasks), all, "no tasks")
+fn detail(t: &Task) -> String {
+    let mut parts = vec![format!("P{}", t.priority)];
+    if let Some(due) = &t.due {
+        parts.push(match &due.time {
+            Some(time) => format!("due {} {time}", due.date),
+            None => format!("due {}", due.date),
+        });
+    }
+    if t.completed_at.is_some() {
+        parts.push("done".into());
+    }
+    parts.join(" ")
 }
 
-pub fn next(all: bool) -> Done {
+fn id_prefix(id: Uuid, ids: &[Uuid], row_count: usize) -> String {
+    let full = id.to_string().replace('-', "");
+    for n in 4..=full.len() {
+        let prefix = &full[..n];
+        let resolves_as_row = prefix
+            .parse::<usize>()
+            .is_ok_and(|n| n > 0 && n <= row_count);
+        if !resolves_as_row
+            && ids
+                .iter()
+                .filter(|other| other.to_string().replace('-', "").starts_with(prefix))
+                .count()
+                == 1
+        {
+            return prefix.to_string();
+        }
+    }
+    full
+}
+
+fn context(task: &Task, client: &Client) -> String {
+    let Ok(rows) = client.rows() else {
+        return String::new();
+    };
+    let mut parent = task.parent_id;
+    let mut names = vec![];
+    for _ in 0..8 {
+        let Some(row) = rows.iter().find(|r| r.id() == parent) else {
+            break;
+        };
+        match row {
+            Row::Area(a) => names.push(a.name.clone()),
+            Row::Project(p) => names.push(p.name.clone()),
+            _ => {}
+        }
+        let Some(next) = row.parent_id() else { break };
+        parent = next;
+    }
+    names.reverse();
+    names.join(" / ")
+}
+
+pub fn ls(all: bool, wide: bool, no_color: bool) -> Done {
+    let ctx = open()?;
+    let tasks = open_tasks(&ctx.client)?;
+    let ids = ctx
+        .client
+        .rows()
+        .map_err(internal)?
+        .iter()
+        .map(Row::id)
+        .collect::<Vec<_>>();
+    present(
+        &ctx.dir,
+        task_entries(&tasks, &ctx.client),
+        all,
+        "no tasks",
+        wide,
+        no_color,
+        false,
+        &ids,
+    )
+}
+
+pub fn next(all: bool, wide: bool, no_color: bool) -> Done {
     let ctx = open()?;
     let now = now_ms();
     let rows = ctx.client.rows().map_err(internal)?;
@@ -376,13 +526,36 @@ pub fn next(all: bool) -> Done {
         .map(|item| Entry {
             id: item.id,
             title: item.title,
-            detail: item.reason,
+            due: String::new(),
+            priority: String::new(),
+            context: item.breadcrumb.join(" / "),
+            description: rows
+                .iter()
+                .find(|row| row.id() == item.id)
+                .and_then(|row| match row {
+                    Row::Task(task) => Some(task.description.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+            detail: item.reason.clone(),
+            reason: item.reason,
+            done: false,
         })
         .collect();
-    present(&ctx.dir, entries, all, "nothing to do next")
+    let ids = rows.iter().map(Row::id).collect::<Vec<_>>();
+    present(
+        &ctx.dir,
+        entries,
+        all,
+        "nothing to do next",
+        wide,
+        no_color,
+        true,
+        &ids,
+    )
 }
 
-pub fn search(words: &[String], all: bool) -> Done {
+pub fn search(words: &[String], all: bool, wide: bool, no_color: bool) -> Done {
     let query = words.join(" ");
     if query.trim().is_empty() {
         return Err(usage("search needs some words"));
@@ -401,11 +574,40 @@ pub fn search(words: &[String], all: bool) -> Done {
             entries.push(Entry {
                 id: t.id,
                 title: t.title.clone(),
+                due: t
+                    .due
+                    .as_ref()
+                    .map(|d| match &d.time {
+                        Some(time) => format!("{} {time}", d.date),
+                        None => d.date.clone(),
+                    })
+                    .unwrap_or_default(),
+                priority: format!("P{}", t.priority),
+                context: context(&t, &ctx.client),
+                description: t.description.clone(),
+                reason: String::new(),
                 detail: detail(&t),
+                done: t.completed_at.is_some(),
             });
         }
     }
-    present(&ctx.dir, entries, all, &format!("no tasks match `{query}`"))
+    let ids = ctx
+        .client
+        .rows()
+        .map_err(internal)?
+        .iter()
+        .map(Row::id)
+        .collect::<Vec<_>>();
+    present(
+        &ctx.dir,
+        entries,
+        all,
+        &format!("no tasks match `{query}`"),
+        wide,
+        no_color,
+        false,
+        &ids,
+    )
 }
 
 /// The Task a ref names, or a not_found failure.
@@ -462,7 +664,17 @@ pub fn add(words: &[String], id: Option<&str>, dry_run: bool) -> Done {
             _ => internal(e),
         })?;
     Ok((
-        format!("added {}: {title}", short(id)),
+        {
+            let ids = ctx
+                .client
+                .rows()
+                .map_err(internal)?
+                .iter()
+                .map(Row::id)
+                .collect::<Vec<_>>();
+            let prefix = id_prefix(id, &ids, refs::listing_len(&ctx.dir)?);
+            format!("Added {prefix} \"{title}\" · orbit done {prefix}")
+        },
         json!({ "id": id, "title": title, "created": true, "dry_run": false }),
     ))
 }
@@ -486,7 +698,7 @@ pub fn done(r: &str, dry_run: bool) -> Done {
         .complete_task(task.id, now_ms())
         .map_err(internal)?;
     Ok((
-        format!("done: {}", task.title),
+        format!("done: {} · orbit ls", task.title),
         json!({ "id": task.id, "title": task.title, "changed": true, "dry_run": false }),
     ))
 }
@@ -518,7 +730,11 @@ pub fn edit(r: &str, title: Option<&str>, description: Option<&str>, dry_run: bo
         return Err(usage("nothing to edit: pass --title or --description"));
     }
     if title.is_some_and(|t| t.trim().is_empty()) {
-        return Err(fail("title_required", "a task needs a title", None));
+        return Err(fail(
+            "title_required",
+            "a task needs a title",
+            Some("pass a non-empty value with --title"),
+        ));
     }
     let mut ctx = open()?;
     let task = task_of(&ctx, r)?;
@@ -538,7 +754,15 @@ pub fn edit(r: &str, title: Option<&str>, description: Option<&str>, dry_run: bo
     ctx.client
         .update_task(task.id, Value::Object(patch), now_ms())
         .map_err(internal)?;
-    let human = format!("edited {}", short(task.id));
+    let ids = ctx
+        .client
+        .rows()
+        .map_err(internal)?
+        .iter()
+        .map(Row::id)
+        .collect::<Vec<_>>();
+    let prefix = id_prefix(task.id, &ids, refs::listing_len(&ctx.dir)?);
+    let human = format!("edited {prefix} · orbit show {prefix}");
     Ok((
         human,
         json!({ "id": task.id, "changed": true, "dry_run": false }),
@@ -554,7 +778,7 @@ pub fn checkin(r: &str, date: Option<&str>, dry_run: bool) -> Done {
             return Err(fail(
                 "not_a_routine",
                 format!("`{r}` is not a routine"),
-                Some("check-ins apply to routines"),
+                Some("run `orbit ls` and choose a routine"),
             ));
         }
     };
@@ -584,7 +808,7 @@ pub fn checkin(r: &str, date: Option<&str>, dry_run: bool) -> Done {
     };
     ctx.client.enqueue(op, now_ms()).map_err(internal)?;
     Ok((
-        format!("checked in {} for {date}", routine.name),
+        format!("checked in {} for {date} · orbit ls", routine.name),
         json!({ "routine": routine.id, "name": routine.name, "date": date, "changed": true, "dry_run": false }),
     ))
 }
@@ -706,7 +930,7 @@ pub fn import_todoist(maps: &[String], yes: bool) -> Done {
                 .collect();
             let human = format!(
                 "{}\npass --yes to import; change a target with --map ID=area:NAME",
-                table(&["ID", "TODOIST", "BECOMES", "TASKS"], &rows)
+                table(&["ID", "TODOIST", "BECOMES", "TASKS"], &rows, std::env::var("COLUMNS").ok().and_then(|s| s.parse().ok()).unwrap_or(80))
             );
             return Ok((human, json!({ "committed": false, "preview": preview })));
         }

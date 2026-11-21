@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-login \- Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin
 .SH SYNOPSIS
-\fBorbit login\fR [\fB\-\-json\fR] [\fB\-\-totp\fR] [\fB\-\-name\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIURL\fR> 
+\fBorbit login\fR [\fB\-\-json\fR] [\fB\-\-totp\fR] [\fB\-\-name\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIURL\fR> 
 .SH DESCRIPTION
 Sign this device in to a server. The password is read from ORBIT_PASSWORD or stdin
 .SH OPTIONS
@@ -17,6 +17,9 @@ The current two\-factor code, if the account has one
 .TP
 \fB\-\-name\fR \fI<NAME>\fR [default: orbit\-cli]
 
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

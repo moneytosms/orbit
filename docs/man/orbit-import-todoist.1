@@ -4,7 +4,7 @@
 .SH NAME
 orbit\-import\-todoist \- Import active Todoist items. The token is read from ORBIT_TODOIST_TOKEN or stdin, used once and never stored. Without \-\-yes it only previews the mapping
 .SH SYNOPSIS
-\fBorbit import todoist\fR [\fB\-\-json\fR] [\fB\-\-map\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBorbit import todoist\fR [\fB\-\-json\fR] [\fB\-\-map\fR] [\fB\-\-no\-color\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
 Import active Todoist items. The token is read from ORBIT_TODOIST_TOKEN or stdin, used once and never stored. Without \-\-yes it only previews the mapping
 .SH OPTIONS
@@ -14,6 +14,9 @@ Print one JSON object per result, with `"v":1`, instead of text
 .TP
 \fB\-\-map\fR \fI<MAPS>\fR
 Change where a Todoist project goes: ID=area:NAME, ID=project:AREA/NAME or ID=inbox
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
 .TP
 \fB\-\-yes\fR
 Import for real

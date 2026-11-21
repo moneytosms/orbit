@@ -15,8 +15,8 @@ Commands:
   sync         Send queued changes to the server and fetch the rest
   status       Show the server, sign-in state and unsynced count
   add          Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
-  ls           List open tasks
-  next         Show what to do next
+  ls           List open tasks in a terminal-width-aware table
+  next         Show what to do next, with a reason for each item
   done         Complete a task
   show         Show one task
   edit         Change a task's title or description
@@ -32,6 +32,9 @@ Commands:
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help
@@ -67,6 +70,9 @@ Options:
       --name <NAME>
           [default: orbit-cli]
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -93,6 +99,9 @@ Options:
       --dry-run
           
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -112,6 +121,9 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -130,6 +142,9 @@ Usage: orbit status [OPTIONS]
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help
@@ -160,6 +175,9 @@ Options:
       --dry-run
           
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -172,7 +190,7 @@ Examples:
 ### `orbit ls`
 
 ```text
-List open tasks
+List open tasks in a terminal-width-aware table
 
 Usage: orbit ls [OPTIONS]
 
@@ -183,19 +201,26 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
+      --wide
+          Show ids and descriptions without truncating titles
+
   -h, --help
           Print help
 
 Examples:
   orbit ls
   orbit ls --all
+  orbit ls --wide
   orbit --json ls
 ```
 
 ### `orbit next`
 
 ```text
-Show what to do next
+Show what to do next, with a reason for each item
 
 Usage: orbit next [OPTIONS]
 
@@ -206,12 +231,19 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
+      --wide
+          
+
   -h, --help
           Print help
 
 Examples:
   orbit next
   orbit next --all
+  orbit next --wide
   orbit --json next
 ```
 
@@ -224,7 +256,7 @@ Usage: orbit done [OPTIONS] <R>
 
 Arguments:
   <R>
-          A row number from the last listing, or an id prefix of 6+ characters
+          A row number from the device listing, id prefix, or unique title words
 
 Options:
       --dry-run
@@ -232,6 +264,9 @@ Options:
 
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help
@@ -257,12 +292,16 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
 Examples:
   orbit show 1
   orbit show 3f2b9c
+  orbit show buy milk
   orbit --json show 1
 ```
 
@@ -286,6 +325,9 @@ Options:
 
       --description <DESCRIPTION>
           
+
+      --no-color
+          Disable ANSI colors
 
       --dry-run
           
@@ -317,6 +359,12 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
+      --wide
+          
+
   -h, --help
           Print help
 
@@ -324,6 +372,7 @@ Examples:
   orbit search milk
   orbit search dentist tomorrow
   orbit search milk --all
+  orbit search milk --wide
 ```
 
 ### `orbit import`
@@ -340,6 +389,9 @@ Commands:
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help
@@ -362,6 +414,9 @@ Options:
 
       --map <MAPS>
           Change where a Todoist project goes: ID=area:NAME, ID=project:AREA/NAME or ID=inbox
+
+      --no-color
+          Disable ANSI colors
 
       --yes
           Import for real
@@ -396,6 +451,9 @@ Options:
       --dry-run
           
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -420,6 +478,9 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -439,6 +500,9 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
+      --no-color
+          Disable ANSI colors
+
   -h, --help
           Print help
 
@@ -457,6 +521,9 @@ Usage: orbit mcp [OPTIONS]
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help
@@ -482,6 +549,9 @@ Arguments:
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
 
   -h, --help
           Print help

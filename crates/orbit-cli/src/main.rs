@@ -21,6 +21,9 @@ struct Cli {
     /// Print one JSON object per result, with `"v":1`, instead of text.
     #[arg(long, global = true)]
     json: bool,
+    /// Disable ANSI colors.
+    #[arg(long, global = true)]
+    no_color: bool,
     #[command(subcommand)]
     command: Cmd,
 }
@@ -67,30 +70,41 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// List open tasks.
-    #[command(after_help = "Examples:\n  orbit ls\n  orbit ls --all\n  orbit --json ls")]
+    /// List open tasks in a terminal-width-aware table.
+    #[command(
+        after_help = "Examples:\n  orbit ls\n  orbit ls --all\n  orbit ls --wide\n  orbit --json ls"
+    )]
     Ls {
         #[arg(long)]
         all: bool,
+        /// Show ids and descriptions without truncating titles.
+        #[arg(long)]
+        wide: bool,
     },
-    /// Show what to do next.
-    #[command(after_help = "Examples:\n  orbit next\n  orbit next --all\n  orbit --json next")]
+    /// Show what to do next, with a reason for each item.
+    #[command(
+        after_help = "Examples:\n  orbit next\n  orbit next --all\n  orbit next --wide\n  orbit --json next"
+    )]
     Next {
         #[arg(long)]
         all: bool,
+        #[arg(long)]
+        wide: bool,
     },
     /// Complete a task.
     #[command(
         after_help = "Examples:\n  orbit done 1\n  orbit done 3f2b9c\n  orbit done 1 --dry-run"
     )]
     Done {
-        /// A row number from the last listing, or an id prefix of 6+ characters.
+        /// A row number from the device listing, id prefix, or unique title words.
         r: String,
         #[arg(long)]
         dry_run: bool,
     },
     /// Show one task.
-    #[command(after_help = "Examples:\n  orbit show 1\n  orbit show 3f2b9c\n  orbit --json show 1")]
+    #[command(
+        after_help = "Examples:\n  orbit show 1\n  orbit show 3f2b9c\n  orbit show buy milk\n  orbit --json show 1"
+    )]
     Show { r: String },
     /// Change a task's title or description.
     #[command(
@@ -107,13 +121,15 @@ enum Cmd {
     },
     /// Find tasks by words.
     #[command(
-        after_help = "Examples:\n  orbit search milk\n  orbit search dentist tomorrow\n  orbit search milk --all"
+        after_help = "Examples:\n  orbit search milk\n  orbit search dentist tomorrow\n  orbit search milk --all\n  orbit search milk --wide"
     )]
     Search {
         #[arg(required = true)]
         words: Vec<String>,
         #[arg(long)]
         all: bool,
+        #[arg(long)]
+        wide: bool,
     },
     /// Bring data in from another app.
     #[command(
@@ -185,15 +201,15 @@ enum Import {
     },
 }
 
-fn run(command: Cmd) -> Done {
+fn run(command: Cmd, no_color: bool) -> Done {
     match command {
         Cmd::Login { url, totp, name } => cmd::login(&url, totp.as_deref(), &name),
         Cmd::Logout { yes, dry_run } => cmd::logout(yes, dry_run),
         Cmd::Sync => cmd::sync(),
         Cmd::Status => cmd::status(),
         Cmd::Add { title, id, dry_run } => cmd::add(&title, id.as_deref(), dry_run),
-        Cmd::Ls { all } => cmd::ls(all),
-        Cmd::Next { all } => cmd::next(all),
+        Cmd::Ls { all, wide } => cmd::ls(all, wide, no_color),
+        Cmd::Next { all, wide } => cmd::next(all, wide, no_color),
         Cmd::Done { r, dry_run } => cmd::done(&r, dry_run),
         Cmd::Show { r } => cmd::show(&r),
         Cmd::Edit {
@@ -202,7 +218,7 @@ fn run(command: Cmd) -> Done {
             description,
             dry_run,
         } => cmd::edit(&r, title.as_deref(), description.as_deref(), dry_run),
-        Cmd::Search { words, all } => cmd::search(&words, all),
+        Cmd::Search { words, all, wide } => cmd::search(&words, all, wide, no_color),
         Cmd::Import {
             from: Import::Todoist { maps, yes },
         } => cmd::import_todoist(&maps, yes),
@@ -215,6 +231,12 @@ fn run(command: Cmd) -> Done {
 }
 
 fn main() -> ExitCode {
+    if std::env::args().len() == 1 {
+        let mut cmd = Cli::command();
+        let _ = cmd.print_help();
+        println!();
+        return ExitCode::SUCCESS;
+    }
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
@@ -224,11 +246,7 @@ fn main() -> ExitCode {
             }
             let json = std::env::args().any(|a| a == "--json");
             let text = e.to_string();
-            let message = text
-                .trim_start_matches("error: ")
-                .lines()
-                .next()
-                .unwrap_or("bad arguments");
+            let message = text.strip_prefix("error: ").unwrap_or(&text);
             let failure = out::usage(message);
             print_err(json, &failure);
             return ExitCode::from(failure.exit);
@@ -243,7 +261,10 @@ fn main() -> ExitCode {
         }
         command => command,
     };
-    match run(command) {
+    match run(
+        command,
+        cli.no_color || std::env::var_os("NO_COLOR").is_some(),
+    ) {
         Ok((human, body)) => {
             print_ok(json, &human, body);
             ExitCode::SUCCESS

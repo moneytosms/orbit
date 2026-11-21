@@ -141,8 +141,8 @@ fn run_tool(name: &str, a: &Value) -> Done {
             text(a, "id"),
             flag(a, "dry_run"),
         ),
-        "ls" => cmd::ls(flag(a, "all")),
-        "next" => cmd::next(flag(a, "all")),
+        "ls" => cmd::ls(flag(a, "all"), false, true),
+        "next" => cmd::next(flag(a, "all"), false, true),
         "done" => cmd::done(required(a, "r")?, flag(a, "dry_run")),
         "show" => cmd::show(required(a, "r")?),
         "edit" => cmd::edit(
@@ -156,7 +156,7 @@ fn run_tool(name: &str, a: &Value) -> Done {
                 .split_whitespace()
                 .map(String::from)
                 .collect();
-            cmd::search(&words, flag(a, "all"))
+            cmd::search(&words, flag(a, "all"), false, true)
         }
         "checkin" => cmd::checkin(required(a, "r")?, text(a, "date"), flag(a, "dry_run")),
         "sync" => cmd::sync(),

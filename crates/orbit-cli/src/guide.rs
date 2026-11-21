@@ -24,14 +24,15 @@ Core commands
 
 Refs
   A ref names a task or routine, either:
-  - a row number from the last listing in this terminal (ls, next, search). The listing
-    is kept per terminal session: ORBIT_SESSION, else TERM_SESSION_ID.
-  - an id prefix of 6 or more characters, as shown in the ID column.
-  Unknown or ambiguous refs fail (not_found, ambiguous). Nothing is guessed.
+  - a row number from the device-wide last listing (ls, next, search), kept for 24 hours.
+  - an id prefix (shown by --wide), or words matching a unique title.
+  Unknown or ambiguous refs explain how to fix them; nothing is guessed.
 
 Filters and listings
   There are no field filters yet (no due, priority or label flags).
   ls, next and search show 20 rows and say so when they truncate; --all shows every row.
+  Tables fit the terminal; --wide shows ids and descriptions without truncation. NO_COLOR
+  or --no-color disables ANSI colors.
   search needs words: each word must start a word of the task text, so `orbit search mil`
   finds \"buy milk\".
 
