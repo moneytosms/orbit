@@ -6,7 +6,7 @@ your laptop and phone. Commands match `crates/orbit-server/src/main.rs`.
 Pick your path:
 
 1. [Run it](#1-run-it) on one machine (five minutes, Docker).
-2. [Reach it from other devices](#2-reach-it-from-other-devices) over HTTPS, with [Tailscale](#3-https-with-tailscale) or [your own domain](#4-https-with-a-domain-caddy).
+2. [Reach it from other devices](#2-reach-it-from-other-devices) over HTTPS, with [Tailscale](#3-https-with-tailscale), [your own domain](#4-https-with-a-domain-caddy) or a [Cloudflare Tunnel](cloudflare-tunnel.md).
 3. [Connect each client](#5-connect-your-clients) using the one server address.
 4. [Keep it running](#6-keep-it-running) across reboots, then [back up, update and recover](#7-backups-updates-and-recovery).
 
@@ -60,8 +60,8 @@ To build the image from a checkout instead of pulling it, edit `deploy/compose.y
 ## 2. Reach it from other devices
 
 Plain HTTP is fine on the machine running the server. Any other device needs **HTTPS**: the Android
-release app refuses `http://` addresses entirely. Both options below keep the server itself on plain
-HTTP inside the host or container and add HTTPS in front.
+release app refuses `http://` addresses entirely. Every option below keeps the server itself on plain
+HTTP inside the host or container and adds HTTPS in front.
 
 | | Tailscale | Domain with Caddy |
 | --- | --- | --- |
@@ -69,6 +69,9 @@ HTTP inside the host or container and add HTTPS in front.
 | You need | a free Tailscale account on every device | a domain, a public IP, ports 80 and 443 open |
 | Certificate | `*.ts.net`, handled by Tailscale | Let's Encrypt, handled by Caddy |
 | Address looks like | `https://<machine>.<tailnet>.ts.net` | `https://orbit.example.com` |
+
+A third path, a Cloudflare Tunnel, needs no public IP and no open ports, and one tunnel can carry
+several apps with a hostname each. It has its own page: [cloudflare-tunnel.md](cloudflare-tunnel.md).
 
 Not sure? Pick Tailscale: nothing is exposed to the internet.
 

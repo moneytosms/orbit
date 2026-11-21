@@ -67,7 +67,7 @@ cargo run --release -p orbit-server
 
 First run: with no user yet, the server prints `First run: open the app and enter setup code <code>` to stderr (check `docker logs`). Open the app and enter the code to create the account. Lost password: `orbit-server reset-password` (reads the new password from stdin; signs out every Device). Other subcommands: `orbit-server backup <dir>` and `orbit-server restore <snapshot>` (stop the server first). The server also snapshots daily into `ORBIT_DATA/backups`.
 
-Put it behind HTTPS before exposing it. Tailscale serve and Caddy with a domain are both covered in [docs/deploy.md](docs/deploy.md).
+Put it behind HTTPS before exposing it. Tailscale serve, Caddy with a domain and a Cloudflare Tunnel are all covered in [docs/deploy.md](docs/deploy.md); the tunnel in detail in [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md).
 
 ### Web / PWA
 

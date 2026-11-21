@@ -4,7 +4,7 @@ Orbit has one server and several clients. Every client talks to the same server 
 
 ## 1. Before you start
 
-- You need a running Orbit server that your devices can reach over **HTTPS**. Set one up with [deploy.md](deploy.md) (Tailscale serve or Caddy with a domain). The address you end up with is the one every client below asks for: [deploy.md, Connect your clients](deploy.md#5-connect-your-clients).
+- You need a running Orbit server that your devices can reach over **HTTPS**. Set one up with [deploy.md](deploy.md) (Tailscale serve, Caddy with a domain, or a [Cloudflare Tunnel](cloudflare-tunnel.md)). The address you end up with is the one every client below asks for: [deploy.md, Connect your clients](deploy.md#5-connect-your-clients).
 - You have one account, created with the setup code the server prints on first run (see [deploy.md](deploy.md)).
 - Each client you sign in becomes its own Device: web browser, Linux desktop app, Android app, CLI. Settings > Account and devices lists them and has a **Revoke** button per Device.
 
