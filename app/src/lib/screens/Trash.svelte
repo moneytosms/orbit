@@ -66,7 +66,7 @@
         </Button>
       </div>
     {:else}
-      <Empty icon={Archive} text="Archived Projects and Routines are kept out of the way here until you need them." />
+      <Empty icon={Archive} text="Archived Areas, Projects, Goals and Roadmaps are kept here until you need them." />
     {/each}
   </section>
 </div>

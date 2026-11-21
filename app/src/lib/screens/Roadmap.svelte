@@ -7,19 +7,17 @@
   import MermaidImport from '$lib/MermaidImport.svelte'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import Backlinks from '$lib/Backlinks.svelte'
+  import EntityMenu from '$lib/EntityMenu.svelte'
   import RoadmapCanvas from '$lib/RoadmapCanvas.svelte'
   import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
   import {
-    archiveItem,
     createPhase,
     createRoadmap,
-    deleteItem,
     getRoadmap,
     importMermaid,
     localDay,
     placeable,
     placeItem,
-    renameRoadmap,
     roadmaps,
     roadmapSummary,
     setPhaseDone,
@@ -100,28 +98,6 @@
     await setPhaseDone(p.id, !p.completed)
     await load()
   }
-  async function rename(e: FocusEvent) {
-    const input = e.currentTarget as HTMLInputElement
-    const value = input.value.trim()
-    if (!roadmap) return
-    if (!value) input.value = roadmap.name
-    else if (value !== roadmap.name) {
-      await renameRoadmap(roadmap.id, value)
-      onchange()
-    }
-  }
-  async function archive() {
-    if (!roadmap) return
-    await archiveItem(roadmap.id)
-    onchange()
-    location.hash = '#/roadmaps'
-  }
-  async function remove() {
-    if (!roadmap) return
-    await deleteItem(roadmap.id)
-    onchange()
-    location.hash = '#/roadmaps'
-  }
   function drop(e: DragEvent, phaseId: string | null) {
     e.preventDefault()
     const item = dragging
@@ -172,13 +148,10 @@
   <RoadmapBuilder bind:open={building} {areas} {onchange} />
 {:else if roadmap}
   {#key roadmap.id}
-    <input
-      aria-label="Roadmap name"
-      value={roadmap.name}
-      onblur={rename}
-      onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-      class="page-title mb-3 w-full bg-transparent outline-none"
-    />
+    <div class="mb-3 flex items-center gap-1">
+      <h1 class="page-title min-w-0 flex-1">{roadmap.name}</h1>
+      <EntityMenu id={roadmap.id} name={roadmap.name} kind="roadmap" fallbackHref="#/roadmaps" archiveable {onchange} />
+    </div>
   {/key}
   <div class="mb-3 hidden gap-1 desk:flex" role="group" aria-label="Layout">
     <Button variant={mode === 'canvas' ? 'primary' : 'ghost'} size="sm" onclick={() => (mode = 'canvas')}>Canvas</Button
@@ -194,7 +167,8 @@
     <div class="flex items-center gap-2">
       <h2 class="flex-1 truncate font-semibold">
         {p.name}
-        {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[0.7188rem] font-normal">Current</span>{/if}
+        {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[0.7188rem] font-normal">Current</span
+          >{/if}
         {#if p.locked}<span class="ml-1 rounded-sm bg-sunk px-1.5 text-[0.7188rem] font-normal">Locked</span>{/if}
       </h2>
       <span class="text-[0.7812rem] text-muted">{pct(p.progress)}</span>
@@ -312,8 +286,6 @@
   </form>
   <div class="mt-3 flex gap-2">
     <Button variant="ghost" onclick={() => (importing = true)}>Import Mermaid…</Button>
-    <Button variant="ghost" aria-label="Archive roadmap" onclick={archive}>Archive</Button>
-    <Button variant="ghost" aria-label="Delete roadmap" onclick={remove}>Delete roadmap</Button>
   </div>
   <Dialog.Root bind:open={importing}>
     <Dialog.Content class="max-h-[85vh] overflow-y-auto">

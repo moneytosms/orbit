@@ -12,6 +12,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import Composer from './Composer.svelte'
   import EntityCreateMenu from './EntityCreateMenu.svelte'
+  import EntityMenu from './EntityMenu.svelte'
   import Palette from './Palette.svelte'
   import { runAction, setFocusedTask, ui } from '$lib/actions'
   import { clearCursor, isTyping, matcher } from '$lib/keys'
@@ -38,7 +39,7 @@
   import { inbox_id } from '../../wasm/orbit_wasm'
 
   type AreaItem = { id: string; area: Area; projects: Project[] }
-  type ViewPin = { id: string; name: string }
+  type ViewPin = { id: string; name: string; builtin: string | null }
 
   let {
     screen,
@@ -75,7 +76,7 @@
   let areaExpansion = $state<Record<string, boolean>>({})
   let pinned = $state<View[]>([])
   let hiddenViews = $state<View[]>([])
-  let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name })))
+  let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin })))
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
   $effect(() => {
@@ -292,7 +293,7 @@
         <li class="flex flex-col gap-0.5">
           <DropTarget parentId={a.id}>
             <div
-              class="flex h-8 items-center rounded-[7px] hover:bg-hover"
+              class="group flex h-8 items-center rounded-[7px] hover:bg-hover"
               class:bg-press={screen.name === 'area' && screen.id === a.id}
             >
               <a
@@ -315,18 +316,29 @@
                     aria-hidden="true"
                   />{/if}
               </button>
+              <EntityMenu id={a.id} name={a.area.name} kind="area" fallbackHref="#/home" archiveable {onchange} />
             </div>
           </DropTarget>
           <div id="area-projects-{instance}-{a.id}" class="flex flex-col gap-0.5" hidden={!areaIsExpanded(a)}>
             {#each a.projects.slice(0, 4) as p (p.id)}
               <DropTarget parentId={p.id}>
-                <a
-                  href="#/project/{p.id}"
-                  aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
-                  class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
-                >
-                  {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
-                </a>
+                <div class="group flex h-7 items-center rounded-[7px] hover:bg-hover">
+                  <a
+                    href="#/project/{p.id}"
+                    aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
+                    class="flex min-w-0 flex-1 items-center rounded-[7px] pr-1 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+                  >
+                    {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
+                  </a>
+                  <EntityMenu
+                    id={p.id}
+                    name={p.name}
+                    kind="project"
+                    fallbackHref="#/area/{a.id}"
+                    archiveable
+                    {onchange}
+                  />
+                </div>
               </DropTarget>
             {/each}
             {#if a.projects.length > 4}
@@ -399,15 +411,18 @@
         class="flex flex-col gap-0.5"
       >
         {#each viewOrder as v (v.id)}
-          <li>
+          <li class="group flex h-8 items-center rounded-[7px] hover:bg-hover">
             <a
               href="#/view/{v.id}"
               onclick={() => (drawer = false)}
               aria-current={screen.name === 'view' && screen.id === v.id ? 'page' : undefined}
-              class="flex h-8 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+              class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
             >
               {v.name}
             </a>
+            {#if !v.builtin}
+              <EntityMenu id={v.id} name={v.name} kind="view" fallbackHref="#/home" {onchange} />
+            {/if}
           </li>
         {/each}
       </ul>
@@ -429,6 +444,7 @@
                 </a>
                 <Button variant="ghost" size="sm" aria-label="Unhide {v.name}" onclick={() => unhide(v.id)}>Show</Button
                 >
+                <EntityMenu id={v.id} name={v.name} kind="view" fallbackHref="#/home" {onchange} />
               </li>
             {/each}
           </ul>
@@ -461,6 +477,16 @@
             {areas}
             {onchange}
             onnewtask={(text) => open(text, true)}
+          />
+          <EntityMenu
+            id={screen.id}
+            name={title}
+            kind="project"
+            fallbackHref={areas.find((a) => a.projects.some((p) => p.id === screen.id))?.area.id
+              ? `#/area/${areas.find((a) => a.projects.some((p) => p.id === screen.id))?.area.id}`
+              : '#/home'}
+            archiveable
+            {onchange}
           />
         {/if}
       </div>

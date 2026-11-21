@@ -525,6 +525,26 @@ test('archive hides an Area with its Projects; unarchive restores them', async (
   await sync()
 })
 
+test('a deleted View can be restored from Trash', async () => {
+  const id = await createView('Trash view', 'task')
+  await deleteItem(id)
+  expect((await views()).map((v) => v.id)).not.toContain(id)
+  expect((await trashed()).map((r) => r.id)).toContain(id)
+  await restoreItem(id)
+  expect((await views()).map((v) => v.id)).toContain(id)
+  expect((await trashed()).map((r) => r.id)).not.toContain(id)
+})
+
+test('an archived Roadmap appears in Archived and can be restored', async () => {
+  await createArea('Roadmap shelf')
+  const area = (await tree()).find((row) => row.area.name === 'Roadmap shelf')!.area.id
+  const id = await createRoadmap(area, 'Shelf roadmap')
+  await archiveItem(id)
+  expect((await archived()).map((r) => r.id)).toContain(id)
+  await unarchiveItem(id)
+  expect((await archived()).map((r) => r.id)).not.toContain(id)
+})
+
 test('a purged row in the delta deletes the local row', async () => {
   const id = await createTask('Doomed')
   await sync()

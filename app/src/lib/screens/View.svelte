@@ -16,10 +16,10 @@
   import Timeline from '$lib/Timeline.svelte'
   import Calendar from '$lib/Calendar.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
+  import EntityMenu from '$lib/EntityMenu.svelte'
   import {
     allGoals,
     completeTask,
-    deleteView,
     getView,
     resetView,
     runView,
@@ -50,9 +50,6 @@
   let groups = $state<Group[]>([])
   let goalNames = $state(new Map<string, string>())
   let loaded = $state(false)
-  let name = $state('')
-  let nameDirty = $state(false)
-  let nameFocused = $state(false)
   let lastId = ''
   let filterOpen = $state(false)
   let sortOpen = $state(false)
@@ -63,8 +60,6 @@
   $effect(() => {
     if (id !== lastId) {
       lastId = id
-      nameDirty = false
-      nameFocused = false
       loaded = false
       filterOpen = false
       sortOpen = false
@@ -78,7 +73,6 @@
   async function load() {
     const next = (await getView(id)) ?? null
     view = next
-    if (!nameDirty && !nameFocused) name = next?.name ?? ''
     groups = (await runView(id)).groups
     goalNames = new Map((await allGoals()).map((g) => [g.id, g.name]))
     loaded = true
@@ -88,18 +82,6 @@
     await updateView(id, patch)
     await load()
     onchange()
-  }
-
-  async function saveName() {
-    nameFocused = false
-    const next = name.trim()
-    if (!view || !next || next === view.name) {
-      nameDirty = false
-      name = view?.name ?? ''
-      return
-    }
-    await save({ name: next })
-    nameDirty = false
   }
 
   const sortFields = ['title', 'priority', 'due', 'deadline', 'created_at', 'touched_at']
@@ -191,12 +173,6 @@
     await load()
     onchange()
   }
-  async function remove() {
-    await deleteView(id)
-    onchange()
-    location.hash = '#/inbox'
-  }
-
   const hasFilter = (n: Node): boolean => n.type === 'cond' || n.children.length > 0
   const label = (key: string) => {
     if (!view || !key) return ''
@@ -257,15 +233,10 @@
         {@const Icon = icons[view.icon]}
         <Icon size={20} class="shrink-0 text-icon" />
       {/if}
-      <input
-        bind:value={name}
-        aria-label="View name"
-        oninput={() => (nameDirty = true)}
-        onfocus={() => (nameFocused = true)}
-        onblur={saveName}
-        onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        class="page-title mb-0 min-w-[8rem] flex-1 bg-transparent outline-none"
-      />
+      <h1 class="page-title mb-0 min-w-[8rem] flex-1">{view.name}</h1>
+      {#if !view.builtin}
+        <EntityMenu id={view.id} name={view.name} kind="view" fallbackHref="#/home" {onchange} />
+      {/if}
       <Button
         variant={filterOpen || hasFilter(view.filter) ? 'on' : 'default'}
         aria-expanded={filterOpen}
@@ -343,8 +314,6 @@
       <Button variant="ghost" onclick={hide}>Hide</Button>
       {#if view.builtin}
         <Button variant="ghost" aria-label="Reset view" onclick={reset}>Reset</Button>
-      {:else}
-        <Button variant="destructive" onclick={remove}>Delete</Button>
       {/if}
     </div>
 

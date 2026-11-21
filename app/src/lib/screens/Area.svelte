@@ -5,6 +5,7 @@
   import FolderKanban from '@lucide/svelte/icons/folder-kanban'
   import type { Snippet } from 'svelte'
   import EntityCreateMenu from '$lib/EntityCreateMenu.svelte'
+  import EntityMenu from '$lib/EntityMenu.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import Banner from '$lib/Banner.svelte'
@@ -81,17 +82,6 @@
     pageList = await pagesOf(id)
   }
 
-  async function rename(e: Event) {
-    const input = e.currentTarget as HTMLInputElement
-    const value = input.value.trim()
-    if (!area) return
-    if (!value) input.value = area.area.name
-    else if (value !== area.area.name) {
-      await updateArea(id, { name: value })
-      onchange()
-    }
-  }
-
   let goalName = $state('')
   async function addGoal(e: SubmitEvent) {
     e.preventDefault()
@@ -129,16 +119,9 @@
     }}
   />
   <div class="flex items-center gap-1">
-    <input
-      aria-label="Area name"
-      value={area.area.name}
-      class="page-title min-w-0 flex-1 bg-transparent outline-none focus-visible:underline"
-      onblur={rename}
-      onkeydown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-      }}
-    />
+    <h1 class="page-title min-w-0 flex-1">{area.area.name}</h1>
     <EntityCreateMenu ownerId={id} ownerName={area.area.name} ownerKind="area" {areas} {onchange} {onnewtask} />
+    <EntityMenu {id} name={area.area.name} kind="area" fallbackHref="#/home" archiveable {onchange} />
   </div>
 
   <div class="flex flex-col gap-4">

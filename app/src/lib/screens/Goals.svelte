@@ -6,14 +6,13 @@
   import { Checkbox } from '$lib/components/ui/checkbox'
   import { Input } from '$lib/components/ui/input'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
+  import EntityMenu from '$lib/EntityMenu.svelte'
   import {
     addEntry,
-    archiveItem,
     completeGoal,
     createGoal,
     createMilestone,
     createPage,
-    deleteItem,
     goalProgress,
     goals,
     milestonesOf,
@@ -125,6 +124,7 @@
     <article class="rounded-2xl border border-line bg-surface p-4 {sub ? 'ml-6 mt-2' : ''}">
       <div class="flex flex-wrap items-center gap-2">
         <h3 class="flex-1 text-[0.9375rem] font-medium">{goal.name}</h3>
+        <EntityMenu id={goal.id} name={goal.name} kind="goal" fallbackHref="#/goals" archiveable onchange={load} />
         {#if v.behind}
           <span class="rounded-full bg-warn-soft px-2 py-px text-xs text-warn-text">Behind pace</span>
         {/if}
@@ -153,22 +153,6 @@
           }}
         >
           New roadmap
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Archive {goal.name}"
-          onclick={() => archiveItem(goal.id).then(load)}
-        >
-          Archive
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Delete {goal.name}"
-          onclick={() => deleteItem(goal.id).then(load)}
-        >
-          Delete
         </Button>
       </div>
       {#if goal.done_condition}
