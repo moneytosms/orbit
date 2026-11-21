@@ -187,7 +187,7 @@ pre.astro-code, .code {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
-/* Orbit identity: the app's own paper, ink and terracotta (DESIGN.md), night variant for dark. */
+/* Orbit identity: the app's own warm paper and ink with the Sage accent (DESIGN.md). */
 @font-face {
   font-family: "Figtree";
   src: url("/orbit/fonts/figtree-latin-wght-normal.woff2") format("woff2");
@@ -200,15 +200,15 @@ pre.astro-code, .code {
   --canvas-bottom: light-dark(#f5f3ef, #211f1d);
   --foreground: light-dark(#2a2723, #ede8e0);
   --card: light-dark(#ffffff, #252321);
-  --primary: light-dark(#a3441f, #e2835e);
-  --primary-hover: light-dark(#8a3a1a, #eba286);
-  --primary-soft: light-dark(#f8ebe4, #3a281f);
-  --primary-foreground: light-dark(#ffffff, #1b1a18);
+  --primary: light-dark(#4f7f5b, #93c39b);
+  --primary-hover: light-dark(#3f6b4a, #a8d2af);
+  --primary-soft: light-dark(#e4efe5, #1f2d22);
+  --primary-foreground: light-dark(#ffffff, #0b140c);
   --muted: light-dark(#f2efea, #1e1d1b);
   --muted-foreground: light-dark(#6b665e, #a8a197);
   --border: light-dark(#ebe7e0, #33302c);
   --input: light-dark(#dcd5ca, #45413b);
-  --ring: light-dark(#c2552f, #e2835e);
+  --ring: light-dark(#4f7f5b, #93c39b);
   --ok: light-dark(#2d6a3c, #7fc08c);
   --warn: light-dark(#8a5307, #e2ab5a);
   --danger: light-dark(#a8331f, #ef8070);

@@ -3,17 +3,45 @@ import Landing from "../layouts/Landing.astro";
 import { cfg, withBase } from "../lib/source";
 
 const shot = (n: string) => withBase(`shots/${n}`);
-// Orbit rings: [rx, ry, seconds per lap, dot colour var, dot radius, phase delay s]
+const clip = (n: string) => withBase(`clips/${n}`);
+
+// Each ring: [rx, ry, seconds per lap, colour, radius, delay s, [task, area] x2]
 const rings = [
-  [150, 62, 14, "var(--career)", 11, 0],
-  [215, 90, 22, "var(--college)", 12, -6],
-  [280, 118, 31, "var(--learning)", 13, -13],
-  [345, 146, 44, "var(--home)", 14, -22],
+  [150, 62, 16, "var(--career)", 11, 0, ["Apply to two internships", "Career"], ["Update portfolio site", "Career"]],
+  [215, 90, 25, "var(--college)", 12, -7, ["Send chapter 2 to supervisor", "College"], ["Book lab slot", "College"]],
+  [280, 118, 35, "var(--learning)", 13, -15, ["Finish ownership chapter", "Learning"], ["Read 20 pages", "Learning"]],
+  [345, 146, 50, "var(--home)", 14, -25, ["Pay rent", "Home"], ["Morning run", "Home"]],
 ] as const;
 const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0`;
+
+// Seeded stars: same sky on every build.
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const stars = Array.from({ length: 64 }, () => ({
+  x: (rnd() * 100).toFixed(1),
+  y: (rnd() * 100).toFixed(1),
+  s: (1 + rnd() * 2.2).toFixed(1),
+  d: (rnd() * 6).toFixed(1),
+  z: (0.3 + rnd() * 1.2).toFixed(2),
+}));
+
+const tabs = [
+  { id: "home", label: "Home", img: "home-desktop.webp", alt: "Orbit Home: what is due, routines, upcoming tasks and goal progress.", text: "Home gathers what is due, what slipped, how far each goal has come and which routine you still owe today." },
+  { id: "goals", label: "Goals", img: "goals-desktop.webp", alt: "Orbit Goals with milestones and progress bars.", text: "Goals have milestones and a target date, and roll their progress up from sub-goals." },
+  { id: "routines", label: "Routines", img: "routines-desktop.webp", alt: "Orbit Routines with check-ins and streaks.", text: "Routines have check-ins and a streak, kept apart from recurring tasks so a habit never becomes a pile of overdue to-dos." },
+];
 ---
 
 <Landing title={`${cfg.name}: ${cfg.tagline}`} description={cfg.description}>
+  <script is:inline slot="head">
+    // Saved choice wins; otherwise follow the OS. Same key as the guide, so the two stay in step.
+    try {
+      const t = localStorage.getItem("site-theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch {}
+    document.documentElement.classList.add("js");
+  </script>
+
   <style is:global>
     @font-face {
       font-family: "Figtree";
@@ -23,54 +51,71 @@ const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 
     }
     :root {
       color-scheme: light dark;
-      --paper: light-dark(#fbfaf8, #16151a);
-      --side: light-dark(#f5f3ef, #1d1c22);
-      --surface: light-dark(#ffffff, #23222a);
+      --paper: light-dark(#fbfaf8, #1b1a18);
+      --side: light-dark(#f5f3ef, #211f1d);
+      --surface: light-dark(#ffffff, #252321);
+      --sunk: light-dark(#f2efea, #1e1d1b);
       --ink: light-dark(#2a2723, #ede8e0);
-      --muted: light-dark(#6b665e, #aaa59c);
-      --line: light-dark(#ebe7e0, #35333d);
-      --line-strong: light-dark(#dcd5ca, #4a4753);
-      --accent: #c2552f;
-      --accent-text: light-dark(#a3441f, #eba286);
-      --accent-soft: light-dark(#f8ebe4, #3a281f);
+      --muted: light-dark(#6b665e, #a8a197);
+      --line: light-dark(#ebe7e0, #33302c);
+      --line-strong: light-dark(#dcd5ca, #45413b);
+      --accent: light-dark(#4f7f5b, #93c39b);
+      --accent-ink: light-dark(#ffffff, #0b140c);
+      --accent-text: light-dark(#3f6b4a, #a8d2af);
+      --accent-soft: light-dark(#e4efe5, #1f2d22);
+      --accent-line: light-dark(#b9d3bd, #3e5b45);
+      --sun: #e8a87c;
+      --sun-glow: light-dark(#e8a87c55, #e8a87c33);
       --career: light-dark(#b37419, #dba24c);
       --college: light-dark(#3b6cb0, #79a2e0);
-      --learning: light-dark(#468253, #82bb8d);
+      --learning: light-dark(#7e5a9b, #b79ad6);
       --home: light-dark(#ad4f66, #dc8ba0);
-      --shadow: light-dark(0 1px 2px #3c2d1914, 0 1px 2px #00000080) , light-dark(0 24px 48px -24px #3c2d1940, 0 24px 48px -24px #000000b0);
-      --gutter: clamp(20px, 5vw, 64px);
+      --shadow: 0 1px 2px light-dark(#3c2d1914, #00000080), 0 28px 56px -28px light-dark(#3c2d1944, #000000c0);
+      --gutter: clamp(20px, 5vw, 72px);
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
     }
     :root[data-theme="light"] { color-scheme: light; }
     :root[data-theme="dark"] { color-scheme: dark; }
     *, *::before, *::after { box-sizing: border-box; }
     html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-    body { margin: 0; background: var(--paper); color: var(--ink); font: 400 1.0625rem/1.6 "Figtree", system-ui, sans-serif; overflow-x: hidden; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 400 1.0625rem/1.6 "Figtree", system-ui, sans-serif; overflow-x: hidden; transition: background-color .3s, color .3s; }
     a { color: var(--accent-text); text-underline-offset: 3px; text-decoration-thickness: 1px; }
-    a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+    a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focus-visible, [role="tab"]:focus-visible, video:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
     h1, h2, h3, p { margin: 0; }
-    img { display: block; max-width: 100%; height: auto; }
+    img, video { display: block; max-width: 100%; height: auto; }
     code, pre { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    ::selection { background: var(--accent-soft); color: var(--ink); }
   </style>
 
   <header class="mast">
     <a class="brand" href={withBase("")} aria-label="Orbit home">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-        <rect width="32" height="32" rx="7" fill="#c2552f" />
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#4f7f5b" />
         <ellipse cx="16" cy="16" rx="10.6" ry="4.6" transform="rotate(-28 16 16)" fill="none" stroke="#fbfaf8" stroke-width="1.45" />
-        <circle cx="16" cy="16" r="3.9" fill="#fbfaf8" />
-        <circle cx="20.2" cy="9.7" r="2.3" fill="#fbfaf8" stroke="#c2552f" stroke-width="1.4" />
+        <circle cx="16" cy="16" r="3.9" fill="#e8a87c" />
+        <circle cx="20.2" cy="9.7" r="2.3" fill="#fbfaf8" stroke="#4f7f5b" stroke-width="1.4" />
       </svg>
       Orbit
     </a>
     <nav aria-label="Sections">
-      <a href="#today"><span aria-hidden="true">01</span> Today</a>
-      <a href="#devices"><span aria-hidden="true">02</span> Devices</a>
-      <a href="#host"><span aria-hidden="true">03</span> Host it</a>
+      <a href="#tour">Tour</a>
+      <a href="#quick-add">Quick add</a>
+      <a href="#screens">Screens</a>
+      <a href="#devices">Devices</a>
+      <a href="#host">Host it</a>
       <a href={withBase("guide/")}>Guide</a>
+      <button class="theme" type="button" data-theme-toggle aria-label="Switch colour theme">
+        <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
+      </button>
     </nav>
   </header>
 
-  <section class="hero">
+  <section class="hero" id="top">
+    <div class="stars" aria-hidden="true">
+      {stars.map((s) => <i style={`left:${s.x}%;top:${s.y}%;width:${s.s}px;height:${s.s}px;animation-delay:-${s.d}s;--z:${s.z}`}></i>)}
+    </div>
+
     <div class="hero__text">
       <p class="kicker">Self-hosted planner, open source</p>
       <h1>Everything you plan circles <em>today</em>.</h1>
@@ -79,74 +124,123 @@ const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 
         SQLite file. The web app, a Linux app, an Android app and a CLI all sync to it, and each keeps an offline copy.
       </p>
       <p class="cta">
-        <a class="btn" href={withBase("guide/")}>Set up your server</a>
+        <a class="btn" href={withBase("guide/deploy")}>Set up your server</a>
         <a class="btn btn--ghost" href={`${cfg.repoUrl}/releases/latest`}>Get the apps</a>
       </p>
     </div>
 
-    <figure class="sky">
-      <svg viewBox="40 185 720 430" role="img" aria-label="Four orbits around a sun labelled Today, one each for Career, College, Learning and Home, each carrying tasks.">
-        <g transform="rotate(-24 400 400)">
-          {rings.map(([rx, ry, sec, colour, r, delay]) => (
-            <>
-              <ellipse cx="400" cy="400" rx={rx} ry={ry} fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="3 8" />
-              <circle class="body" r={r} fill={colour} style={`offset-path: path('${path(rx, ry)}'); animation-duration: ${sec}s; animation-delay: ${delay}s`} />
-              <circle class="body" r={r * 0.55} fill={colour} opacity="0.55" style={`offset-path: path('${path(rx, ry)}'); animation-duration: ${sec}s; animation-delay: ${delay - sec / 2.6}s`} />
-            </>
-          ))}
-        </g>
-        <circle cx="400" cy="400" r="70" fill="var(--accent)" />
-        <text x="400" y="410" text-anchor="middle" font-size="26" font-weight="700" fill="#fff" letter-spacing="-0.2">Today</text>
-      </svg>
+    <figure class="sky" id="sky">
+      <div class="sky__tilt">
+        <svg viewBox="40 185 720 430" role="group" aria-label="Eight tasks orbiting a sun labelled Today, on four rings: Career, College, Learning and Home. Each task is a button that completes it.">
+          <defs>
+            <radialGradient id="glow"><stop offset="0" stop-color="var(--sun)" stop-opacity=".55" /><stop offset="1" stop-color="var(--sun)" stop-opacity="0" /></radialGradient>
+          </defs>
+          <circle cx="400" cy="400" r="150" fill="url(#glow)" class="glow" />
+          <g transform="rotate(-24 400 400)">
+            {rings.map(([rx, ry, sec, colour, r, delay, a, b]) => (
+              <>
+                <ellipse cx="400" cy="400" rx={rx} ry={ry} fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="3 8" />
+                {[a, b].map(([task, area], i) => (
+                  <circle
+                    class="body"
+                    role="button"
+                    tabindex="0"
+                    r={i ? r * 0.7 : r}
+                    fill={colour}
+                    data-task={task}
+                    data-area={area}
+                    aria-label={`${task}, ${area}. Press to complete.`}
+                    style={`offset-path: path('${path(rx, ry)}'); animation-duration: ${sec}s; animation-delay: ${delay - (i ? sec / 2.3 : 0)}s`}
+                  />
+                ))}
+              </>
+            ))}
+          </g>
+          <circle cx="400" cy="400" r="70" fill="var(--sun)" class="sun" />
+          <text x="400" y="410" text-anchor="middle" font-size="26" font-weight="700" fill="#2a1a0e" letter-spacing="-0.2">Today</text>
+        </svg>
+        <div class="tip" id="tip" role="tooltip" hidden></div>
+      </div>
       <figcaption>
-        <span style="--c: var(--career)">Career</span>
-        <span style="--c: var(--college)">College</span>
-        <span style="--c: var(--learning)">Learning</span>
-        <span style="--c: var(--home)">Home</span>
+        <span class="legend">
+          <span style="--c: var(--career)">Career</span>
+          <span style="--c: var(--college)">College</span>
+          <span style="--c: var(--learning)">Learning</span>
+          <span style="--c: var(--home)">Home</span>
+        </span>
+        <span class="score" aria-live="polite"><b id="score">0</b> of 8 done today. Try it: click a task.</span>
       </figcaption>
     </figure>
   </section>
 
-  <section id="today" class="today">
-    <div class="today__head">
-      <p class="kicker">01 / Today</p>
-      <h2>Open it, and see what matters now.</h2>
-      <p>
-        Home shows what is due, what is overdue, how far each goal has come and which routine you still owe today.
-        Type a task the way you would say it and Orbit reads the date, priority and place out of the sentence.
-      </p>
+  <section id="tour" class="tour reveal">
+    <div class="tour__head">
+      <p class="kicker">01 / Tour</p>
+      <h2>Twenty seconds, start to finish.</h2>
+      <p>Type a task the way you would say it, see Home, tick a routine, then the same planner on the desktop, phone and command line.</p>
     </div>
-    <div class="window">
+    <div class="player spot">
+      <video
+        id="tourvideo"
+        src={clip("orbit-launch.mp4")}
+        poster={clip("orbit-launch-poster.webp")}
+        width="1920"
+        height="1080"
+        muted
+        loop
+        playsinline
+        controls
+        preload="none"
+        aria-label="A 20 second tour of Orbit: quick add, Home, routines and the apps."
+      ></video>
+      <button class="play" type="button" id="playbtn" aria-label="Play the tour video">
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+      </button>
+    </div>
+    <p class="note">Recorded in the real app with made-up data. Sound is off by default.</p>
+  </section>
+
+  <section id="quick-add" class="qa reveal">
+    <div class="qa__text">
+      <p class="kicker">02 / Quick add</p>
+      <h2>Type it like you would say it.</h2>
+      <p>
+        Dates, times, priority and where it lives are read straight out of the sentence. Try it below: change the
+        text, then press Enter to add it to the list.
+      </p>
+      <p class="hint">Understands <code>friday</code>, <code>tomorrow</code>, <code>10am</code>, <code>p1</code>, <code>@area</code>, <code>$goal</code>, <code>%page</code>, <code>#label</code>. This is a small demo; the real parser ships in every Orbit app.</p>
+    </div>
+    <div class="composer spot">
+      <label for="qa-input" class="sr">Quick add a task</label>
+      <input id="qa-input" type="text" value="Renew passport friday 10am p1 @Home" autocomplete="off" spellcheck="false" />
+      <div class="chips" id="qa-chips" aria-live="polite"></div>
+      <p class="title" id="qa-title"></p>
+      <ul class="added" id="qa-list" aria-label="Tasks you added"></ul>
+    </div>
+  </section>
+
+  <section id="screens" class="screens reveal">
+    <div class="screens__head">
+      <p class="kicker">03 / Screens</p>
+      <h2>Tasks, goals and routines are different things.</h2>
+      <p id="tab-text">{tabs[0].text}</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Orbit screens">
+      {tabs.map((t, i) => (
+        <button role="tab" type="button" id={`tab-${t.id}`} aria-selected={i === 0 ? "true" : "false"} aria-controls="screen-panel" tabindex={i === 0 ? 0 : -1} data-text={t.text} data-img={t.img} data-alt={t.alt}>{t.label}</button>
+      ))}
+    </div>
+    <div class="window spot" id="screen-panel" role="tabpanel" aria-labelledby="tab-home">
       <div class="window__bar" aria-hidden="true"><i></i><i></i><i></i></div>
-      <img src={shot("home-desktop.webp")} width="1440" height="900" alt="Orbit Home on desktop: what is due, routines, upcoming tasks and goal progress, with Areas Career, College, Learning and Home in the sidebar." />
+      <img id="screen-img" class="shot-light" src={shot(tabs[0].img)} width="1440" height="900" alt={tabs[0].alt} />
+      <img class="shot-dark" src={shot("home-dark-desktop.webp")} width="1440" height="900" alt="Orbit Home in dark mode." />
     </div>
+    <p class="note">Orbit has a full dark theme too. Flip the switch at the top to see this page in it.</p>
   </section>
 
-  <section class="kept">
-    <div class="kept__shots">
-      <div class="window window--small">
-        <img src={shot("routines-desktop.webp")} width="1440" height="900" alt="Orbit Routines screen with check-ins and streaks." />
-      </div>
-      <div class="window window--small window--offset">
-        <img src={shot("goals-desktop.webp")} width="1440" height="900" alt="Orbit Goals screen with milestones and progress bars." />
-      </div>
-    </div>
-    <div class="kept__text">
-      <h2>Goals and routines are not tasks.</h2>
-      <p>
-        A goal has milestones and a target date. A routine has check-ins and a streak. Orbit keeps both apart from
-        recurring tasks, so a habit never turns into a pile of overdue to-dos.
-      </p>
-      <p>
-        Tasks nest under Projects and Areas, take subtasks, labels, priorities and recurrence, and import from Todoist
-        with <code>orbit import todoist</code>.
-      </p>
-    </div>
-  </section>
-
-  <section id="devices" class="devices">
+  <section id="devices" class="devices reveal">
     <div class="devices__text">
-      <p class="kicker">02 / Devices</p>
+      <p class="kicker">04 / Devices</p>
       <h2>One planner, every device, offline too.</h2>
       <p>
         Each client keeps a local copy and queues changes while you are offline. When the connection returns they
@@ -159,17 +253,17 @@ const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 
         <li><b>CLI</b> <span><code>orbit</code> signs in, keeps a replica and queues changes. It builds from source today; prebuilt binaries are not released yet.</span></li>
       </ul>
     </div>
-    <div class="phone">
+    <div class="phone spot">
       <img src={shot("home-phone.webp")} width="585" height="1266" alt="Orbit Home on a phone: stats, what's next and routines, with a bottom tab bar." />
     </div>
   </section>
 
-  <section id="host" class="host">
+  <section id="host" class="host reveal">
     <div class="host__text">
-      <p class="kicker">03 / Host it</p>
+      <p class="kicker">05 / Host it</p>
       <h2>Your server, your SQLite file.</h2>
       <p>
-        The server is a single Rust binary with one SQLite database and a daily snapshot. Run it with Docker Compose,
+        The server is a single Rust binary with one SQLite database and a daily snapshot. Run it with one Compose file,
         read the setup code from its log and create your account. Put it behind HTTPS before you expose it; the guide
         covers Tailscale and Caddy.
       </p>
@@ -190,85 +284,288 @@ const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 
       <a href={`${cfg.repoUrl}/releases`}>Releases</a>
     </p>
   </footer>
+
+  <script>
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const $ = <T extends Element>(s: string) => document.querySelector<T>(s);
+    const root = document.documentElement;
+
+    // Theme toggle (same key as the guide).
+    $("[data-theme-toggle]")?.addEventListener("click", () => {
+      const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      const next = dark ? "light" : "dark";
+      root.dataset.theme = next;
+      try { localStorage.setItem("site-theme", next); } catch {}
+    });
+
+    // Reveal on scroll. Content is visible without JS or with reduced motion.
+    if (!reduce && "IntersectionObserver" in window) {
+      root.classList.add("anim");
+      const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.12 });
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    }
+
+    // Spotlight that follows the pointer on framed media.
+    document.querySelectorAll<HTMLElement>(".spot").forEach((el) => {
+      el.addEventListener("pointermove", (e) => {
+        const r = el.getBoundingClientRect();
+        el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        el.style.setProperty("--my", `${e.clientY - r.top}px`);
+      });
+    });
+
+    // Hero: parallax tilt, hover tooltip, click to complete.
+    const sky = $<HTMLElement>("#sky")!, hero = $<HTMLElement>(".hero")!, tip = $<HTMLElement>("#tip")!, score = $("#score")!;
+    if (!reduce) {
+      hero.addEventListener("pointermove", (e) => {
+        const r = hero.getBoundingClientRect();
+        sky.style.setProperty("--px", String(((e.clientX - r.left) / r.width - 0.5) * 2));
+        sky.style.setProperty("--py", String(((e.clientY - r.top) / r.height - 0.5) * 2));
+        hero.style.setProperty("--px", sky.style.getPropertyValue("--px"));
+        hero.style.setProperty("--py", sky.style.getPropertyValue("--py"));
+      });
+      hero.addEventListener("pointerleave", () => { sky.style.setProperty("--px", "0"); sky.style.setProperty("--py", "0"); hero.style.setProperty("--px", "0"); hero.style.setProperty("--py", "0"); });
+    }
+    const bodies = [...document.querySelectorAll<SVGCircleElement>(".body")];
+    let done = 0;
+    const show = (b: SVGCircleElement) => {
+      const r = b.getBoundingClientRect(), s = sky.getBoundingClientRect();
+      tip.textContent = `${b.dataset.task} · ${b.dataset.area}`;
+      tip.hidden = false;
+      tip.style.left = `${r.left - s.left + r.width / 2}px`;
+      tip.style.top = `${r.top - s.top}px`;
+    };
+    const complete = (b: SVGCircleElement) => {
+      if (b.classList.contains("done")) return;
+      b.classList.add("done");
+      score.textContent = String(++done);
+      tip.hidden = true;
+      if (done === bodies.length) {
+        $(".score")!.innerHTML = "<b id=\"score\">8</b> of 8 done. Today is clear.";
+        setTimeout(() => { bodies.forEach((x) => x.classList.remove("done")); done = 0; $(".score")!.innerHTML = "<b id=\"score\">0</b> of 8 done today. Try it: click a task."; }, 3200);
+      }
+    };
+    bodies.forEach((b) => {
+      b.addEventListener("pointerenter", () => show(b));
+      b.addEventListener("pointerleave", () => (tip.hidden = true));
+      b.addEventListener("focus", () => show(b));
+      b.addEventListener("blur", () => (tip.hidden = true));
+      b.addEventListener("click", () => complete(b));
+      b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); complete(b); } });
+    });
+
+    // Video: play when in view (muted), manual play button, never autoplay under reduced motion.
+    const vid = $<HTMLVideoElement>("#tourvideo"), play = $<HTMLButtonElement>("#playbtn");
+    if (vid && play) {
+      const sync = () => (play.hidden = !vid.paused);
+      vid.addEventListener("play", sync); vid.addEventListener("pause", sync);
+      play.addEventListener("click", () => vid.play());
+      if (!reduce) new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? vid.play().catch(() => {}) : vid.pause())), { threshold: 0.5 }).observe(vid);
+    }
+
+    // Screens tabs (arrow keys move between tabs).
+    const tabsEl = [...document.querySelectorAll<HTMLButtonElement>("[role=tab]")];
+    const img = $<HTMLImageElement>("#screen-img")!, txt = $("#tab-text")!, panel = $("#screen-panel")!;
+    const pick = (t: HTMLButtonElement) => {
+      tabsEl.forEach((x) => { x.setAttribute("aria-selected", String(x === t)); x.tabIndex = x === t ? 0 : -1; });
+      img.src = img.src.replace(/[^/]+$/, t.dataset.img!); img.alt = t.dataset.alt!; txt.textContent = t.dataset.text!;
+      panel.setAttribute("aria-labelledby", t.id);
+      panel.classList.toggle("is-home", t.dataset.img === "home-desktop.webp");
+    };
+    panel.classList.add("is-home");
+    tabsEl.forEach((t, i) => {
+      t.addEventListener("click", () => pick(t));
+      t.addEventListener("keydown", (e) => {
+        const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (!d) return;
+        const n = tabsEl[(i + d + tabsEl.length) % tabsEl.length]; n.focus(); pick(n);
+      });
+    });
+
+    // Quick-add demo: a small stand-in for the real parser.
+    const input = $<HTMLInputElement>("#qa-input")!, chips = $("#qa-chips")!, title = $("#qa-title")!, list = $("#qa-list")!;
+    const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const fmt = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    function parse(text: string) {
+      let rest = text; const out: { k: string; t: string; c?: string }[] = [];
+      const take = (re: RegExp, f: (m: RegExpMatchArray) => void) => { const m = rest.match(re); if (m) { f(m); rest = rest.replace(m[0], " "); } };
+      take(/(^|\s)p([1-4])(?=\s|$)/i, (m) => out.push({ k: "Priority", t: `P${m[2]}`, c: m[2] === "1" ? "p1" : "" }));
+      let time = "";
+      take(/(^|\s)(\d{1,2})(?::(\d{2}))?\s?(am|pm)(?=\s|$)/i, (m) => { let h = +m[2] % 12; if (/pm/i.test(m[4])) h += 12; time = `${String(h).padStart(2, "0")}:${m[3] ?? "00"}`; });
+      let date: Date | null = null;
+      take(/(^|\s)(today|tonight|tomorrow|tmrw|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)(?=\s|$)/i, (m) => {
+        const w = m[2].toLowerCase(); const d = new Date(); d.setHours(0, 0, 0, 0);
+        if (w === "tomorrow" || w === "tmrw") d.setDate(d.getDate() + 1);
+        else if (w !== "today" && w !== "tonight") { const i = days.findIndex((n) => n.startsWith(w.slice(0, 3))); d.setDate(d.getDate() + (((i - d.getDay() + 6) % 7) + 1)); }
+        date = d;
+      });
+      if (time && !date) { date = new Date(); date.setHours(0, 0, 0, 0); }
+      if (date) out.unshift({ k: "Due", t: `${fmt(date)}${time ? `, ${time}` : ""}` });
+      for (const [sig, k] of [["@", "Place"], ["$", "Goal"], ["%", "Page"], ["#", "Label"]] as const)
+        for (const m of [...rest.matchAll(new RegExp(`(^|\\s)[${sig}]([\\p{L}\\p{N}_-]+)`, "gu"))]) out.push({ k, t: `${sig}${m[2]}` });
+      rest = rest.replace(/(^|\s)[@$%#][\p{L}\p{N}_-]+/gu, " ");
+      return { title: rest.replace(/\s+/g, " ").trim(), tokens: out };
+    }
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+    const chipHtml = (o: { k: string; t: string; c?: string }) => `<span class="chip ${o.c ?? ""}"><small>${o.k}</small>${esc(o.t)}</span>`;
+    function render() {
+      const p = parse(input.value);
+      title.textContent = p.title ? `Task: ${p.title}` : "Start typing a task.";
+      chips.innerHTML = p.tokens.map(chipHtml).join("");
+    }
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const p = parse(input.value); if (!p.title) return;
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="circle"></span><span class="t">${esc(p.title)}</span>${p.tokens.map(chipHtml).join("")}`;
+      li.querySelector(".circle")!.addEventListener("click", () => li.classList.toggle("ticked"));
+      list.prepend(li); while (list.children.length > 3) list.lastElementChild!.remove();
+      input.value = ""; render();
+    });
+    render();
+  </script>
 </Landing>
 
 <style is:global>
   main { display: block; }
-  .mast { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 20px var(--gutter); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .mast { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 18px var(--gutter); }
   .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
-  .mast nav { display: flex; flex-wrap: wrap; gap: 4px 6px; }
-  .mast nav a { padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 0.95rem; border-radius: 8px; }
-  .mast nav a span { font-size: 0.75rem; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+  .mast nav { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+  .mast nav a { padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 0.95rem; border-radius: 8px; }
   .mast nav a:hover { color: var(--ink); background: var(--side); }
+  .theme { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; margin-left: 6px; transition: transform .3s var(--ease), background .2s; }
+  .theme:hover { transform: rotate(18deg); background: var(--accent-soft); }
+  .i-moon { display: none; }
+  :root[data-theme="dark"] .i-sun { display: none; }
+  :root[data-theme="dark"] .i-moon { display: block; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .i-sun { display: none; } :root:not([data-theme="light"]) .i-moon { display: block; } }
+  html:not(.js) .theme { display: none; }
 
   .kicker { font-size: 0.82rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); margin-bottom: 14px; }
   h1 { font-size: clamp(2.5rem, 1.2rem + 5.4vw, 5rem); line-height: 1.04; letter-spacing: -0.03em; font-weight: 700; text-wrap: balance; }
-  h1 em { font-style: normal; color: var(--accent-text); }
+  h1 em { font-style: normal; color: var(--accent-text); background: linear-gradient(transparent 82%, var(--sun) 82% 92%, transparent 92%); padding: 0 2px; }
   h2 { font-size: clamp(1.7rem, 1.1rem + 2.2vw, 2.6rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 700; text-wrap: balance; margin-bottom: 18px; }
   .lede { font-size: 1.2rem; color: var(--muted); max-width: 52ch; margin-top: 22px; }
-  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; border: 1px solid var(--accent); }
-  .btn:hover { filter: brightness(1.08); }
+  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; border: 1px solid var(--accent); transition: transform .2s var(--ease), box-shadow .2s, filter .2s; }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -12px var(--accent); filter: brightness(1.05); }
   .btn--ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-  .btn--ghost:hover { background: var(--side); filter: none; }
+  .btn--ghost:hover { background: var(--side); box-shadow: none; filter: none; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 
-  .hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px var(--gutter) 72px; align-items: center; }
-  .sky { margin: 0; }
-  .sky svg { width: 100%; height: auto; max-width: 720px; display: block; margin: 0 auto; overflow: visible; }
-  .sky figcaption { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; font-size: 0.9rem; color: var(--muted); }
-  .sky figcaption span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 8px; }
-  .body { offset-rotate: 0deg; animation: lap linear infinite; }
+  /* Hero */
+  .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px var(--gutter) 80px; align-items: center; isolation: isolate; }
+  .stars { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  .stars i { position: absolute; border-radius: 50%; background: var(--ink); opacity: 0.16; animation: twinkle 5s ease-in-out infinite; transform: translate(calc(var(--px, 0) * var(--z) * -14px), calc(var(--py, 0) * var(--z) * -10px)); transition: transform .5s var(--ease); }
+  @keyframes twinkle { 50% { opacity: 0.45; } }
+  .sky { margin: 0; position: relative; }
+  .sky__tilt { position: relative; perspective: 1100px; }
+  .sky svg { width: 100%; height: auto; max-width: 740px; display: block; margin: 0 auto; overflow: visible; transform: rotateY(calc(var(--px, 0) * 7deg)) rotateX(calc(var(--py, 0) * -5deg)); transition: transform .35s var(--ease); }
+  .glow { animation: breathe 6s ease-in-out infinite; transform-origin: 400px 400px; }
+  @keyframes breathe { 50% { transform: scale(1.12); opacity: 0.8; } }
+  .sun { filter: drop-shadow(0 0 22px var(--sun-glow)); }
+  .body { offset-rotate: 0deg; animation: lap linear infinite; cursor: pointer; transition: r .2s, filter .2s; outline: none; }
+  .body:hover, .body:focus-visible { animation-play-state: paused; filter: drop-shadow(0 0 8px currentColor) brightness(1.15); stroke: var(--ink); stroke-width: 2; }
+  .body.done { animation-play-state: paused; opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(2.4); transition: opacity .5s, transform .5s var(--ease); pointer-events: none; }
   @keyframes lap { from { offset-distance: 0%; } to { offset-distance: 100%; } }
-  @media (prefers-reduced-motion: reduce) { .body { animation: none; } html { scroll-behavior: auto; } }
+  .tip { position: absolute; z-index: 4; transform: translate(-50%, calc(-100% - 12px)); background: var(--ink); color: var(--paper); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow); }
+  .sky figcaption { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: center; align-items: center; font-size: 0.9rem; color: var(--muted); margin-top: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 8px; }
+  .score b { color: var(--accent-text); font-variant-numeric: tabular-nums; }
   @media (min-width: 960px) {
-    .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; padding-top: 40px; padding-bottom: 104px; }
+    .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; padding-top: 48px; padding-bottom: 112px; }
     .sky svg { max-width: none; }
   }
 
-  .today, .kept, .devices, .host { padding: 56px var(--gutter); }
-  .today__head { max-width: 62ch; margin-bottom: 40px; }
-  .today__head p:last-child, .kept__text p, .devices__text > p, .host__text p { color: var(--muted); }
+  section.reveal { padding: 72px var(--gutter); }
+  html.anim .reveal { opacity: 0; transform: translateY(28px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+  html.anim .reveal.in { opacity: 1; transform: none; }
+
+  /* Framed media with a pointer spotlight */
+  .spot { position: relative; }
+  .spot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), var(--sun-glow), transparent 60%); mix-blend-mode: soft-light; }
+  .spot:hover::after { opacity: 1; }
   .window { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
   .window__bar { display: flex; gap: 6px; padding: 11px 14px; background: var(--side); border-bottom: 1px solid var(--line); }
   .window__bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
   .window img { width: 100%; }
-
-  .window--small { aspect-ratio: 4 / 3; }
-  .window--small img { width: 180%; max-width: none; margin-left: -54%; }
-  .kept { display: grid; gap: 40px; align-items: center; background: var(--side); border-block: 1px solid var(--line); }
-  .kept__shots { display: grid; gap: 16px; }
-  .kept__text { max-width: 52ch; }
-  .kept__text p + p { margin-top: 14px; }
-  @media (min-width: 960px) {
-    .kept { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 64px; }
-    .kept__shots { grid-template-columns: 1fr 1fr; gap: 0; position: relative; }
-    .window--offset { margin: 56px 0 0 -40px; }
-    .kept__shots .window { box-shadow: var(--shadow); }
+  .shot-dark { display: none; }
+  :root[data-theme="dark"] #screen-panel.is-home .shot-light { display: none; }
+  :root[data-theme="dark"] #screen-panel.is-home .shot-dark { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #screen-panel.is-home .shot-light { display: none; }
+    :root:not([data-theme="light"]) #screen-panel.is-home .shot-dark { display: block; }
   }
+  .note { color: var(--muted); font-size: 0.9rem; margin-top: 14px; }
 
+  /* Tour video */
+  .tour__head, .screens__head { max-width: 62ch; margin-bottom: 36px; }
+  .tour__head p:last-child, .screens__head p:last-child, .qa__text p, .devices__text > p, .host__text p { color: var(--muted); }
+  .player { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #000; aspect-ratio: 16 / 9; }
+  .player video { width: 100%; height: 100%; object-fit: cover; }
+  .play { position: absolute; z-index: 2; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 84px; height: 84px; border-radius: 50%; border: 0; background: var(--sun); color: #2a1a0e; display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 0 10px #e8a87c40, 0 18px 40px -12px #000a; transition: transform .25s var(--ease); }
+  .play:hover { transform: translate(-50%, -50%) scale(1.08); }
+  .play[hidden] { display: none; }
+
+  /* Quick add */
+  .qa { display: grid; gap: 40px; align-items: center; background: var(--side); border-block: 1px solid var(--line); }
+  .qa__text { max-width: 52ch; }
+  .qa__text .hint { margin-top: 14px; font-size: 0.9rem; }
+  .qa code, .stops code { background: var(--sunk); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; color: var(--ink); }
+  .composer { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); display: grid; gap: 14px; }
+  .composer input { width: 100%; font: 500 1.1rem "Figtree", system-ui, sans-serif; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); }
+  .composer input:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 32px; }
+  .chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 0.85rem; font-weight: 600; border: 1px solid var(--accent-line); animation: pop .35s var(--ease); }
+  .chip small { font-weight: 500; opacity: 0.75; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .chip.p1 { background: light-dark(#f9e6e2, #3a2320); color: light-dark(#a8331f, #ef8070); border-color: light-dark(#eec1b9, #6b3a33); }
+  @keyframes pop { from { transform: scale(0.85); opacity: 0; } }
+  .title { color: var(--muted); font-size: 0.95rem; }
+  .added { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .added li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-top: 1px solid var(--line); animation: pop .35s var(--ease); }
+  .added .t { flex: 1 1 140px; font-weight: 500; }
+  .added .circle { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); cursor: pointer; flex: none; }
+  .added li.ticked .circle { background: var(--accent); border-color: var(--accent); }
+  .added li.ticked .t { text-decoration: line-through; color: var(--muted); }
+  @media (min-width: 960px) { .qa { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; } }
+
+  /* Screens */
+  .tabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); margin-bottom: 20px; }
+  .tabs button { font: 600 0.95rem "Figtree", system-ui, sans-serif; min-height: 44px; padding: 0 20px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background .2s, color .2s; }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+
+  /* Devices */
   .devices { display: grid; gap: 48px; align-items: center; }
-  .stops { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
-  .stops li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .stops { list-style: none; margin: 28px 0 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+  .stops li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); transition: background .2s, padding .2s; }
+  .stops li:hover { background: var(--accent-soft); padding-inline: 12px; }
   .stops b { font-weight: 700; }
   .stops span { color: var(--muted); }
-  .stops code, .kept code { background: var(--side); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: 0.9em; color: var(--ink); }
-  .phone { max-width: 300px; margin: 0 auto; border: 8px solid var(--ink); border-radius: 36px; overflow: hidden; background: var(--paper); box-shadow: var(--shadow); }
-  @media (min-width: 960px) {
-    .devices { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 96px; }
-    .phone { margin: 0 auto 0 0; }
-  }
+  .phone { max-width: 300px; margin: 0 auto; border: 8px solid var(--ink); border-radius: 38px; overflow: hidden; background: var(--paper); box-shadow: var(--shadow); transition: transform .5s var(--ease); }
+  .phone:hover { transform: translateY(-6px) rotate(-1.2deg); }
+  @media (min-width: 960px) { .devices { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 96px; } .phone { margin: 0 auto 0 0; } }
 
+  /* Host */
   .host { display: grid; gap: 32px; align-items: center; }
   .host__text { max-width: 56ch; }
   .host__text p + p { margin-top: 22px; }
-  .term { margin: 0; padding: 22px 24px; background: #1e1c19; color: #ede8e0; border-radius: 14px; font-size: 0.92rem; line-height: 1.75; overflow-x: auto; box-shadow: var(--shadow); }
+  .term { margin: 0; padding: 22px 24px; background: #1b1a18; color: #ede8e0; border-radius: 14px; font-size: 0.92rem; line-height: 1.75; overflow-x: auto; box-shadow: var(--shadow); border: 1px solid #33302c; }
   .term .c { color: #8f897f; }
-  .term .p { color: #e2835e; margin-right: 8px; }
-  .term .o { color: #82bb8d; }
+  .term .p { color: #e8a87c; margin-right: 8px; }
+  .term .o { color: #93c39b; }
   @media (min-width: 960px) { .host { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; } }
 
   .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 32px; padding: 40px var(--gutter) 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.92rem; }
   .foot p { max-width: 62ch; }
   .foot__links { display: flex; gap: 20px; }
   .foot__links a { padding: 10px 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .body, .glow, .stars i, .chip, .added li { animation: none; }
+    .sky svg, .stars i, .phone, .btn, .theme { transition: none; }
+    .sky svg { transform: none; }
+  }
 </style>
