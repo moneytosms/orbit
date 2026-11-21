@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0 - 2026-11-21
+
+### Bug fixes
+
+- Apply Android insets on the content root and show retry page for unreachable server
+- Restore sheet padding and make calendar view switches work
+
+### Documentation
+
+- CLI binaries ship with each release
+
+### Features
+
+- Sage accent palette and new app icon
+- Redesign site with reactive orbit, tour video, quick-add demo and theme toggle
+- Ship orbit CLI binaries with checksums, install script and CLI page
+- Airier UI with larger text, balanced mobile tab bar and bigger tap targets
+- Site scroll story with retina screens, new tour video, phone trio and updated copy
+
 ## 0.1.1 - 2026-11-21
 
 ### Bug fixes
