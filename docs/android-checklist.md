@@ -50,7 +50,7 @@ Add the Quick add and Task list widgets to the home screen.
 5. **Upcoming groups.** On the Upcoming view, expect day header rows (Overdue and No date included) and the due chip, glyphs, and Area and Project line on each row.
 6. **Refresh timing.** Change a task in Orbit, then check the widget within 15 minutes (the periodic refresh) or sooner after a sync. Day start is covered by the same 15-minute refresh, so the widget may show yesterday's Today list for up to 15 minutes after midnight.
 7. **Resize.** Resize the Quick add widget from 1 to 5 cells wide, and the Task list in both directions. Expect no clipped controls.
-8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. Widgets follow the system light and dark theme and use the app's terracotta accent on all Android versions.
+8. **Light and dark.** Switch the system theme. Expect the text and background to follow it. Widgets follow the system light and dark theme and use the app's sage accent on all Android versions.
 ## #71 Routines and Goal widgets
 
 Add each widget from the launcher's widget picker. Routines needs Android 12 (API 31) or later for the list.

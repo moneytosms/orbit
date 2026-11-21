@@ -13,14 +13,14 @@
 
 Orbit is a planner you open many times a day, so it should feel like a tidy desk in warm afternoon light. The page canvas is warm paper, `{colors.bg}` (#fbfaf8). Raised things such as widgets, cards, fields and popovers sit on pure white `{colors.surface}` (#ffffff), so figure and ground separate without heavy borders. The sidebar uses a second, slightly darker warm neutral, `{colors.side}` (#f5f3ef). Type is **Figtree** in warm near-black `{colors.text}` (#2a2723). It's a humanist geometric sans: friendlier than a grotesk, but still a working UI face.
 
-Orbit has **exactly one structural accent**, terracotta `{colors.accent}` (#c2552f). It marks the primary action, the current selection, focus, Today, and the one thing that matters in a widget header. That's where Orbit departs from Notion's monochrome-plus-blue: the accent is warm, and a small **Area palette** (`{colors.career}`, `{colors.college}`, `{colors.learning}`, `{colors.home}`) adds identity. The Area colours only ever appear as 15%-tinted icon tiles, 7px dots and timeline bars. They never fill a button, a background band or body text. Status uses a muted semantic set (`ok`, `warn`, `danger`), always as soft-tint chips.
+Orbit has **exactly one structural accent**, Sage `{colors.accent}` (#4f7f5b light / #93c39b dark). It marks the primary action, the current selection, focus, Today, and the one thing that matters in a widget header. That's where Orbit departs from Notion's monochrome-plus-blue: a quiet green accent on warm paper, and a small **Area palette** (`{colors.career}`, `{colors.college}`, `{colors.learning}`, `{colors.home}`) adds identity. The Area colours only ever appear as 15%-tinted icon tiles, 7px dots and timeline bars. They never fill a button, a background band or body text. Status uses a muted semantic set (`ok`, `warn`, `danger`), always as soft-tint chips.
 
 Depth is a 1px hairline plus a faint two-layer warm shadow. Widgets and panels round at 14px, cards and columns at 10–12px, controls at 8px. Pills are reserved for switches and status dots. Nothing glows or uses gradients. Personality comes from colour used sparingly, real icons (Lucide, 1.8 stroke) and well-made data components (heatmap, pace bar, roadmap canvas), not decoration.
 
 **Key Characteristics:**
 - Warm paper canvas `{colors.bg}` with white `{colors.surface}` for anything you can act on
 - Figtree in `{colors.text}`, one family, weights 400/500/600/700, gentle negative tracking only at 22px and up
-- One structural accent, terracotta `{colors.accent}`: actions, selection, focus, Today
+- One structural accent, Sage `{colors.accent}`: actions, selection, focus, Today
 - A muted Area palette used only as tints, dots and bars, never as fills or CTAs
 - Hairline + two-layer warm shadow (`{shadow.1}`), with a deeper stack (`{shadow.2}`) only for floating layers
 - A full light and dark set: every token has a dark value, chosen from the use scene, not a category default
@@ -31,16 +31,18 @@ Depth is a 1px hairline plus a faint two-layer warm shadow. Widgets and panels r
 > Defined as CSS custom properties on `:root` (P:11) with dark overrides on `[data-theme=dark]` (P:21). Contrast ratios were computed from these hex values.
 
 ### Brand & Accent
-- **Terracotta** (`{colors.accent}`: #c2552f light / #e2835e dark): the only structural accent. Primary button fill, selected nav icon, active segment, focus ring, Today markers, roadmap "in progress". 4.53:1 on white.
-- **On-accent** (`{colors.accent-ink}`: #ffffff / #1b1a18): text and icons on accent fills. 4.53:1 light, 6.33:1 dark.
-- **Accent soft** (`{colors.accent-soft}`: #f8ebe4 / #3a281f): selected-state tint for chips, segments, board drop targets and the selected routine row.
-- **Accent line** (`{colors.accent-line}`: #e9b9a5 / #7a4631): borders on accent-soft surfaces, link underlines, focused-field border.
+- **Sage** (`{colors.accent}`: #4f7f5b light / #93c39b dark): the only structural accent. Calm and cool-green against the warm paper. Primary button fill, selected nav icon, active segment, focus ring, Today markers, roadmap "in progress". 4.65:1 on white.
+- **On-accent** (`{colors.accent-ink}`: #ffffff / #1b1a18): text and icons on accent fills. 4.65:1 light, 8.71:1 dark.
+- **Accent soft** (`{colors.accent-soft}`: #e4efe5 / #1f2d22): selected-state tint for chips, segments, board drop targets and the selected routine row.
+- **Accent line** (`{colors.accent-line}`: #b9d3bd / #3e5b45): borders on accent-soft surfaces, link underlines, focused-field border.
 
 **Area palette** (identity only: tinted icon tiles, dots, timeline/pace bars):
 - **Career** (`{colors.career}`: #b37419 / #dba24c)
 - **College** (`{colors.college}`: #3b6cb0 / #79a2e0), also Priority 3
-- **Learning** (`{colors.learning}`: #468253 / #82bb8d)
+- **Learning** (`{colors.learning}`: #7e5a9b / #b79ad6)
 - **Home** (`{colors.home}`: #ad4f66 / #dc8ba0)
+
+*Learning moved off green so it does not clash with the Sage accent.*
 
 ### Surface
 - **Paper** (`{colors.bg}`: #fbfaf8 / #1b1a18): page canvas, roadmap canvas (with a 22px dot grid in `{colors.border-strong}`).
@@ -62,7 +64,7 @@ Depth is a 1px hairline plus a faint two-layer warm shadow. Widgets and panels r
 - **Danger** (`{colors.danger}`: #bb3a2a / #ef8070, soft #f9e6e2 / #3a2320): Priority 1, overdue.
 - Priority colours map onto these: P1 danger, P2 warn, P3 college, P4 border-strong (P:125).
 
-**On-tint text tokens (round 3, fixes the earlier 3.88:1 and 4.39:1 gaps):** text on a soft tint uses a darker partner, never the fill colour: `{colors.accent-text}` #a3441f (5.29:1 on accent-soft; dark #e2835e, 5.08:1), `{colors.ok-text}` #2d6a3c (5.54:1; dark #7fc08c, 6.60:1), `{colors.warn-text}` #8a5307 (5.40:1), `{colors.danger-text}` #a8331f (5.52:1). Accent-coloured links and labels on paper also use `{colors.accent-text}`. Disabled buttons use sunk fill + muted text instead of faded accent.
+**On-tint text tokens (round 3, fixes the earlier 3.88:1 and 4.39:1 gaps):** text on a soft tint uses a darker partner, never the fill colour: `{colors.accent-text}` #3f6b4a (5.90:1 on paper, 5.21:1 on accent-soft; dark #a8d2af, 8.58:1 on accent-soft), `{colors.ok-text}` #2d6a3c (5.54:1; dark #7fc08c, 6.60:1), `{colors.warn-text}` #8a5307 (5.40:1), `{colors.danger-text}` #a8331f (5.52:1). Accent-coloured links and labels on paper also use `{colors.accent-text}`. Disabled buttons use sunk fill + muted text instead of faded accent.
 
 ## Typography
 

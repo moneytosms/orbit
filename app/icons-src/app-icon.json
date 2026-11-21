@@ -1,1 +1,1 @@
-{ "default": "logo.png", "bg_color": "#c2552f", "android_bg": "bg.png", "android_fg": "fg.png", "android_fg_scale": 100, "android_monochrome": "mono.png" }
+{ "default": "logo.png", "bg_color": "#4f7f5b", "android_bg": "bg.png", "android_fg": "fg.png", "android_fg_scale": 100, "android_monochrome": "mono.png" }

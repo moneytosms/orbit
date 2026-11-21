@@ -112,7 +112,7 @@
     ;[textSize, typeface, leading, motion] = [getTextSize(), getTypeface(), getLeading(), getMotion()]
   }
   let accent: string | null = $state(getAccent())
-  const cssAccent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c2552f'
+  const cssAccent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4f7f5b'
 
   // Free disk on the server; a failed check shows nothing.
   let freeMb: number | undefined = $state()

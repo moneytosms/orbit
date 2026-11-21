@@ -5,9 +5,9 @@
     <color name="widget_sunk">#3A3733</color>
     <color name="widget_text">#EDE8E0</color>
     <color name="widget_muted">#A8A197</color>
-    <color name="widget_accent">#E2835E</color>
+    <color name="widget_accent">#93C39B</color>
     <color name="widget_accent_ink">#1B1A18</color>
-    <color name="widget_accent_soft">#3A281F</color>
+    <color name="widget_accent_soft">#1F2D22</color>
     <color name="widget_warn">#EF8070</color>
     <color name="widget_warn_soft">#3A2320</color>
     <color name="widget_ok">#7FC08C</color>
