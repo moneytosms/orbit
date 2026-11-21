@@ -187,12 +187,22 @@ async fn a_token_newer_than_the_data_gets_a_full_snapshot() {
 
 #[tokio::test]
 async fn the_protocol_version_is_checked() {
-    // The 426 window itself is tested in orbit-core with a larger current version.
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path()).await;
     let v = orbit_core::PROTOCOL_V;
     let (status, _) = sync(&app, json!({ "v": v, "commands": [] })).await;
     assert_eq!(status, StatusCode::OK);
+    let (status, body) = sync(&app, json!({ "v": 0, "commands": [] })).await;
+    assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+    assert_eq!(body["error"], "upgrade_required");
+    assert_eq!(body["client_protocol"], 0);
+    assert_eq!(body["min_client_protocol"], orbit_core::MIN_CLIENT_PROTOCOL);
+    assert!(
+        body["upgrade"]
+            .as_str()
+            .unwrap()
+            .ends_with("/releases/latest")
+    );
     let (status, _) = sync(&app, json!({ "v": v + 1, "commands": [] })).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }

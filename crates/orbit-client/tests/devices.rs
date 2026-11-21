@@ -1,6 +1,7 @@
 mod common;
+use axum::{Json, http::StatusCode, routing::post};
 use common::{PASSWORD, device, replica, server};
-use orbit_core::{ErrorCode, Op};
+use orbit_core::{ErrorCode, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, UpgradeRequired};
 
 const HOUR: u64 = 3_600_000;
 
@@ -142,6 +143,65 @@ async fn a_network_error_keeps_the_outbox_for_the_next_sync() {
     online.create_task("Buy bread", 1000).unwrap();
     online.sync(1000).await.unwrap();
     assert_eq!(online.outbox_len().unwrap(), 0);
+}
+
+#[tokio::test]
+async fn a_protocol_upgrade_error_is_typed_and_keeps_the_outbox() {
+    let app = axum::Router::new().route(
+        "/sync",
+        post(|| async {
+            (
+                StatusCode::UPGRADE_REQUIRED,
+                Json(UpgradeRequired {
+                    error: "upgrade_required".into(),
+                    client_protocol: PROTOCOL_V,
+                    min_client_protocol: MIN_CLIENT_PROTOCOL + 1,
+                    upgrade: "https://example.test/releases/latest".into(),
+                }),
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let mut client = replica(&url);
+    let task = client.create_task("Queued change", 1000).unwrap();
+    let err = client.sync(1000).await.unwrap_err();
+
+    let upgrade = err.downcast_ref::<UpgradeRequired>().unwrap();
+    assert_eq!(upgrade.error, "upgrade_required");
+    assert_eq!(upgrade.min_client_protocol, MIN_CLIENT_PROTOCOL + 1);
+    assert_eq!(upgrade.upgrade, "https://example.test/releases/latest");
+    assert_eq!(client.outbox_len().unwrap(), 1);
+    assert_eq!(client.task(task).unwrap().unwrap().title, "Queued change");
+}
+
+#[tokio::test]
+async fn a_bodyless_protocol_upgrade_keeps_the_http_error_and_outbox() {
+    let app = axum::Router::new().route("/sync", post(|| async { StatusCode::UPGRADE_REQUIRED }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let mut client = replica(&url);
+    let task = client.create_task("Queued change", 1000).unwrap();
+    let err = client.sync(1000).await.unwrap_err();
+
+    let http_error = err.downcast_ref::<reqwest::Error>().unwrap();
+    assert_eq!(http_error.status(), Some(StatusCode::UPGRADE_REQUIRED));
+    assert_eq!(client.outbox_len().unwrap(), 1);
+    assert_eq!(client.task(task).unwrap().unwrap().title, "Queued change");
+}
+
+#[tokio::test]
+async fn server_version_is_typed_and_does_not_require_login() {
+    let s = server().await;
+    let client = replica(&s.url);
+    let version = client.server_version().await.unwrap();
+    assert_eq!(version.server, env!("CARGO_PKG_VERSION"));
+    assert_eq!(version.protocol, PROTOCOL_V);
+    assert_eq!(version.min_client_protocol, MIN_CLIENT_PROTOCOL);
 }
 
 #[tokio::test]

@@ -1346,6 +1346,46 @@ pub enum Status {
 
 /// Sync protocol version. The server also accepts the one before it.
 pub const PROTOCOL_V: u32 = 1;
+/// Oldest sync protocol accepted by a server running `PROTOCOL_V`.
+pub const MIN_CLIENT_PROTOCOL: u32 = if PROTOCOL_V > 1 { PROTOCOL_V - 1 } else { 1 };
+
+/// Public server build and compatibility information returned by `GET /version`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct VersionInfo {
+    /// Server crate semver.
+    pub server: String,
+    /// Current protocol emitted by this server.
+    pub protocol: u32,
+    /// Lowest sync protocol accepted by this server.
+    pub min_client_protocol: u32,
+    /// Lowest native shell version required, or `0.0.0` when any shell is supported.
+    pub min_shell_version: String,
+    /// Source commit captured when the server binary was built.
+    pub built: String,
+    /// Web bundle build hash captured when the server binary was built.
+    pub ui: String,
+}
+
+/// Structured HTTP 426 response. Clients must leave queued operations untouched.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct UpgradeRequired {
+    pub error: String,
+    pub client_protocol: u32,
+    pub min_client_protocol: u32,
+    pub upgrade: String,
+}
+
+impl std::fmt::Display for UpgradeRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "client protocol {} is too old; server requires protocol {}",
+            self.client_protocol, self.min_client_protocol
+        )
+    }
+}
+
+impl std::error::Error for UpgradeRequired {}
 
 #[derive(Debug, PartialEq)]
 pub enum VersionError {
@@ -1358,7 +1398,7 @@ pub enum VersionError {
 pub fn check_version(current: u32, v: u32) -> Result<(), VersionError> {
     match v {
         v if v > current => Err(VersionError::TooNew),
-        v if v + 1 < current => Err(VersionError::TooOld),
+        v if v < current.saturating_sub(1).max(1) => Err(VersionError::TooOld),
         _ => Ok(()),
     }
 }

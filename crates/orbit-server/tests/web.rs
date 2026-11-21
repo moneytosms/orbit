@@ -1,6 +1,6 @@
 use axum::{
     body::{Body, to_bytes},
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header},
 };
 use tower::ServiceExt;
 
@@ -30,4 +30,28 @@ async fn serves_the_web_app_without_shadowing_the_api() {
     assert_eq!(get(&app, "/server.html").await.1, "<p>server</p>");
     assert_eq!(get(&app, "/some/route").await.1, "<p>index</p>");
     assert_eq!(get(&app, "/auth").await.1, r#"{"setup":true}"#);
+}
+
+#[tokio::test]
+async fn version_is_public_cacheable_and_has_a_stable_contract() {
+    let data = tempfile::tempdir().unwrap();
+    let (app, _) = orbit_server::app(data.path()).unwrap();
+    let res = app
+        .oneshot(Request::get("/version").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers().get(header::CACHE_CONTROL).unwrap(),
+        "public, max-age=300"
+    );
+    let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["server"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(body["protocol"], orbit_core::PROTOCOL_V);
+    assert_eq!(body["min_client_protocol"], orbit_core::MIN_CLIENT_PROTOCOL);
+    assert!(body["min_shell_version"].is_string());
+    assert!(body["built"].is_string());
+    assert!(body["ui"].is_string());
 }

@@ -1,8 +1,8 @@
 //! Sync client: a SQLite replica (rows, outbox, meta) and `POST /sync`. Shared by Tauri and the CLI.
 //! Every write takes `now` so callers (and tests) own the clock.
 use orbit_core::{
-    Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task, Uuid,
-    apply, new_id, parse,
+    Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task,
+    UpgradeRequired, Uuid, VersionInfo, apply, new_id, parse,
 };
 use rusqlite::{Connection, OptionalExtension};
 
@@ -352,6 +352,18 @@ impl Client {
         Ok(res.bytes().await?.to_vec())
     }
 
+    /// Reads the public server and compatibility contract without authenticating.
+    pub async fn server_version(&self) -> Result<VersionInfo> {
+        Ok(self
+            .http
+            .get(format!("{}/version", self.url))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
     /// Sends the outbox in batches of 100 and merges each delta. On a network or HTTP error
     /// (401, 426, ...) the outbox stays queued and the error is returned.
     pub async fn sync(&mut self, now_ms: u64) -> Result<Vec<Rejection>> {
@@ -368,7 +380,16 @@ impl Client {
             if let Some(token) = meta(&self.db, "auth")? {
                 post = post.bearer_auth(token);
             }
-            let res: SyncResponse = post.send().await?.error_for_status()?.json().await?;
+            let res = post.send().await?;
+            if res.status() == reqwest::StatusCode::UPGRADE_REQUIRED
+                && let Err(http_error) = res.error_for_status_ref()
+            {
+                if let Ok(error) = res.json::<UpgradeRequired>().await {
+                    return Err(Box::new(error));
+                }
+                return Err(Box::new(http_error));
+            }
+            let res: SyncResponse = res.error_for_status()?.json().await?;
 
             let tx = self.db.transaction()?;
             let mut answered = 0;

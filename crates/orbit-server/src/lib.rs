@@ -6,8 +6,9 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use orbit_core::{
-    Clocks, Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse,
-    VersionError, apply, apply_lww, check_parent, check_version,
+    Clocks, Command, ErrorCode, Hlc, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, Row, Status, SyncRequest,
+    SyncResponse, UpgradeRequired, VersionError, VersionInfo, apply, apply_lww, check_parent,
+    check_version,
     trash::{self, KEEP_PURGED_MS, KEEP_TRASH_MS},
 };
 use rusqlite::{Connection, OptionalExtension};
@@ -21,6 +22,21 @@ use std::{
 
 /// How long a command uuid's status is kept for replays.
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+// Release builds set these so `/version` describes immutable build inputs.
+const SERVER_COMMIT: &str = match option_env!("ORBIT_COMMIT") {
+    Some(commit) => commit,
+    None => "unknown",
+};
+const UI_BUILD_HASH: &str = match option_env!("ORBIT_UI_HASH") {
+    Some(hash) => hash,
+    None => "unknown",
+};
+const MIN_SHELL_VERSION: &str = match option_env!("ORBIT_MIN_SHELL_VERSION") {
+    Some(version) => version,
+    None => "0.0.0",
+};
+const UPGRADE_URL: &str = "https://github.com/moneytosms/orbit/releases/latest";
 
 mod auth;
 pub mod backup;
@@ -108,6 +124,7 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
         jobs: Mutex::default(),
     };
     let router = Router::new()
+        .route("/version", get(version))
         .route("/sync", post(sync))
         .route("/export", get(export))
         .route("/disk", get(disk))
@@ -132,6 +149,20 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
     Ok((router, setup))
 }
 
+async fn version() -> impl IntoResponse {
+    (
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(VersionInfo {
+            server: SERVER_VERSION.into(),
+            protocol: PROTOCOL_V,
+            min_client_protocol: MIN_CLIENT_PROTOCOL,
+            min_shell_version: MIN_SHELL_VERSION.into(),
+            built: SERVER_COMMIT.into(),
+            ui: UI_BUILD_HASH.into(),
+        }),
+    )
+}
+
 /// Serves the built web app from `dir` for every path the API does not claim; unknown paths get
 /// `index.html` so client-side routes load. The Android app loads the UI from the server.
 pub fn with_web(router: Router, dir: &Path) -> Router {
@@ -139,24 +170,34 @@ pub fn with_web(router: Router, dir: &Path) -> Router {
     router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
 }
 
-async fn sync(
-    State(st): State<St>,
-    _: auth::Device,
-    Json(req): Json<SyncRequest>,
-) -> Result<Json<SyncResponse>, StatusCode> {
+async fn sync(State(st): State<St>, _: auth::Device, Json(req): Json<SyncRequest>) -> Response {
     match check_version(PROTOCOL_V, req.v) {
-        Err(VersionError::TooOld) => return Err(StatusCode::UPGRADE_REQUIRED),
-        Err(VersionError::TooNew) => return Err(StatusCode::BAD_REQUEST),
+        Err(VersionError::TooOld) => {
+            return (
+                StatusCode::UPGRADE_REQUIRED,
+                Json(UpgradeRequired {
+                    error: "upgrade_required".into(),
+                    client_protocol: req.v,
+                    min_client_protocol: MIN_CLIENT_PROTOCOL,
+                    upgrade: UPGRADE_URL.into(),
+                }),
+            )
+                .into_response();
+        }
+        Err(VersionError::TooNew) => return StatusCode::BAD_REQUEST.into_response(),
         Ok(()) => {}
     }
     if req.commands.len() > 100 {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
     let mut conn = lock(&st.db);
-    run(&mut conn, &st.data, req).map(Json).map_err(|e| {
-        eprintln!("sync failed: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    match run(&mut conn, &st.data, req) {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => {
+            eprintln!("sync failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 /// A zip of every row's data as `items.json`, each live Page as `pages/<name>.md` and every
