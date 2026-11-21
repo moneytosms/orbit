@@ -1,6 +1,16 @@
 # orbit-server for personal use. Run from this directory: `docker compose up -d`.
-# Data lives in ./data (created on first start; must be writable by uid 10001).
+# Data lives in ./data, created and made writable for the server on first start.
+# Comes back after a reboot as long as the Docker service starts at boot.
 services:
+  # Hands ./data to the server's uid (10001) before it starts: no manual mkdir or chown.
+  init:
+    image: busybox:1
+    user: root
+    command: ["sh", "-c", "mkdir -p /data && chown -R 10001:10001 /data"]
+    volumes:
+      - ./data:/data
+    restart: "no"
+
   orbit:
     image: ghcr.io/moneytosms/orbit:latest
     # To build the image from this checkout instead, comment `image:` and uncomment:
@@ -9,4 +19,7 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
     restart: unless-stopped

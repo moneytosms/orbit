@@ -50,10 +50,13 @@ Environment variables:
 | `ORBIT_DATA` | `data` | data directory (`orbit.db`, `backups/`) |
 | `ORBIT_WEB` | unset | directory of the built web app to serve |
 
-Docker (image is built in `Dockerfile`; released as `ghcr.io/<owner>/<repo>`, see [docs/releasing.md](docs/releasing.md)):
+Docker Compose (image `ghcr.io/moneytosms/orbit`, see [docs/releasing.md](docs/releasing.md)). The data directory is created for you and the server restarts after a reboot:
 
 ```sh
-docker run --rm -p 8080:8080 -v orbit-data:/data ghcr.io/<owner>/<repo>:<version>
+mkdir orbit && cd orbit
+curl -fsSLO https://raw.githubusercontent.com/moneytosms/orbit/main/deploy/compose.yaml
+docker compose up -d
+docker compose logs orbit | grep "setup code"
 ```
 
 From source (no web UI unless you build it and set `ORBIT_WEB`):

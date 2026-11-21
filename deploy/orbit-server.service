@@ -1,0 +1,21 @@
+# orbit-server as a systemd user service, without Docker. Install with:
+#   mkdir -p ~/.config/systemd/user && cp deploy/orbit-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now orbit-server
+#   loginctl enable-linger "$USER"    # start at boot, not only after you log in
+# Expects the repo at ~/orbit, built with `cargo build --release -p orbit-server` and
+# `pnpm -C app build`. Data lives in ~/orbit-data. Edit the paths below if yours differ.
+[Unit]
+Description=orbit-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/orbit/target/release/orbit-server
+Environment=ORBIT_WEB=%h/orbit/app/dist
+Environment=ORBIT_DATA=%h/orbit-data
+Environment=ORBIT_ADDR=127.0.0.1:8080
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

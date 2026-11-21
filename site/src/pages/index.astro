@@ -175,7 +175,8 @@ const path = (rx: number, ry: number) => `M ${400 - rx} 400 a ${rx} ${ry} 0 1 0 
       </p>
       <p><a class="btn" href={withBase("guide/deploy")}>Read the deploy guide</a></p>
     </div>
-    <pre class="term" aria-label="Terminal: start the server and read the setup code"><code><span class="c"># from the repo, in deploy/</span>
+    <pre class="term" aria-label="Terminal: start the server and read the setup code"><code><span class="c"># no checkout needed</span>
+<span class="p">$</span> curl -fsSLO https://raw.githubusercontent.com/moneytosms/orbit/main/deploy/compose.yaml
 <span class="p">$</span> docker compose up -d
 <span class="p">$</span> docker compose logs orbit | grep "setup code"
 <span class="o">First run: open the app and enter setup code &lt;code&gt;</span></code></pre>

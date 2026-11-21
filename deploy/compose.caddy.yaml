@@ -1,7 +1,17 @@
 # orbit-server behind Caddy with automatic HTTPS. Run from this directory:
 # `docker compose -f compose.caddy.yaml up -d`. Set your domain in Caddyfile first.
+# Data lives in ./data, created and made writable for the server on first start.
 # Needs DNS pointing at this host and ports 80 and 443 open.
 services:
+  # Hands ./data to the server's uid (10001) before it starts: no manual mkdir or chown.
+  init:
+    image: busybox:1
+    user: root
+    command: ["sh", "-c", "mkdir -p /data && chown -R 10001:10001 /data"]
+    volumes:
+      - ./data:/data
+    restart: "no"
+
   orbit:
     image: ghcr.io/moneytosms/orbit:latest
     # To build the image from this checkout instead, comment `image:` and uncomment:
@@ -10,6 +20,9 @@ services:
       - "8080"
     volumes:
       - ./data:/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   caddy:
