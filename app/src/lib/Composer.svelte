@@ -119,7 +119,7 @@
       onclick={track}
       placeholder="Add a task"
       aria-label="Task title"
-      class="h-8 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted focus-visible:shadow-none"
+      class="h-8 min-w-0 flex-1 bg-transparent text-[0.9375rem] outline-none placeholder:text-muted focus-visible:shadow-none"
     />
     <Button type="submit" variant="primary" disabled={!quickTitle(parsed).trim()}>Add</Button>
   </div>
@@ -152,7 +152,7 @@
             type="button"
             onmousedown={(e) => e.preventDefault()}
             onclick={() => pick(n)}
-            class="rounded-md bg-sunk px-2 py-0.5 text-[13px] hover:bg-hover"
+            class="rounded-md bg-sunk px-2 py-0.5 text-[0.8125rem] hover:bg-hover"
           >
             {suggestion.sigil}{n}
           </button>

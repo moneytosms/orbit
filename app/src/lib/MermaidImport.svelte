@@ -52,14 +52,14 @@
     oninput={(e) => update(e.currentTarget.value)}
     rows="10"
     spellcheck="false"
-    class="w-full rounded-md border border-line bg-surface p-2 font-mono text-[13px]"
+    class="w-full rounded-md border border-line bg-surface p-2 font-mono text-[0.8125rem]"
   ></textarea>
   {#if error}
-    <p role="alert" class="rounded-md bg-danger-soft px-2 py-1 text-[13px] text-danger-text">
+    <p role="alert" class="rounded-md bg-danger-soft px-2 py-1 text-[0.8125rem] text-danger-text">
       Line {error.line}: {error.message}
     </p>
   {:else if plan}
-    <ul class="flex flex-col gap-1 text-[13px]" aria-label="Preview">
+    <ul class="flex flex-col gap-1 text-[0.8125rem]" aria-label="Preview">
       {#each plan.phases as p, n (n)}
         <li class="flex items-center gap-2 rounded-md border border-line px-2 py-1">
           <span class="min-w-0 flex-1 truncate font-medium">{p.name}</span>

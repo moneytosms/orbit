@@ -194,7 +194,7 @@
             onpointerdown={(e) => drag(e, w, 'move')}><GripVertical size={15} /></button
           >
         {/if}
-        <h2 class="flex-1 truncate text-[14.5px] font-semibold">{title(w)}</h2>
+        <h2 class="flex-1 truncate text-[0.9062rem] font-semibold">{title(w)}</h2>
         {#if editing}
           <button type="button" aria-label="Hide {title(w)}" class={iconBtn} onclick={() => hide(w)}
             ><EyeOff size={15} /></button

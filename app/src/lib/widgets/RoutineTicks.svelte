@@ -40,13 +40,13 @@
 {/if}
 <ul class="grid gap-0.5">
   {#each entries as e (e.routine.id)}
-    <li class="flex min-h-[36px] items-center gap-3 px-1">
+    <li class="flex min-h-[2.25rem] items-center gap-3 px-1">
       <button
         type="button"
         aria-label="Check in {e.routine.name}"
         aria-pressed={e.today === 'done'}
         onclick={() => tick(e)}
-        class="grid size-[18px] shrink-0 place-items-center rounded-md border-[1.5px] text-xs {e.today === 'done'
+        class="grid size-[1.125rem] shrink-0 place-items-center rounded-md border-[1.5px] text-xs {e.today === 'done'
           ? 'border-accent bg-accent text-white'
           : 'border-line-strong'}">{e.today === 'done' ? '✓' : e.today === 'skipped' ? '↷' : ''}</button
       >

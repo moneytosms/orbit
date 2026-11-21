@@ -297,14 +297,14 @@
 
 <div class="desk:hidden" aria-label="Timeline list">
   {#each months as g (g.key)}
-    <h3 class="mt-4 mb-1 px-2 text-[12.5px] font-semibold text-muted">{g.key}</h3>
+    <h3 class="mt-4 mb-1 px-2 text-[0.7812rem] font-semibold text-muted">{g.key}</h3>
     <ul>
       {#each g.items as i, n (n)}
         <li>
           <button
             type="button"
             onclick={() => onopen(i.row)}
-            class="flex min-h-[42px] w-full items-center gap-3 rounded-[9px] px-2 text-left hover:bg-hover"
+            class="flex min-h-[2.625rem] w-full items-center gap-3 rounded-[9px] px-2 text-left hover:bg-hover"
           >
             <span class="min-w-0 flex-1 truncate">{i.text}</span>
             <span class="text-xs text-muted">{fmt(i.day)}</span>

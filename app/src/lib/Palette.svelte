@@ -180,15 +180,15 @@
       aria-label="Search and commands"
       autocomplete="off"
       placeholder="Search, or type > actions, + add, ? filter"
-      class="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] outline-none placeholder:text-muted"
+      class="h-12 w-full border-b border-line bg-transparent px-4 text-[0.9375rem] outline-none placeholder:text-muted"
     />
     <div class="max-h-[50vh] overflow-y-auto p-2">
       {#if error}
-        <p role="alert" class="px-2.5 py-2 text-[13px] text-danger-text">{error}</p>
+        <p role="alert" class="px-2.5 py-2 text-[0.8125rem] text-danger-text">{error}</p>
       {/if}
       <ul id="pal-list" role="listbox" aria-label={hints[mode]} class="flex flex-col">
         {#each sections as sec (sec.title)}
-          <li role="presentation" class="px-2.5 pt-2 pb-1 text-[12.5px] font-semibold text-muted">{sec.title}</li>
+          <li role="presentation" class="px-2.5 pt-2 pb-1 text-[0.7812rem] font-semibold text-muted">{sec.title}</li>
           {#each sec.items as it (it.key)}
             {@const i = flat.indexOf(it)}
             <li
@@ -201,13 +201,13 @@
               class="flex h-9 cursor-pointer items-center gap-2 rounded-[7px] px-2.5 aria-selected:bg-press"
             >
               <span class="min-w-0 flex-1 truncate">{it.label}</span>
-              <span class="text-[12.5px] text-muted">{it.hint}</span>
+              <span class="text-[0.7812rem] text-muted">{it.hint}</span>
             </li>
           {/each}
         {/each}
       </ul>
       {#if !sections.length && !error}
-        <p class="px-2.5 py-3 text-[13px] text-muted">
+        <p class="px-2.5 py-3 text-[0.8125rem] text-muted">
           {text.trim() || mode !== 'search' ? 'Nothing found.' : 'Nothing opened yet.'}
         </p>
       {/if}

@@ -129,10 +129,17 @@
   *::-webkit-scrollbar {
     display: none;
   }
+  /* One notch up from the 16px default: every rem size, space and radius scales with it. */
+  html {
+    font-size: 106.25%;
+  }
   html,
   body,
   #app {
     @apply bg-bg text-text h-full font-sans text-sm antialiased;
+  }
+  body {
+    line-height: 1.55;
   }
   svg.lucide {
     stroke-width: 1.8;
@@ -147,7 +154,7 @@
 
 @layer components {
   .page-title {
-    @apply mb-4 text-[23px] leading-[1.2] font-bold tracking-[-0.015em] desk:text-[28px];
+    @apply mb-4 text-[1.4375rem] leading-[1.2] font-bold tracking-[-0.015em] desk:text-[1.75rem];
   }
   .panel {
     @apply rounded-2xl border border-line bg-surface p-4 shadow-1;
@@ -156,7 +163,7 @@
     @apply mb-3 text-base font-semibold;
   }
   .chip {
-    @apply inline-flex h-[22px] items-center rounded-sm px-2 text-[12.5px];
+    @apply inline-flex h-[1.375rem] items-center rounded-sm px-2 text-[0.7812rem];
   }
   .link {
     @apply text-accent-text underline decoration-accent-line underline-offset-2;
@@ -258,7 +265,7 @@
   --fc-classic-highlight: var(--accent-soft);
   --fc-classic-today: var(--accent-soft);
   --fc-classic-now: var(--danger);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .orbit-cal .cal-deadline {
   --fc-event-color: var(--danger);

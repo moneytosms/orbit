@@ -101,7 +101,7 @@
   }
 
   const fieldClass =
-    'h-7 min-w-0 rounded-md border border-line bg-surface px-1.5 text-[13px] text-text shadow-1 outline-none focus-visible:border-accent-line'
+    'h-7 min-w-0 rounded-md border border-line bg-surface px-1.5 text-[0.8125rem] text-text shadow-1 outline-none focus-visible:border-accent-line'
 
   let typed = $state(false)
   let text = $state('')

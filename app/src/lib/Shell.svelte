@@ -2,7 +2,6 @@
   import Menu from '@lucide/svelte/icons/menu'
   import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
-  import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import type { Snippet } from 'svelte'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import * as Sheet from '$lib/components/ui/sheet'
@@ -119,8 +118,11 @@
     runAction(id)
   }
   const isHidden = (id: string) => hiddenViews.some((v) => v.id === id)
-  let tabs: (Route | 'add' | 'browse')[] = $derived(
-    isHidden(VIEW_UPCOMING) ? ['home', 'add', 'routines', 'browse'] : ['home', 'upcoming', 'add', 'routines', 'browse'],
+  // Two tabs each side of the add button. Search and the full menu live in the header.
+  let tabs: (Route | 'add')[] = $derived(
+    isHidden(VIEW_UPCOMING)
+      ? ['home', 'roadmaps', 'add', 'goals', 'routines']
+      : ['home', 'upcoming', 'add', 'goals', 'routines'],
   )
 
   // A drop takes the order between its new neighbours.
@@ -174,13 +176,13 @@
   >
     <Icon size={16} class="text-icon group-aria-[current=page]:text-accent" />
     <span class="flex-1">{routes[r].label}</span>
-    {#if count}<span class="text-[12.5px] text-muted">{count}</span>{/if}
+    {#if count}<span class="text-[0.7812rem] text-muted">{count}</span>{/if}
   </a>
 {/snippet}
 
 {#snippet areaTree()}
   <section class="flex flex-col gap-1">
-    <h2 class="px-2.5 pb-1 text-[12.5px] font-semibold text-muted">Areas</h2>
+    <h2 class="px-2.5 pb-1 text-[0.7812rem] font-semibold text-muted">Areas</h2>
     <ul
       use:dndzone={{ items: areaOrder, flipDurationMs: 150, delayTouchStart: 200 }}
       onconsider={considerAreas}
@@ -203,14 +205,14 @@
               <a
                 href="#/project/{p.id}"
                 aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
-                class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+                class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
               >
                 {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
               </a>
             </DropTarget>
           {/each}
           {#if a.projects.length > 4}
-            <span class="pl-6 text-[12.5px] text-muted">+{a.projects.length - 4} more</span>
+            <span class="pl-6 text-[0.7812rem] text-muted">+{a.projects.length - 4} more</span>
           {/if}
           <form
             onsubmit={(e) => addProject(e, a.id)}
@@ -221,14 +223,14 @@
               bind:value={newProject[a.id]}
               placeholder="Add project"
               aria-label="Add project in {a.area.name}"
-              class="h-7 w-full bg-transparent text-[13px] outline-none placeholder:text-muted"
+              class="h-7 w-full bg-transparent text-[0.8125rem] outline-none placeholder:text-muted"
             />
           </form>
         </li>
       {/each}
     </ul>
     {#if areas.length === 0}
-      <p class="px-2.5 text-[13px] text-muted">No areas yet. Name your first one below, for example Work or Home.</p>
+      <p class="px-2.5 text-[0.8125rem] text-muted">No areas yet. Name your first one below, for example Work or Home.</p>
     {/if}
     <form
       onsubmit={addArea}
@@ -239,7 +241,7 @@
         bind:value={newArea}
         placeholder="Add area"
         aria-label="Add area"
-        class="h-8 w-full bg-transparent text-[13.5px] outline-none placeholder:text-muted"
+        class="h-8 w-full bg-transparent text-[0.8438rem] outline-none placeholder:text-muted"
       />
     </form>
   </section>
@@ -249,7 +251,7 @@
   <div class="flex h-full flex-col gap-4 overflow-y-auto p-3">
     <div class="flex items-center gap-2 px-1.5">
       <img src="/icon.svg" alt="" class="size-6" />
-      <span class="flex-1 text-[15px] font-semibold">Orbit</span>
+      <span class="flex-1 text-[0.9375rem] font-semibold">Orbit</span>
       <Button variant="primary" size="sm" onclick={newTask}>
         <Plus size={14} class="text-accent-ink" /> Add task
       </Button>
@@ -271,7 +273,7 @@
     {@render areaTree()}
     <section>
       <div class="flex items-center gap-1 px-2.5 pb-1">
-        <h2 class="flex-1 text-[12.5px] font-semibold text-muted">Views</h2>
+        <h2 class="flex-1 text-[0.7812rem] font-semibold text-muted">Views</h2>
         <Button variant="ghost" size="icon-sm" aria-label="New view" onclick={newView}>
           <Plus size={14} />
         </Button>
@@ -288,7 +290,7 @@
               href="#/view/{v.id}"
               onclick={() => (drawer = false)}
               aria-current={screen.name === 'view' && screen.id === v.id ? 'page' : undefined}
-              class="flex h-8 items-center rounded-[7px] px-2.5 text-[13.5px] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+              class="flex h-8 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
             >
               {v.name}
             </a>
@@ -296,18 +298,18 @@
         {/each}
       </ul>
       {#if !viewOrder.length}
-        <p class="px-2.5 text-[12.5px] text-muted">Pin a view to show it here.</p>
+        <p class="px-2.5 text-[0.7812rem] text-muted">Pin a view to show it here.</p>
       {/if}
       {#if hiddenViews.length}
         <details class="mt-1 px-2.5">
-          <summary class="cursor-pointer text-[12.5px] text-muted">Hidden views</summary>
+          <summary class="cursor-pointer text-[0.7812rem] text-muted">Hidden views</summary>
           <ul class="mt-1 flex flex-col gap-0.5">
             {#each hiddenViews as v (v.id)}
               <li class="flex items-center gap-1">
                 <a
                   href="#/view/{v.id}"
                   onclick={() => (drawer = false)}
-                  class="min-w-0 flex-1 truncate text-[13px] text-muted hover:text-text"
+                  class="min-w-0 flex-1 truncate text-[0.8125rem] text-muted hover:text-text"
                 >
                   {v.name}
                 </a>
@@ -337,7 +339,7 @@
       </Button>
       <span class="flex-1 text-center font-medium text-muted desk:text-left">{title}</span>
       <Button variant="ghost" class="hidden desk:inline-flex" onclick={newTask}>
-        <Plus /> New task <kbd class="rounded-sm bg-sunk px-1.5 text-[11.5px] text-muted">Q</kbd>
+        <Plus /> New task <kbd class="rounded-sm bg-sunk px-1.5 text-[0.7188rem] text-muted">Q</kbd>
       </Button>
       <Button variant="ghost" size="icon" aria-label="Search" onclick={openPalette}>
         <Search />
@@ -349,39 +351,22 @@
   </div>
 </div>
 
-{#snippet tab(t: Route | 'browse')}
-  {#if t === 'browse'}
-    <button
-      type="button"
-      onclick={openPalette}
-      class="flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
-    >
-      <Search size={20} class="text-icon" /> Search
-    </button>
-    <button
-      type="button"
-      onclick={() => (drawer = true)}
-      class="flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted"
-    >
-      <LayoutGrid size={20} class="text-icon" /> Browse
-    </button>
-  {:else}
-    {@const Icon = routes[t].icon}
-    <a
-      href="#/{t}"
-      aria-current={screen.name === t ? 'page' : undefined}
-      class="group flex flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium text-muted aria-[current=page]:text-accent-text"
-    >
-      <Icon size={20} class="text-icon group-aria-[current=page]:text-accent" />
-      {routes[t].label}
-    </a>
-  {/if}
+{#snippet tab(t: Route)}
+  {@const Icon = routes[t].icon}
+  <a
+    href="#/{t}"
+    aria-current={screen.name === t ? 'page' : undefined}
+    class="group flex flex-1 flex-col items-center justify-center gap-1 text-[0.7188rem] font-medium text-muted aria-[current=page]:text-accent-text"
+  >
+    <Icon size={20} class="text-icon group-aria-[current=page]:text-accent" />
+    {routes[t].label}
+  </a>
 {/snippet}
 
-<!-- Equal-width sides keep the New task button on the bar's centre line, however many tabs each side holds. -->
+<!-- Two tabs each side keep the New task button on the bar's centre line. -->
 <nav
   aria-label="Tabs"
-  class="fixed inset-x-0 bottom-0 grid h-[72px] grid-cols-[1fr_auto_1fr] border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
+  class="fixed inset-x-0 bottom-0 grid h-[4.5rem] grid-cols-[1fr_auto_1fr] border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
 >
   <div class="flex">
     {#each tabs.slice(0, tabs.indexOf('add')) as t (t)}{@render tab(t as Route)}{/each}
@@ -397,7 +382,7 @@
     </button>
   </div>
   <div class="flex">
-    {#each tabs.slice(tabs.indexOf('add') + 1) as t (t)}{@render tab(t as Route | 'browse')}{/each}
+    {#each tabs.slice(tabs.indexOf('add') + 1) as t (t)}{@render tab(t as Route)}{/each}
   </div>
 </nav>
 
@@ -424,7 +409,7 @@
   </Dialog.Root>
 {:else}
   <Sheet.Root bind:open={composing}>
-    <Sheet.Content side="bottom" class="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <Sheet.Content side="bottom" class="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" showCloseButton={false}>
       {@render composer()}
     </Sheet.Content>
   </Sheet.Root>

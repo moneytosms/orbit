@@ -51,7 +51,7 @@
     <thead>
       <tr class="border-b border-line">
         {#each columns as f (f)}
-          <th scope="col" aria-sort={dir(f)} class="px-2 py-1.5 text-[12.5px] font-semibold text-muted">
+          <th scope="col" aria-sort={dir(f)} class="px-2 py-1.5 text-[0.7812rem] font-semibold text-muted">
             <button type="button" class="flex items-center gap-1 capitalize" onclick={() => sortBy(f)}>
               {fieldTitle(f)}
               {#if active(f)}

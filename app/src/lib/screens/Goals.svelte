@@ -90,7 +90,7 @@
   }
 
   const inputClass =
-    'h-[34px] rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
+    'h-[2.125rem] rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
   let amounts = $state<Record<string, number>>({})
   let newMilestone = $state<Record<string, string>>({})
 
@@ -124,7 +124,7 @@
   {#if v}
     <article class="rounded-2xl border border-line bg-surface p-4 {sub ? 'ml-6 mt-2' : ''}">
       <div class="flex flex-wrap items-center gap-2">
-        <h3 class="flex-1 text-[15px] font-medium">{goal.name}</h3>
+        <h3 class="flex-1 text-[0.9375rem] font-medium">{goal.name}</h3>
         {#if v.behind}
           <span class="rounded-full bg-warn-soft px-2 py-px text-xs text-warn-text">Behind pace</span>
         {/if}

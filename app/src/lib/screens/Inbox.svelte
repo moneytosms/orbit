@@ -186,14 +186,14 @@
 {#snippet line(task: Task, depth: number)}
   <div
     data-task-row={task.id}
-    class="group relative flex min-h-[42px] items-center gap-3 rounded-[9px] pr-2 hover:bg-hover data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
+    class="group relative flex min-h-[2.625rem] items-center gap-3 rounded-[9px] pr-2 hover:bg-hover data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
     style:padding-left="{8 + depth * 24}px"
   >
     <button
       type="button"
       aria-label="Complete {task.title}"
       onclick={() => completeTask(task.id)}
-      class="peer grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
+      class="peer grid size-[1.125rem] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
     >
       <Check size={12} strokeWidth={3} />
     </button>

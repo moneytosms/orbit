@@ -86,7 +86,7 @@
     cover.startsWith('#') ? `background:${cover}` : imageUrl ? `background-image:url(${imageUrl})` : '',
   )
   const chip =
-    'rounded-md px-2 py-1 text-[13px] text-muted opacity-70 hover:bg-hover hover:opacity-100 focus-visible:opacity-100'
+    'rounded-md px-2 py-1 text-[0.8125rem] text-muted opacity-70 hover:bg-hover hover:opacity-100 focus-visible:opacity-100'
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && (panel = null)} />
@@ -96,7 +96,7 @@
     <div
       role="img"
       aria-label="Cover"
-      class="h-24 rounded-xl bg-sunk bg-cover bg-center desk:h-[120px]"
+      class="h-24 rounded-xl bg-sunk bg-cover bg-center desk:h-[7.5rem]"
       style={bg}
     ></div>
   {/if}

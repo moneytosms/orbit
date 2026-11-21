@@ -168,7 +168,7 @@
             value={task.title}
             onblur={saveTitle}
             onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
+            class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
           />
         </div>
 
@@ -199,7 +199,7 @@
               type="date"
               value={task.due?.date ?? ''}
               onchange={saveDate}
-              class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+              class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
             />
           </div>
           <div class="grid gap-1.5">
@@ -210,7 +210,7 @@
               value={task.due?.time ?? ''}
               disabled={!task.due}
               onchange={saveTime}
-              class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line disabled:bg-sunk disabled:text-muted"
+              class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line disabled:bg-sunk disabled:text-muted"
             />
           </div>
           <div class="grid gap-1.5">
@@ -220,7 +220,7 @@
               type="date"
               value={task.deadline ?? ''}
               onchange={saveDeadline}
-              class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+              class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
             />
           </div>
           <div class="grid gap-1.5">
@@ -231,7 +231,7 @@
               min="1"
               value={task.duration_min ?? ''}
               onchange={saveDuration}
-              class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+              class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
             />
           </div>
         </div>
@@ -255,7 +255,7 @@
             <select
               bind:value={remKind}
               aria-label="Reminder type"
-              class="h-[34px] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+              class="h-[2.125rem] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
             >
               <option value="due">Before due</option>
               <option value="deadline">Before deadline</option>
@@ -266,7 +266,7 @@
                 type="datetime-local"
                 bind:value={remAt}
                 aria-label="Reminder time"
-                class="h-[34px] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+                class="h-[2.125rem] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
               />
             {:else}
               <input
@@ -274,7 +274,7 @@
                 min="0"
                 bind:value={remMinutes}
                 aria-label="Minutes before"
-                class="h-[34px] w-20 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
+                class="h-[2.125rem] w-20 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
               />
               <span class="text-sm text-muted">min</span>
             {/if}
@@ -288,7 +288,7 @@
             id="task-goal"
             value={task.goal_id ?? ''}
             onchange={(e) => save({ goal_id: e.currentTarget.value || null })}
-            class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+            class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
           >
             <option value="">{inherited ? 'From project' : 'None'}</option>
             {#each goalList as g (g.id)}
@@ -340,7 +340,7 @@
               bind:value={newLabel}
               placeholder="New label, then Enter"
               aria-label="New label"
-              class="h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none placeholder:text-muted focus-visible:border-accent-line"
+              class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none placeholder:text-muted focus-visible:border-accent-line"
             />
           </form>
         </div>

@@ -10,7 +10,7 @@
 
 <div class="overflow-x-auto pb-2" aria-label="Timeline">
   <div class="relative min-w-[720px]">
-    <div class="mb-1 flex justify-between text-[11.5px] text-muted">
+    <div class="mb-1 flex justify-between text-[0.7188rem] text-muted">
       <span>{timeline.first}</span><span>{timeline.last}</span>
     </div>
     <div class="relative flex flex-col gap-2">
@@ -21,7 +21,7 @@
           role="img"
           aria-label="Today"
         >
-          <span class="absolute -top-4 left-1 text-[11px] text-accent-text">Today</span>
+          <span class="absolute -top-4 left-1 text-[0.6875rem] text-accent-text">Today</span>
         </div>
       {/if}
       {#each timeline.bands as b (b.id)}
@@ -32,7 +32,7 @@
               : 'border-line'} {b.current ? 'border-accent' : ''} {b.locked ? 'opacity-70' : ''}"
             style="left: {b.x}%; width: {b.w}%"
           >
-            <span class="block truncate px-2 pt-1 text-[12.5px] font-semibold">
+            <span class="block truncate px-2 pt-1 text-[0.7812rem] font-semibold">
               {b.name}{b.completed ? ' ✓' : ''}
             </span>
           </div>
@@ -48,9 +48,9 @@
               {:else}
                 <span class="block h-3 w-0.5 bg-text" title={i.title}></span>
               {/if}
-              <span class="whitespace-nowrap text-[11.5px]">{i.title}</span>
+              <span class="whitespace-nowrap text-[0.7188rem]">{i.title}</span>
               {#if i.outside}
-                <span class="rounded-sm bg-sunk px-1 text-[10.5px] text-warn-text">outside</span>
+                <span class="rounded-sm bg-sunk px-1 text-[0.6562rem] text-warn-text">outside</span>
               {/if}
             </div>
           {/each}

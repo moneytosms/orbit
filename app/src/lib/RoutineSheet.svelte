@@ -26,7 +26,7 @@
   } = $props()
 
   const inputClass =
-    'h-[34px] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
+    'h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
 
   let name = $state('')
   let kind = $state<Schedule['kind']>('daily')

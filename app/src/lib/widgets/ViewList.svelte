@@ -22,9 +22,9 @@
 {#if loaded && rows.length === 0}
   <Empty icon={ListChecks} text="This view has no items yet." label="Add a task" href="#/inbox" />
 {/if}
-<ul class="grid gap-0.5">
+<ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
   {#each rows as r (r.id)}
-    <li class="flex min-h-[32px] items-center gap-3 px-1">
+    <li class="flex min-h-[2rem] items-center gap-3 px-1">
       <span class="min-w-0 flex-1 truncate">{label(r)}</span>
       {#if due(r)}<span class="shrink-0 text-xs text-muted">{due(r)}</span>{/if}
     </li>

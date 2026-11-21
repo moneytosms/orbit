@@ -109,7 +109,7 @@
     stat('Active goals', stats.activeGoals),
   ])
   const tabClass = (on: boolean) =>
-    `h-[34px] rounded-md px-3 text-sm ${on ? 'bg-accent-soft text-accent-text' : 'text-muted hover:bg-hover'}`
+    `h-[2.125rem] rounded-md px-3 text-sm ${on ? 'bg-accent-soft text-accent-text' : 'text-muted hover:bg-hover'}`
 </script>
 
 {#if area}

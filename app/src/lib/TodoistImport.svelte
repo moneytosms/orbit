@@ -41,7 +41,7 @@
   }
 
   const select =
-    'h-[34px] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
+    'h-[2.125rem] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
   const fresh = (p: Plan) => p.tasks - p.imported
 </script>
 
@@ -73,7 +73,7 @@
         <li class="flex flex-wrap items-center gap-2 border-b border-line py-2 last:border-0">
           <div class="min-w-40 flex-1">
             <div class="truncate font-medium">{p.path}</div>
-            <div class="text-[12.5px] text-muted">{fresh(p)} new of {p.tasks} tasks</div>
+            <div class="text-[0.7812rem] text-muted">{fresh(p)} new of {p.tasks} tasks</div>
           </div>
           <select bind:value={p.kind} aria-label="Becomes, {p.path}" class={select}>
             <option value="area">Area</option>

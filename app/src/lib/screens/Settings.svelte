@@ -305,7 +305,7 @@
       <span class="size-2.5" style:background={p.main}></span>
     </span>
     <span>{p.name.replaceAll('_', ' ')}</span>
-    <span class="text-[12px] text-icon">{gradeLabel[p.grade]}</span>
+    <span class="text-[0.75rem] text-icon">{gradeLabel[p.grade]}</span>
   </button>
 {/snippet}
 
@@ -316,7 +316,7 @@
   >
     <div class="min-w-0 flex-1 basis-56">
       <div id={labelId} class="font-medium">{label}</div>
-      <div class="text-[12.5px] text-muted">{help}</div>
+      <div class="text-[0.7812rem] text-muted">{help}</div>
     </div>
     {@render control()}
   </div>
@@ -424,7 +424,7 @@
         </details>
 
         {#if active}
-          <h3 class="mt-3 mb-1.5 text-[12.5px] font-medium text-muted">
+          <h3 class="mt-3 mb-1.5 text-[0.7812rem] font-medium text-muted">
             Mapping for {active.name.replaceAll('_', ' ')}
           </h3>
           <div class="flex flex-wrap gap-0.5 rounded-[9px] bg-sunk p-[3px]" role="group" aria-label="Mapping">
@@ -487,7 +487,7 @@
           bind:value={startView}
           onchange={() => setStartView(startView)}
           aria-label="Start view"
-          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
         >
           <option value="">Inbox</option>
           <option value="upcoming">Upcoming</option>
@@ -502,7 +502,7 @@
           bind:value={weekStart}
           onchange={() => setWeekStart(Number(weekStart))}
           aria-label="Week starts on"
-          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
         >
           <option value="1">Monday</option>
           <option value="0">Sunday</option>
@@ -514,7 +514,7 @@
           bind:value={dayStart}
           onchange={() => dayStart && setDayStart(dayStart)}
           aria-label="Day start"
-          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
         />
       {/snippet}
       {#snippet zoneControl()}
@@ -522,7 +522,7 @@
           bind:value={timezone}
           onchange={() => setTimezone(timezone)}
           aria-label="Timezone"
-          class="h-[34px] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
         >
           <option value="">This device</option>
           {#each zones as z (z)}
@@ -542,14 +542,14 @@
       <ul>
         {#each list as d (d.id)}
           {@const Icon = icon(d.platform)}
-          <li class="flex min-h-[42px] items-center gap-3 border-b border-line py-2 last:border-0">
+          <li class="flex min-h-[2.625rem] items-center gap-3 border-b border-line py-2 last:border-0">
             <Icon size={16} class="shrink-0 text-icon" />
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="truncate font-medium">{d.name}</span>
                 {#if d.current}<span class="chip bg-accent-soft text-accent-text">This device</span>{/if}
               </div>
-              <div class="text-[12.5px] text-muted">
+              <div class="text-[0.7812rem] text-muted">
                 {d.platform} · added {when(d.created)} · last seen {when(d.last_seen)}
               </div>
             </div>

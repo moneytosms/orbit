@@ -194,14 +194,14 @@
     <div class="flex items-center gap-2">
       <h2 class="flex-1 truncate font-semibold">
         {p.name}
-        {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[11.5px] font-normal">Current</span>{/if}
-        {#if p.locked}<span class="ml-1 rounded-sm bg-sunk px-1.5 text-[11.5px] font-normal">Locked</span>{/if}
+        {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[0.7188rem] font-normal">Current</span>{/if}
+        {#if p.locked}<span class="ml-1 rounded-sm bg-sunk px-1.5 text-[0.7188rem] font-normal">Locked</span>{/if}
       </h2>
-      <span class="text-[12.5px] text-muted">{pct(p.progress)}</span>
+      <span class="text-[0.7812rem] text-muted">{pct(p.progress)}</span>
       <Button variant="ghost" size="sm" onclick={() => toggle(p)}>{p.completed ? 'Reopen' : 'Complete'}</Button>
     </div>
-    {#if span(p)}<p class="text-[12.5px] text-muted">{span(p)}</p>{/if}
-    {#if p.gate_title}<p class="text-[12.5px] text-muted">After {p.gate_title}</p>{/if}
+    {#if span(p)}<p class="text-[0.7812rem] text-muted">{span(p)}</p>{/if}
+    {#if p.gate_title}<p class="text-[0.7812rem] text-muted">After {p.gate_title}</p>{/if}
     {@render bar(p.progress)}
   {/snippet}
 
@@ -210,7 +210,7 @@
       aria-label="Move to phase"
       value={phaseId ?? ''}
       onchange={(e) => place(itemId, e.currentTarget.value || null)}
-      class="h-6 max-w-28 rounded-md border border-line bg-surface px-1 text-[12px]"
+      class="h-6 max-w-28 rounded-md border border-line bg-surface px-1 text-[0.75rem]"
     >
       <option value="">Unplaced</option>
       {#each phases as q (q.id)}
@@ -239,9 +239,9 @@
           <ul class="flex flex-col gap-1">
             {#each p.items as i (i.id)}
               <li class="flex flex-col gap-1">
-                <div class="flex items-center gap-2 text-[13.5px]">
+                <div class="flex items-center gap-2 text-[0.8438rem]">
                   <span class="min-w-0 flex-1 truncate">{i.title}</span>
-                  <span class="text-[11.5px] text-muted">{i.kind}</span>
+                  <span class="text-[0.7188rem] text-muted">{i.kind}</span>
                   {@render move(i.id, p.id)}
                 </div>
                 {@render bar(i.progress)}
@@ -279,10 +279,10 @@
               draggable="true"
               ondragstart={() => (dragging = i.id)}
               ondragend={() => (dragging = over = null)}
-              class="flex cursor-grab flex-col gap-1 rounded-md border border-line bg-surface p-2 text-[13.5px] shadow-1"
+              class="flex cursor-grab flex-col gap-1 rounded-md border border-line bg-surface p-2 text-[0.8438rem] shadow-1"
             >
               <span class="truncate">{i.title}</span>
-              <span class="text-[11.5px] text-muted">{i.kind}</span>
+              <span class="text-[0.7188rem] text-muted">{i.kind}</span>
               {#if p}{@render bar((i as PhaseSummary['items'][number]).progress)}{/if}
             </div>
           {/each}
@@ -293,12 +293,12 @@
 
   {#if unplaced.length && mode !== 'board'}
     <section class="mt-4 {mode === 'canvas' ? 'desk:hidden' : ''}">
-      <h2 class="pb-1 text-[12.5px] font-semibold text-muted">Add to a phase</h2>
+      <h2 class="pb-1 text-[0.7812rem] font-semibold text-muted">Add to a phase</h2>
       <ul class="flex flex-col gap-1">
         {#each unplaced as c (c.id)}
-          <li class="flex items-center gap-2 text-[13.5px]">
+          <li class="flex items-center gap-2 text-[0.8438rem]">
             <span class="min-w-0 flex-1 truncate">{c.title}</span>
-            <span class="text-[11.5px] text-muted">{c.kind}</span>
+            <span class="text-[0.7188rem] text-muted">{c.kind}</span>
             {@render move(c.id, null)}
           </li>
         {/each}

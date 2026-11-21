@@ -39,14 +39,14 @@
     href="#/inbox"
   />
 {/if}
-<ul class="grid gap-0.5">
+<ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
   {#each items as i (i.id)}
-    <li class="flex min-h-[36px] items-center gap-3 rounded-[9px] px-1 hover:bg-hover">
+    <li class="flex min-h-[2.25rem] items-center gap-3 rounded-[9px] px-1 hover:bg-hover">
       <button
         type="button"
         aria-label="Complete {i.title}"
         onclick={() => done(i)}
-        class="grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
+        class="grid size-[1.125rem] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
         ><Check size={12} strokeWidth={3} /></button
       >
       <div class="min-w-0 flex-1">

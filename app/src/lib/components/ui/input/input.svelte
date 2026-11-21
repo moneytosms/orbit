@@ -25,7 +25,7 @@
 		bind:this={ref}
 		data-slot={dataSlot}
 		class={cn(
-			"h-[34px] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none transition-colors placeholder:text-muted focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)] aria-invalid:border-danger disabled:cursor-not-allowed disabled:bg-sunk disabled:text-muted",
+			"h-[2.125rem] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none transition-colors placeholder:text-muted focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)] aria-invalid:border-danger disabled:cursor-not-allowed disabled:bg-sunk disabled:text-muted",
 			className
 		)}
 		type="file"
@@ -38,7 +38,7 @@
 		bind:this={ref}
 		data-slot={dataSlot}
 		class={cn(
-			"h-[34px] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none transition-colors placeholder:text-muted focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)] aria-invalid:border-danger disabled:cursor-not-allowed disabled:bg-sunk disabled:text-muted",
+			"h-[2.125rem] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none transition-colors placeholder:text-muted focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)] aria-invalid:border-danger disabled:cursor-not-allowed disabled:bg-sunk disabled:text-muted",
 			className
 		)}
 		{type}

@@ -243,11 +243,11 @@
 <div class="flex gap-3 overflow-x-auto pb-3" role="group" aria-label="Board">
   {#each cols as c (c.key)}
     <section aria-label="{c.title} column" class="flex w-[260px] shrink-0 flex-col rounded-xl bg-hover/50 p-2">
-      <h3 class="mb-2 px-1 text-[12.5px] font-semibold text-muted">
+      <h3 class="mb-2 px-1 text-[0.7812rem] font-semibold text-muted">
         {c.title} <span class="font-normal">{c.rows.length}</span>
       </h3>
       <ul
-        class="flex min-h-[48px] flex-1 flex-col gap-2"
+        class="flex min-h-[3rem] flex-1 flex-col gap-2"
         use:dndzone={{
           items: c.rows,
           type: 'card',

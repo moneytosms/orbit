@@ -191,12 +191,12 @@
 </script>
 
 {#snippet icon(kind: string, progress: number)}
-  {#if kind === 'milestone'}<Diamond class="size-[15px] shrink-0 text-warn" />
-  {:else if kind === 'goal'}<Target class="size-[15px] shrink-0 text-accent" />
-  {:else if kind === 'project'}<Folder class="size-[15px] shrink-0 text-icon" />
-  {:else if progress >= 1}<CircleCheck class="size-[15px] shrink-0 text-ok" />
-  {:else if progress > 0}<CircleDot class="size-[15px] shrink-0 text-accent" />
-  {:else}<Circle class="size-[15px] shrink-0 text-icon" />{/if}
+  {#if kind === 'milestone'}<Diamond class="size-[0.9375rem] shrink-0 text-warn" />
+  {:else if kind === 'goal'}<Target class="size-[0.9375rem] shrink-0 text-accent" />
+  {:else if kind === 'project'}<Folder class="size-[0.9375rem] shrink-0 text-icon" />
+  {:else if progress >= 1}<CircleCheck class="size-[0.9375rem] shrink-0 text-ok" />
+  {:else if progress > 0}<CircleDot class="size-[0.9375rem] shrink-0 text-accent" />
+  {:else}<Circle class="size-[0.9375rem] shrink-0 text-icon" />{/if}
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
@@ -208,7 +208,7 @@
   onpointerdown={down}
   onwheel={wheel}
   onkeydown={key}
-  class="relative h-[calc(100vh/var(--zoom,1)-190px)] min-h-[460px] touch-none overflow-hidden rounded-2xl border border-line bg-bg outline-none focus-visible:ring-2 focus-visible:ring-accent {panning
+  class="relative h-[calc(100vh/var(--zoom,1)-190px)] min-h-[28.75rem] touch-none overflow-hidden rounded-2xl border border-line bg-bg outline-none focus-visible:ring-2 focus-visible:ring-accent {panning
     ? 'cursor-grabbing'
     : 'cursor-grab'}"
   style="background-image: radial-gradient(color-mix(in srgb, var(--border-strong) 75%, transparent) 1px, transparent 1px); background-size: {22 *
@@ -292,16 +292,16 @@
           <button
             type="button"
             onclick={() => (sel = { kind: 'phase', id: p.id })}
-            class="flex w-full cursor-pointer items-center gap-2 text-left text-[15px] font-semibold"
+            class="flex w-full cursor-pointer items-center gap-2 text-left text-[0.9375rem] font-semibold"
           >
             {#if st === 'done'}<CircleCheck class="size-4 text-ok" />
             {:else if st === 'locked'}<Lock class="size-4 text-icon" />
             {:else if st === 'active'}<CircleDot class="size-4 text-accent" />
             {:else}<Circle class="size-4 text-icon" />{/if}
             <span class="min-w-0 flex-1 truncate">{p.name}</span>
-            <span class="text-[12.5px] font-medium text-muted tabular-nums">{pct(p.progress)}</span>
+            <span class="text-[0.7812rem] font-medium text-muted tabular-nums">{pct(p.progress)}</span>
           </button>
-          <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+          <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[0.75rem] text-muted">
             {#if span(p)}<span class="rounded-full bg-sunk px-2 py-0.5">{span(p)}</span>{/if}
             {#if p.gate_title}
               <span
@@ -336,7 +336,7 @@
         onpointerup={drop}
         onkeydown={(e) =>
           (e.key === 'Enter' || e.key === ' ') && ((sel = { kind: 'step', id: s.id }), e.preventDefault())}
-        class="absolute flex touch-none flex-col justify-center border bg-surface px-3 text-[13.5px] select-none {s.item
+        class="absolute flex touch-none flex-col justify-center border bg-surface px-3 text-[0.8438rem] select-none {s.item
           .kind === 'milestone'
           ? 'rounded-full border-warn/40 bg-warn-soft'
           : 'rounded-xl'} {locked ? 'border-dashed border-border-strong' : 'border-line shadow-1'} {sel?.kind ===
@@ -352,7 +352,7 @@
           <span class="min-w-0 flex-1 truncate">{s.item.title}</span>
         </div>
         {#if s.item.kind !== 'milestone'}
-          <div class="mt-1.5 flex items-center gap-2 text-[12px] text-muted">
+          <div class="mt-1.5 flex items-center gap-2 text-[0.75rem] text-muted">
             <span class="h-1 flex-1 overflow-hidden rounded-full bg-sunk">
               <span
                 class="block h-full rounded-full {s.item.progress >= 1 ? 'bg-ok' : 'bg-accent'}"
@@ -377,7 +377,7 @@
       data-ui
       class="absolute top-3 left-3 z-10 flex max-h-[60%] w-52 flex-col gap-1 overflow-auto rounded-xl border border-line bg-surface p-2 shadow-1"
     >
-      <p class="px-1 text-[12px] font-semibold text-muted">Unplaced · drag onto a phase</p>
+      <p class="px-1 text-[0.75rem] font-semibold text-muted">Unplaced · drag onto a phase</p>
       {#each unplaced as c (c.id)}
         {@const moving = drag?.live && drag.id === c.id}
         <div
@@ -385,7 +385,7 @@
           onpointerdown={(e) => grab(e, c.id, null)}
           onpointermove={carry}
           onpointerup={drop}
-          class="flex cursor-grab touch-none items-center gap-2 rounded-md border border-line bg-surface px-2 py-1 text-[13px] select-none {moving
+          class="flex cursor-grab touch-none items-center gap-2 rounded-md border border-line bg-surface px-2 py-1 text-[0.8125rem] select-none {moving
             ? 'relative z-30 opacity-80 shadow-2'
             : ''}"
           style={moving ? `transform: translate(${drag!.dx}px, ${drag!.dy}px)` : ''}
@@ -404,7 +404,7 @@
     <Button variant="ghost" size="sm" aria-label="Zoom out" onclick={() => zoom(1 / 1.2)}
       ><Minus class="size-4" /></Button
     >
-    <span class="w-12 text-center text-[12.5px] tabular-nums" aria-live="polite">{Math.round(view.z * 100)}%</span>
+    <span class="w-12 text-center text-[0.7812rem] tabular-nums" aria-live="polite">{Math.round(view.z * 100)}%</span>
     <Button variant="ghost" size="sm" aria-label="Zoom in" onclick={() => zoom(1.2)}><Plus class="size-4" /></Button>
     <Button
       variant="ghost"
@@ -422,7 +422,7 @@
       class="absolute top-3 right-3 z-20 max-h-[calc(100%-24px)] w-[300px] overflow-auto rounded-[14px] border border-line bg-surface p-3.5 shadow-2"
     >
       <div class="flex items-center gap-2">
-        <h2 class="flex-1 text-[12.5px] font-semibold text-muted">{selPhase ? 'Phase' : 'Step'}</h2>
+        <h2 class="flex-1 text-[0.7812rem] font-semibold text-muted">{selPhase ? 'Phase' : 'Step'}</h2>
         <Button variant="ghost" size="sm" aria-label="Close panel" onclick={() => (sel = null)}
           ><X class="size-4" /></Button
         >
@@ -435,10 +435,10 @@
             value={p.name}
             onblur={(e) => rename(e, p)}
             onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            class="mt-1.5 w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[16px] font-semibold outline-none focus:border-accent-line"
+            class="mt-1.5 w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[1rem] font-semibold outline-none focus:border-accent-line"
           />
         {/key}
-        <dl class="my-3 grid grid-cols-[72px_1fr] items-center gap-x-2.5 gap-y-2 text-[13.5px]">
+        <dl class="my-3 grid grid-cols-[72px_1fr] items-center gap-x-2.5 gap-y-2 text-[0.8438rem]">
           <dt class="text-muted"><label for="rc-start">Start</label></dt>
           <dd>
             <input
@@ -475,7 +475,7 @@
           </dd>
         </dl>
         {#if p.locked}
-          <p class="mb-3 flex items-start gap-2 rounded-lg bg-accent-soft p-2 text-[12.5px] text-accent-text">
+          <p class="mb-3 flex items-start gap-2 rounded-lg bg-accent-soft p-2 text-[0.7812rem] text-accent-text">
             <Lock class="mt-0.5 size-3.5 shrink-0" /> Locked until “{p.gate_title}” is done. Its items stay workable.
           </p>
         {/if}
@@ -484,9 +484,9 @@
         </Button>
       {:else if selStep}
         {@const s = selStep}
-        <p class="mt-1.5 truncate text-[16px] font-semibold">{s.item.title}</p>
-        <p class="text-[12.5px] text-muted">{s.item.kind} · {pct(s.item.progress)}</p>
-        <dl class="my-3 grid grid-cols-[72px_1fr] items-start gap-x-2.5 gap-y-2 text-[13.5px]">
+        <p class="mt-1.5 truncate text-[1rem] font-semibold">{s.item.title}</p>
+        <p class="text-[0.7812rem] text-muted">{s.item.kind} · {pct(s.item.progress)}</p>
+        <dl class="my-3 grid grid-cols-[72px_1fr] items-start gap-x-2.5 gap-y-2 text-[0.8438rem]">
           <dt class="pt-1.5 text-muted"><label for="rc-phase">Phase</label></dt>
           <dd>
             <select
@@ -505,7 +505,7 @@
           <dd class="flex flex-col gap-1.5">
             <ul class="flex flex-col gap-1">
               {#each s.item.links as to (to)}
-                <li class="flex items-center gap-1 rounded-md bg-sunk px-2 py-1 text-[12.5px]">
+                <li class="flex items-center gap-1 rounded-md bg-sunk px-2 py-1 text-[0.7812rem]">
                   <span class="min-w-0 flex-1 truncate">{titleOf(to)}</span>
                   <button
                     type="button"

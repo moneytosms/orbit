@@ -75,7 +75,7 @@
 </script>
 
 {#snippet ownerField()}
-  <label class="flex flex-col gap-1 text-[13px]">
+  <label class="flex flex-col gap-1 text-[0.8125rem]">
     Owner
     <select bind:value={owner} class="h-9 rounded-md border border-line bg-surface px-2 text-sm">
       {#if extra}<option value={ownerId}>{ownerName || 'This item'}</option>{/if}
@@ -108,17 +108,17 @@
     {#if tab === 'plan'}
       <form onsubmit={create} class="flex flex-col gap-3">
         {@render ownerField()}
-        <label class="flex flex-col gap-1 text-[13px]">
+        <label class="flex flex-col gap-1 text-[0.8125rem]">
           Name
           <Input bind:value={name} placeholder="30-day plan" />
         </label>
-        <label class="flex flex-col gap-1 text-[13px]">
+        <label class="flex flex-col gap-1 text-[0.8125rem]">
           Start date
           <Input type="date" bind:value={start} />
         </label>
         <ul class="flex flex-col gap-1" aria-label="Phases">
           {#each phases as p, i (i)}
-            <li class="flex items-center gap-2 text-[13px]">
+            <li class="flex items-center gap-2 text-[0.8125rem]">
               <Input bind:value={names[i]} aria-label="Phase {i + 1} name" class="min-w-0 flex-1" />
               <span class="text-muted">{p.start} – {p.end}</span>
             </li>
@@ -130,7 +130,7 @@
       </form>
     {:else}
       {@render ownerField()}
-      <label class="flex flex-col gap-1 text-[13px]">
+      <label class="flex flex-col gap-1 text-[0.8125rem]">
         Name
         <Input bind:value={name} placeholder="Imported roadmap" />
       </label>
