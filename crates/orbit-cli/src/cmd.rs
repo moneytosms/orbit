@@ -299,25 +299,25 @@ struct Entry {
     done: bool,
 }
 
-/// Prints a listing, saves it for ref lookups, and truncates to `LIMIT` unless `all`.
-fn present(
-    dir: &Path,
-    entries: Vec<Entry>,
+struct ListingView<'a> {
     all: bool,
-    empty: &str,
+    empty: &'a str,
     wide: bool,
     no_color: bool,
     next: bool,
-    all_ids: &[Uuid],
-) -> Done {
+    all_ids: &'a [Uuid],
+}
+
+/// Prints a listing, saves it for ref lookups, and truncates to `LIMIT` unless `all`.
+fn present(dir: &Path, entries: Vec<Entry>, view: ListingView<'_>) -> Done {
     let total = entries.len();
-    let shown = if all { total } else { total.min(LIMIT) };
+    let shown = if view.all { total } else { total.min(LIMIT) };
     let entries = &entries[..shown];
     let ids: Vec<Uuid> = entries.iter().map(|e| e.id).collect();
     refs::save_listing(dir, &ids)?;
     let truncated = shown < total;
     let mut human = if total == 0 {
-        empty.to_string()
+        view.empty.to_string()
     } else {
         let rows: Vec<Vec<String>> = entries
             .iter()
@@ -329,14 +329,14 @@ fn present(
                     e.due.clone(),
                     e.priority.clone(),
                 ];
-                if next {
+                if view.next {
                     row.push(e.reason.clone());
                 }
                 row.push(e.context.clone());
-                if wide {
-                    row.extend([id_prefix(e.id, all_ids, shown), e.description.clone()]);
+                if view.wide {
+                    row.extend([id_prefix(e.id, view.all_ids, shown), e.description.clone()]);
                 }
-                if !no_color {
+                if !view.no_color {
                     if !e.due.is_empty() {
                         let due_date = e.due.get(..10).unwrap_or(&e.due);
                         let today = today_string((now_ms() / 86_400_000) as i64);
@@ -351,7 +351,7 @@ fn present(
                             row[2] = format!("{color}{}\u{1b}[0m", row[2]);
                         }
                     }
-                    if next {
+                    if view.next {
                         let color = if e.reason == "Overdue" {
                             "\u{1b}[31m"
                         } else if e.reason == "Due today" {
@@ -369,7 +369,7 @@ fn present(
                         }
                     }
                     if !e.context.is_empty() {
-                        let i = if next { 5 } else { 4 };
+                        let i = if view.next { 5 } else { 4 };
                         row[i] = format!("\u{1b}[2m{}\u{1b}[0m", row[i]);
                     }
                 }
@@ -377,11 +377,11 @@ fn present(
             })
             .collect();
         let mut headers = vec!["#", "TITLE", "DUE", "P"];
-        if next {
+        if view.next {
             headers.push("WHY");
         }
         headers.push("CONTEXT");
-        if wide {
+        if view.wide {
             headers.extend(["ID", "DESCRIPTION / SOURCE"]);
         }
         let term_width = std::env::var("COLUMNS")
@@ -394,7 +394,11 @@ fn present(
         table(
             &headers,
             &rows,
-            if wide { usize::MAX / 4 } else { term_width },
+            if view.wide {
+                usize::MAX / 4
+            } else {
+                term_width
+            },
         )
     };
     let mut body = json!({
@@ -506,12 +510,14 @@ pub fn ls(all: bool, wide: bool, no_color: bool) -> Done {
     present(
         &ctx.dir,
         task_entries(&tasks, &ctx.client),
-        all,
-        "no tasks",
-        wide,
-        no_color,
-        false,
-        &ids,
+        ListingView {
+            all,
+            empty: "no tasks",
+            wide,
+            no_color,
+            next: false,
+            all_ids: &ids,
+        },
     )
 }
 
@@ -546,12 +552,14 @@ pub fn next(all: bool, wide: bool, no_color: bool) -> Done {
     present(
         &ctx.dir,
         entries,
-        all,
-        "nothing to do next",
-        wide,
-        no_color,
-        true,
-        &ids,
+        ListingView {
+            all,
+            empty: "nothing to do next",
+            wide,
+            no_color,
+            next: true,
+            all_ids: &ids,
+        },
     )
 }
 
@@ -601,12 +609,14 @@ pub fn search(words: &[String], all: bool, wide: bool, no_color: bool) -> Done {
     present(
         &ctx.dir,
         entries,
-        all,
-        &format!("no tasks match `{query}`"),
-        wide,
-        no_color,
-        false,
-        &ids,
+        ListingView {
+            all,
+            empty: &format!("no tasks match `{query}`"),
+            wide,
+            no_color,
+            next: false,
+            all_ids: &ids,
+        },
     )
 }
 
