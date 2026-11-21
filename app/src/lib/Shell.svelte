@@ -2,7 +2,8 @@
   import Menu from '@lucide/svelte/icons/menu'
   import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
-  import type { Snippet } from 'svelte'
+  import X from '@lucide/svelte/icons/x'
+  import { tick, type Snippet } from 'svelte'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import * as Sheet from '$lib/components/ui/sheet'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -56,6 +57,7 @@
   let help = $state(false)
   let prefill = $state('')
   let wide = $state(false)
+  let composerOpener: HTMLElement | null = null
 
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
@@ -68,6 +70,14 @@
   $effect(() => {
     void areas
     loadViews()
+  })
+  $effect(() => {
+    if (composing || !composerOpener) return
+    const opener = composerOpener
+    composerOpener = null
+    void tick().then(() => {
+      if (opener.isConnected) opener.focus()
+    })
   })
   async function loadViews() {
     // Inbox and Upcoming have fixed nav rows instead of pins.
@@ -88,6 +98,7 @@
 
   // Desktop gets a centred Dialog, phones a bottom Sheet.
   function open(text = '') {
+    composerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     drawer = false
     prefill = text
     wide = matchMedia('(min-width: 768px)').matches
@@ -393,9 +404,19 @@
   </Sheet.Content>
 </Sheet.Root>
 
-{#snippet composer()}
-  <Dialog.Title class="sr-only">New task</Dialog.Title>
-  <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
+{#snippet composerHeader()}
+  <div class="flex items-center justify-between gap-3">
+    <h2 id="new-task-title" class="text-base font-semibold">New task</h2>
+    <Button
+      variant="ghost"
+      size="icon"
+      class="!size-[44px]"
+      aria-label="Close new task"
+      onclick={() => (composing = false)}
+    >
+      <X size={16} />
+    </Button>
+  </div>
 {/snippet}
 
 <Palette bind:open={palette} {parentId} />
@@ -403,14 +424,25 @@
 
 {#if wide}
   <Dialog.Root bind:open={composing}>
-    <Dialog.Content>
-      {@render composer()}
+    <Dialog.Content
+      class="w-[min(768px,calc(100vw-2rem))] min-w-0"
+      aria-labelledby="new-task-title"
+      showCloseButton={false}
+    >
+      {@render composerHeader()}
+      <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
     </Dialog.Content>
   </Dialog.Root>
 {:else}
   <Sheet.Root bind:open={composing}>
-    <Sheet.Content side="bottom" class="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" showCloseButton={false}>
-      {@render composer()}
+    <Sheet.Content
+      side="bottom"
+      class="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+      aria-labelledby="new-task-title"
+      showCloseButton={false}
+    >
+      {@render composerHeader()}
+      <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
     </Sheet.Content>
   </Sheet.Root>
 {/if}
