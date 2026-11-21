@@ -212,23 +212,34 @@
           {#if a.projects.length > 4}
             <span class="pl-6 text-[12.5px] text-muted">+{a.projects.length - 4} more</span>
           {/if}
-          <form onsubmit={(e) => addProject(e, a.id)} class="px-2">
+          <form
+            onsubmit={(e) => addProject(e, a.id)}
+            class="flex items-center gap-1.5 px-2 pl-6 text-muted focus-within:text-text"
+          >
+            <Plus size={13} aria-hidden="true" />
             <input
               bind:value={newProject[a.id]}
-              placeholder="New project"
-              aria-label="New project in {a.area.name}"
-              class="h-7 w-full bg-transparent pl-4 text-[13px] outline-none placeholder:text-muted"
+              placeholder="Add project"
+              aria-label="Add project in {a.area.name}"
+              class="h-7 w-full bg-transparent text-[13px] outline-none placeholder:text-muted"
             />
           </form>
         </li>
       {/each}
     </ul>
-    <form onsubmit={addArea} class="px-2">
+    {#if areas.length === 0}
+      <p class="px-2.5 text-[13px] text-muted">No areas yet. Name your first one below, for example Work or Home.</p>
+    {/if}
+    <form
+      onsubmit={addArea}
+      class="mx-2 flex items-center gap-1.5 rounded-[7px] border border-dashed border-line-strong px-2 text-muted focus-within:border-accent focus-within:text-text"
+    >
+      <Plus size={14} aria-hidden="true" />
       <input
         bind:value={newArea}
-        placeholder="New area"
-        aria-label="New area"
-        class="h-7 w-full bg-transparent text-[13.5px] outline-none placeholder:text-muted"
+        placeholder="Add area"
+        aria-label="Add area"
+        class="h-8 w-full bg-transparent text-[13.5px] outline-none placeholder:text-muted"
       />
     </form>
   </section>
@@ -239,8 +250,8 @@
     <div class="flex items-center gap-2 px-1.5">
       <img src="/icon.svg" alt="" class="size-6" />
       <span class="flex-1 text-[15px] font-semibold">Orbit</span>
-      <Button variant="primary" size="icon" aria-label="New task" onclick={newTask}>
-        <Plus class="text-accent-ink" />
+      <Button variant="primary" size="sm" onclick={newTask}>
+        <Plus size={14} class="text-accent-ink" /> Add task
       </Button>
     </div>
     <nav class="flex flex-col gap-0.5" aria-label="Main">
