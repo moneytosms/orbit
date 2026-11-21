@@ -2,8 +2,10 @@
   import Menu from '@lucide/svelte/icons/menu'
   import Search from '@lucide/svelte/icons/search'
   import Plus from '@lucide/svelte/icons/plus'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
+  import ChevronRight from '@lucide/svelte/icons/chevron-right'
   import X from '@lucide/svelte/icons/x'
-  import { tick, type Snippet } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import * as Sheet from '$lib/components/ui/sheet'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -62,6 +64,7 @@
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
   let newProject = $state<Record<string, string>>({})
+  let areaExpansion = $state<Record<string, boolean>>({})
   let pinned = $state<View[]>([])
   let hiddenViews = $state<View[]>([])
   let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name })))
@@ -70,6 +73,18 @@
   $effect(() => {
     void areas
     loadViews()
+  })
+  onMount(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('orbit.sidebar.area-expansion') ?? '{}')
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        areaExpansion = Object.fromEntries(
+          Object.entries(saved).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+        )
+      }
+    } catch {
+      // Keep project-count defaults when storage is unavailable or invalid.
+    }
   })
   $effect(() => {
     if (composing || !composerOpener) return
@@ -173,6 +188,16 @@
     await createProject(areaId, name)
     newProject[areaId] = ''
   }
+  const areaIsExpanded = (a: AreaItem) =>
+    (screen.name === 'area' && screen.id === a.id) || (areaExpansion[a.id] ?? a.projects.length > 0)
+  function toggleArea(a: AreaItem) {
+    areaExpansion = { ...areaExpansion, [a.id]: !areaIsExpanded(a) }
+    try {
+      localStorage.setItem('orbit.sidebar.area-expansion', JSON.stringify(areaExpansion))
+    } catch {
+      // The choice still applies until the shell reloads.
+    }
+  }
 </script>
 
 <svelte:window {onkeydown} onhashchange={() => clearCursor(setFocusedTask)} />
@@ -191,7 +216,7 @@
   </a>
 {/snippet}
 
-{#snippet areaTree()}
+{#snippet areaTree(instance: string)}
   <section class="flex flex-col gap-1">
     <h2 class="px-2.5 pb-1 text-[0.7812rem] font-semibold text-muted">Areas</h2>
     <ul
@@ -203,45 +228,67 @@
       {#each areaOrder as a (a.id)}
         <li class="flex flex-col gap-0.5">
           <DropTarget parentId={a.id}>
-            <a
-              href="#/area/{a.id}"
-              aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
-              class="flex h-8 items-center rounded-[7px] px-2.5 font-medium hover:bg-hover aria-[current=page]:bg-press"
+            <div
+              class="flex h-8 items-center rounded-[7px] hover:bg-hover"
+              class:bg-press={screen.name === 'area' && screen.id === a.id}
             >
-              {#if a.area.icon}<span aria-hidden="true" class="mr-1.5">{a.area.icon}</span>{/if}{a.area.name}
-            </a>
-          </DropTarget>
-          {#each a.projects.slice(0, 4) as p (p.id)}
-            <DropTarget parentId={p.id}>
               <a
-                href="#/project/{p.id}"
-                aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
-                class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+                href="#/area/{a.id}"
+                aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
+                class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 font-medium"
               >
-                {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
+                {#if a.area.icon}<span aria-hidden="true" class="mr-1.5">{a.area.icon}</span>{/if}{a.area.name}
               </a>
-            </DropTarget>
-          {/each}
-          {#if a.projects.length > 4}
-            <span class="pl-6 text-[0.7812rem] text-muted">+{a.projects.length - 4} more</span>
-          {/if}
-          <form
-            onsubmit={(e) => addProject(e, a.id)}
-            class="flex items-center gap-1.5 px-2 pl-6 text-muted focus-within:text-text"
-          >
-            <Plus size={13} aria-hidden="true" />
-            <input
-              bind:value={newProject[a.id]}
-              placeholder="Add project"
-              aria-label="Add project in {a.area.name}"
-              class="h-7 w-full bg-transparent text-[0.8125rem] outline-none placeholder:text-muted"
-            />
-          </form>
+              <button
+                type="button"
+                aria-label="{areaIsExpanded(a) ? 'Collapse' : 'Expand'} {a.area.name}"
+                aria-expanded={areaIsExpanded(a)}
+                aria-controls="area-projects-{instance}-{a.id}"
+                onclick={() => toggleArea(a)}
+                class="grid size-7 shrink-0 place-items-center rounded-[5px] text-muted hover:bg-press"
+              >
+                {#if areaIsExpanded(a)}<ChevronDown size={14} aria-hidden="true" />{:else}<ChevronRight
+                    size={14}
+                    aria-hidden="true"
+                  />{/if}
+              </button>
+            </div>
+          </DropTarget>
+          <div id="area-projects-{instance}-{a.id}" class="flex flex-col gap-0.5" hidden={!areaIsExpanded(a)}>
+            {#each a.projects.slice(0, 4) as p (p.id)}
+              <DropTarget parentId={p.id}>
+                <a
+                  href="#/project/{p.id}"
+                  aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
+                  class="flex h-7 items-center rounded-[7px] pr-2.5 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+                >
+                  {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
+                </a>
+              </DropTarget>
+            {/each}
+            {#if a.projects.length > 4}
+              <span class="pl-6 text-[0.7812rem] text-muted">+{a.projects.length - 4} more</span>
+            {/if}
+            <form
+              onsubmit={(e) => addProject(e, a.id)}
+              class="flex items-center gap-1.5 px-2 pl-6 text-muted focus-within:text-text"
+            >
+              <Plus size={13} aria-hidden="true" />
+              <input
+                bind:value={newProject[a.id]}
+                placeholder="Add project"
+                aria-label="Add project in {a.area.name}"
+                class="h-7 w-full bg-transparent text-[0.8125rem] outline-none placeholder:text-muted"
+              />
+            </form>
+          </div>
         </li>
       {/each}
     </ul>
     {#if areas.length === 0}
-      <p class="px-2.5 text-[0.8125rem] text-muted">No areas yet. Name your first one below, for example Work or Home.</p>
+      <p class="px-2.5 text-[0.8125rem] text-muted">
+        No areas yet. Name your first one below, for example Work or Home.
+      </p>
     {/if}
     <form
       onsubmit={addArea}
@@ -258,7 +305,7 @@
   </section>
 {/snippet}
 
-{#snippet nav()}
+{#snippet nav(instance: string)}
   <div class="flex h-full flex-col gap-4 overflow-y-auto p-3">
     <div class="flex items-center gap-2 px-1.5">
       <img src="/icon.svg" alt="" class="size-6" />
@@ -281,7 +328,7 @@
       {@render row('roadmaps')}
       {@render row('routines')}
     </nav>
-    {@render areaTree()}
+    {@render areaTree(instance)}
     <section>
       <div class="flex items-center gap-1 px-2.5 pb-1">
         <h2 class="flex-1 text-[0.7812rem] font-semibold text-muted">Views</h2>
@@ -341,7 +388,7 @@
 {/snippet}
 
 <div class="flex h-full">
-  <aside class="hidden w-64 shrink-0 border-r border-line bg-side desk:block">{@render nav()}</aside>
+  <aside class="hidden w-64 shrink-0 border-r border-line bg-side desk:block">{@render nav('desktop')}</aside>
 
   <div class="flex min-w-0 flex-1 flex-col">
     <header class="flex h-12 shrink-0 items-center gap-2 px-2 desk:px-4">
@@ -400,7 +447,7 @@
 <Sheet.Root bind:open={drawer}>
   <Sheet.Content side="left" class="w-64 max-w-[85vw] bg-side p-0" showCloseButton={false}>
     <Sheet.Title class="sr-only">Menu</Sheet.Title>
-    {@render nav()}
+    {@render nav('mobile')}
   </Sheet.Content>
 </Sheet.Root>
 
