@@ -88,7 +88,7 @@ Status: verified on an emulator only. It has not yet been tested on real devices
 `orbit` signs in to a server, keeps a local replica and queues changes offline.
 
 ```sh
-cargo install --path crates/orbit-cli
+curl -fsSL https://raw.githubusercontent.com/moneytosms/orbit/main/scripts/install-cli.sh | sh   # Linux; see docs/cli-install.md
 orbit login https://orbit.example.com   # password via ORBIT_PASSWORD or stdin
 orbit add "buy milk"
 orbit ls

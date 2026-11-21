@@ -1,5 +1,5 @@
 # Runs on the tag that scripts/release.sh --publish pushes. Builds the server image, the
-# AppImage and the signed APK, then creates the GitHub Release with them.
+# AppImage, the signed APK and the orbit CLI (linux x86_64 and aarch64), then creates the GitHub Release with them.
 name: release
 on:
   push:
@@ -116,8 +116,34 @@ jobs:
           name: android
           path: dist/*
 
+  cli:
+    # Oldest runner images on purpose: the binary links glibc, so a lower build glibc runs on more distros.
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-22.04, arch: x86_64 }
+          - { os: ubuntu-22.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - run: cargo build --release --locked -p orbit-cli
+      - name: Package orbit-<version>-linux-<arch>.tar.gz
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="orbit-$VERSION-linux-${{ matrix.arch }}"
+          mkdir -p "dist" "$NAME/man"
+          cp target/release/orbit LICENSE "$NAME/"
+          cp docs/man/*.1 "$NAME/man/"
+          tar -czf "dist/$NAME.tar.gz" "$NAME"
+          "$NAME/orbit" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.arch }}
+          path: dist/*
+
   publish:
-    needs: [image, linux, android]
+    needs: [image, linux, android, cli]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -135,5 +161,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git-cliff --latest --strip header -o notes.md
+          (cd dist && sha256sum -- * > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" --title "Orbit $GITHUB_REF_NAME" \
             --notes-file notes.md dist/*

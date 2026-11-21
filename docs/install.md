@@ -15,7 +15,7 @@ Clients:
 | Web / PWA | any browser; installable on desktop and phone | [2](#2-web--pwa-any-desktop-or-phone-browser) |
 | Linux desktop | AppImage, or AUR `orbit-bin` | [3](#3-linux-desktop) |
 | Android | Android 12+ (minSdk 31), sideloaded APK | [4](#4-android) |
-| CLI and MCP | Linux, macOS, anything with a Rust toolchain | [5](#5-cli-and-mcp) |
+| CLI and MCP | Linux prebuilt; anywhere else from source | [5](#5-cli-and-mcp) |
 
 ## 2. Web / PWA (any desktop or phone browser)
 
@@ -123,26 +123,15 @@ Share any text from another app (browser, notes, a chat) and choose **Orbit**. T
 
 ## 5. CLI and MCP
 
-There is no CLI artifact on the release page. Build it from a checkout of the repo:
+The CLI runs on your own device and needs no checkout or Rust toolchain. On Linux (x86_64 and aarch64):
 
 ```sh
-git clone https://github.com/moneytosms/orbit && cd orbit
-cargo install --path crates/orbit-cli      # installs the `orbit` binary into ~/.cargo/bin
-```
-
-Sign in and use it:
-
-```sh
-orbit login https://orbit.example.com      # password from ORBIT_PASSWORD or stdin; --totp <code> if 2FA is on
-orbit add "buy milk"
+curl -fsSL https://raw.githubusercontent.com/moneytosms/orbit/main/scripts/install-cli.sh | sh
+orbit login https://orbit.example.com
 orbit ls
-orbit done 1
-orbit sync
-orbit export orbit-export.zip              # items.json, Pages as .md, attachments
-orbit guide                                # short reference of commands and exit codes
 ```
 
-Each `orbit login` creates a Device named `orbit-cli` (change it with `--name`). The full reference is in [cli.md](cli.md) and the man pages are in `docs/man/`.
+Install options, sign-in details (`--name`, two-factor codes), `orbit sync`, `orbit logout` and updates are on one page: [cli-install.md](cli-install.md). The full reference is in [cli.md](cli.md) and the man pages are in `docs/man/`.
 
 ### MCP (AI tools)
 
@@ -171,7 +160,7 @@ Or in a project's `.mcp.json`:
 - **Web / PWA:** the service worker updates itself in the background (`registerType: 'autoUpdate'`). Close and reopen the app to load the new version.
 - **Linux AppImage:** the in-app updater installs new releases; restart when it asks. AUR installs: `yay -Syu orbit-bin`.
 - **Android:** install the new APK over the old one, or let Obtainium do it. Android only updates an app when the new APK has the same signature, so always use the release APK and never a debug build.
-- **CLI:** `git pull` in your checkout, then `cargo install --path crates/orbit-cli --force`.
+- **CLI:** run the install command again (see [cli-install.md](cli-install.md#4-update)).
 
 Run `orbit sync` before a CLI update so you do not leave queued changes behind.
 
