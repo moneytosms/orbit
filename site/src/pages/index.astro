@@ -25,10 +25,26 @@ const stars = Array.from({ length: 64 }, () => ({
   z: (0.3 + rnd() * 1.2).toFixed(2),
 }));
 
-const tabs = [
-  { id: "home", label: "Home", img: "home-desktop.webp", alt: "Orbit Home: what is due, routines, upcoming tasks and goal progress.", text: "Home gathers what is due, what slipped, how far each goal has come and which routine you still owe today." },
-  { id: "goals", label: "Goals", img: "goals-desktop.webp", alt: "Orbit Goals with milestones and progress bars.", text: "Goals have milestones and a target date, and roll their progress up from sub-goals." },
-  { id: "routines", label: "Routines", img: "routines-desktop.webp", alt: "Orbit Routines with check-ins and streaks.", text: "Routines have check-ins and a streak, kept apart from recurring tasks so a habit never becomes a pile of overdue to-dos." },
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+// Builds run from site/, so public/ is relative to the working directory.
+const has = (f: string) => existsSync(join(process.cwd(), "public/shots", f));
+// One step per screen. Add a step by dropping its screenshot into public/shots/ and adding a row.
+const steps = [
+  { id: "capture", kicker: "Capture", title: "Type it the way you say it.", text: "Dates, times, priority and where it lives are read straight out of the sentence, in the app, the widgets, the hotkey and the command line.", img: "composer-desktop.webp", alt: "Orbit quick add with a typed sentence and its parsed date, priority and place." },
+  { id: "today", kicker: "Today", title: "Open it and see what matters now.", text: "Home gathers what is due, what slipped, how far each goal has come and which routine you still owe today.", img: "home-desktop.webp", alt: "Orbit Home: what is due, routines, upcoming tasks and goal progress." },
+  { id: "projects", kicker: "Projects", title: "Lists, boards and tables for the work itself.", text: "Switch any project between a list, a board and a table, and keep its pages and notes right beside the tasks.", img: "board-desktop.webp", alt: "An Orbit project as a board with columns of tasks." },
+  { id: "goals", kicker: "Goals", title: "A goal has a finish line.", text: "Milestones, a target date, and progress that rolls up from sub-goals, so you can see how far along you are.", img: "goals-desktop.webp", alt: "Orbit Goals with milestones and progress bars." },
+  { id: "routines", kicker: "Routines", title: "Habits get streaks, not overdue piles.", text: "Check in each day. Routines are kept apart from recurring tasks, so a habit never turns into a list of missed to-dos.", img: "routines-desktop.webp", alt: "Orbit Routines with check-ins and streaks." },
+  { id: "roadmaps", kicker: "Roadmaps", title: "Plan the long game in phases.", text: "A roadmap lays out ordered phases that gather your goals, projects and tasks, over any span of time, without moving them.", img: "roadmap-desktop.webp", alt: "An Orbit roadmap with three phases." },
+  { id: "search", kicker: "Everywhere", title: "Everything is a keystroke away.", text: "Search tasks, projects and pages, jump anywhere, and run commands, including switching theme, from one palette.", img: "palette-desktop.webp", alt: "Orbit command palette searching for a task." },
+].map((t) => ({ ...t, dark: has(t.img.replace("-desktop", "-dark-desktop")) ? t.img.replace("-desktop", "-dark-desktop") : "" }));
+
+const principles = [
+  { t: "Everything in one place", d: "Tasks, goals, routines, roadmaps and long-term plans live side by side. Most planners make you pick two or three and stitch the rest together." },
+  { t: "A haven for meticulous planners", d: "Break a goal into milestones and sub-goals, lay a roadmap out in ordered phases that gather your goals, projects and tasks, and watch progress roll up." },
+  { t: "Blazing fast", d: "Every action lands instantly because it happens on your device first. Capture a task in a keystroke and keep moving." },
+  { t: "Open source, and yours", d: "AGPL-3.0, built in the open, on a small server and one SQLite file that you own." },
 ];
 ---
 
@@ -173,11 +189,20 @@ const tabs = [
     </figure>
   </section>
 
+  <section class="principles reveal" aria-label="What Orbit stands for">
+    {principles.map((p) => (
+      <div>
+        <h3>{p.t}</h3>
+        <p>{p.d}</p>
+      </div>
+    ))}
+  </section>
+
   <section id="tour" class="tour reveal">
     <div class="tour__head">
       <p class="kicker">01 / Tour</p>
-      <h2>Twenty seconds, start to finish.</h2>
-      <p>Type a task the way you would say it, see Home, tick a routine, then the same planner on the desktop, phone and command line.</p>
+      <h2>Forty-six seconds, start to finish.</h2>
+      <p>Type a task the way you would say it, then tick a task, a milestone and a routine. See the calendar and a roadmap, switch to dark mode from the command palette, and finish with the phone app, the command line and a docker compose install.</p>
     </div>
     <div class="player spot">
       <video
@@ -191,7 +216,7 @@ const tabs = [
         playsinline
         controls
         preload="none"
-        aria-label="A 20 second tour of Orbit: quick add, Home, routines and the apps."
+        aria-label="A 46 second tour of Orbit: quick add, Home, goals, routines, calendar, roadmaps, dark mode, the phone app, the command line and self-hosting."
       ></video>
       <button class="play" type="button" id="playbtn" aria-label="Play the tour video">
         <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
@@ -219,23 +244,41 @@ const tabs = [
     </div>
   </section>
 
-  <section id="screens" class="screens reveal">
-    <div class="screens__head">
+  <section id="screens" class="story">
+    <div class="story__intro reveal">
       <p class="kicker">03 / Screens</p>
       <h2>Tasks, goals and routines are different things.</h2>
-      <p id="tab-text">{tabs[0].text}</p>
     </div>
-    <div class="tabs" role="tablist" aria-label="Orbit screens">
-      {tabs.map((t, i) => (
-        <button role="tab" type="button" id={`tab-${t.id}`} aria-selected={i === 0 ? "true" : "false"} aria-controls="screen-panel" tabindex={i === 0 ? 0 : -1} data-text={t.text} data-img={t.img} data-alt={t.alt}>{t.label}</button>
-      ))}
+    <div class="story__grid">
+      <div class="story__steps">
+        {steps.map((t, i) => (
+          <article class={`step${i === 0 ? " active" : ""}`} data-step={i}>
+            <p class="kicker">{t.kicker}</p>
+            <h3>{t.title}</h3>
+            <p>{t.text}</p>
+            <div class="window step__inline">
+              <div class="window__bar" aria-hidden="true"><i></i><i></i><i></i></div>
+              <img class="shot-light" src={shot(t.img)} width="1440" height="900" alt={t.alt} loading={i ? "lazy" : undefined} />
+              {t.dark && <img class="shot-dark" src={shot(t.dark)} width="1440" height="900" alt="" loading="lazy" />}
+            </div>
+          </article>
+        ))}
+      </div>
+      <div class="story__stage" aria-hidden="true">
+        <div class="window spot">
+          <div class="window__bar"><i></i><i></i><i></i></div>
+          <div class="slides">
+            {steps.map((t, i) => (
+              <div class={`slide${i === 0 ? " on" : ""}`} data-slide={i}>
+                <img class="shot-light" src={shot(t.img)} width="1440" height="900" alt="" loading={i ? "lazy" : undefined} />
+                {t.dark && <img class="shot-dark" src={shot(t.dark)} width="1440" height="900" alt="" loading="lazy" />}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="window spot" id="screen-panel" role="tabpanel" aria-labelledby="tab-home">
-      <div class="window__bar" aria-hidden="true"><i></i><i></i><i></i></div>
-      <img id="screen-img" class="shot-light" src={shot(tabs[0].img)} width="1440" height="900" alt={tabs[0].alt} />
-      <img class="shot-dark" src={shot("home-dark-desktop.webp")} width="1440" height="900" alt="Orbit Home in dark mode." />
-    </div>
-    <p class="note">Orbit has a full dark theme too. Flip the switch at the top to see this page in it.</p>
+    <p class="note story__note">Orbit has a full dark theme too. Flip the switch at the top to see this page in it.</p>
   </section>
 
   <section id="devices" class="devices reveal">
@@ -249,12 +292,14 @@ const tabs = [
       <ul class="stops">
         <li><b>Web</b> <span>Installable as a PWA on desktop and phone.</span></li>
         <li><b>Linux</b> <span>AppImage with tray, quick-capture hotkey and reminders. AUR package prepared.</span></li>
-        <li><b>Android</b> <span>Android 12+, sideloaded APK with widgets, a share target and reminders. Verified on an emulator only; real-device testing is pending.</span></li>
+        <li><b>Android</b> <span>Android 12+, sideloaded APK with widgets, a share target and reminders. Smoke-tested on an emulator and one real phone (Android 16); wider device testing is pending.</span></li>
         <li><b>CLI</b> <span><code>orbit</code> signs in, keeps a replica and queues changes. It builds from source today; prebuilt binaries are not released yet.</span></li>
       </ul>
     </div>
-    <div class="phone spot">
-      <img src={shot("home-phone.webp")} width="585" height="1266" alt="Orbit Home on a phone: stats, what's next and routines, with a bottom tab bar." />
+    <div class="phones" aria-label="Orbit on a phone">
+      <div class="phone phone--side spot"><img src={shot("upcoming-phone.webp")} width="585" height="1266" loading="lazy" alt="Orbit Upcoming on a phone." /></div>
+      <div class="phone phone--main spot"><img src={shot("home-phone.webp")} width="585" height="1266" loading="lazy" alt="Orbit Home on a phone: stats, what's next and routines, with a bottom tab bar." /></div>
+      <div class="phone phone--side spot"><img src={shot("composer-phone.webp")} width="585" height="1266" loading="lazy" alt="Orbit quick add on a phone." /></div>
     </div>
   </section>
 
@@ -363,24 +408,16 @@ const tabs = [
       if (!reduce) new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? vid.play().catch(() => {}) : vid.pause())), { threshold: 0.5 }).observe(vid);
     }
 
-    // Screens tabs (arrow keys move between tabs).
-    const tabsEl = [...document.querySelectorAll<HTMLButtonElement>("[role=tab]")];
-    const img = $<HTMLImageElement>("#screen-img")!, txt = $("#tab-text")!, panel = $("#screen-panel")!;
-    const pick = (t: HTMLButtonElement) => {
-      tabsEl.forEach((x) => { x.setAttribute("aria-selected", String(x === t)); x.tabIndex = x === t ? 0 : -1; });
-      img.src = img.src.replace(/[^/]+$/, t.dataset.img!); img.alt = t.dataset.alt!; txt.textContent = t.dataset.text!;
-      panel.setAttribute("aria-labelledby", t.id);
-      panel.classList.toggle("is-home", t.dataset.img === "home-desktop.webp");
-    };
-    panel.classList.add("is-home");
-    tabsEl.forEach((t, i) => {
-      t.addEventListener("click", () => pick(t));
-      t.addEventListener("keydown", (e) => {
-        const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-        if (!d) return;
-        const n = tabsEl[(i + d + tabsEl.length) % tabsEl.length]; n.focus(); pick(n);
-      });
-    });
+    // Screens story: the sticky window follows the step in view.
+    const stepEls = [...document.querySelectorAll<HTMLElement>(".step")], slides = [...document.querySelectorAll<HTMLElement>(".slide")];
+    if (stepEls.length && "IntersectionObserver" in window) {
+      const on = (i: number) => {
+        slides.forEach((x, j) => x.classList.toggle("on", j === i));
+        stepEls.forEach((x, j) => x.classList.toggle("active", j === i));
+      };
+      const so = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) on(Number((e.target as HTMLElement).dataset.step)); }), { rootMargin: "-45% 0px -45% 0px" });
+      stepEls.forEach((x) => so.observe(x));
+    }
 
     // Quick-add demo: a small stand-in for the real parser.
     const input = $<HTMLInputElement>("#qa-input")!, chips = $("#qa-chips")!, title = $("#qa-title")!, list = $("#qa-list")!;
@@ -492,17 +529,17 @@ const tabs = [
   .window__bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
   .window img { width: 100%; }
   .shot-dark { display: none; }
-  :root[data-theme="dark"] #screen-panel.is-home .shot-light { display: none; }
-  :root[data-theme="dark"] #screen-panel.is-home .shot-dark { display: block; }
+  :root[data-theme="dark"] .shot-dark ~ .shot-light, :root[data-theme="dark"] .shot-light:has(+ .shot-dark) { display: none; }
+  :root[data-theme="dark"] .shot-dark { display: block; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) #screen-panel.is-home .shot-light { display: none; }
-    :root:not([data-theme="light"]) #screen-panel.is-home .shot-dark { display: block; }
+    :root:not([data-theme="light"]) .shot-light:has(+ .shot-dark) { display: none; }
+    :root:not([data-theme="light"]) .shot-dark { display: block; }
   }
   .note { color: var(--muted); font-size: 0.9rem; margin-top: 14px; }
 
   /* Tour video */
-  .tour__head, .screens__head { max-width: 62ch; margin-bottom: 36px; }
-  .tour__head p:last-child, .screens__head p:last-child, .qa__text p, .devices__text > p, .host__text p { color: var(--muted); }
+  .tour__head { max-width: 62ch; margin-bottom: 36px; }
+  .tour__head p:last-child, .qa__text p, .devices__text > p, .host__text p { color: var(--muted); }
   .player { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #000; aspect-ratio: 16 / 9; }
   .player video { width: 100%; height: 100%; object-fit: cover; }
   .play { position: absolute; z-index: 2; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 84px; height: 84px; border-radius: 50%; border: 0; background: var(--sun); color: #2a1a0e; display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 0 10px #e8a87c40, 0 18px 40px -12px #000a; transition: transform .25s var(--ease); }
@@ -532,9 +569,33 @@ const tabs = [
   @media (min-width: 960px) { .qa { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; } }
 
   /* Screens */
-  .tabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); margin-bottom: 20px; }
-  .tabs button { font: 600 0.95rem "Figtree", system-ui, sans-serif; min-height: 44px; padding: 0 20px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background .2s, color .2s; }
-  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+  .story { padding: 72px var(--gutter) 24px; }
+  .story__intro { max-width: 62ch; margin-bottom: 24px; }
+  .story__stage { display: none; }
+  .step { padding: 28px 0 44px; }
+  .step h3 { font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem); line-height: 1.15; letter-spacing: -0.015em; margin-bottom: 12px; text-wrap: balance; }
+  .step > p:not(.kicker) { color: var(--muted); max-width: 46ch; }
+  .step__inline { margin-top: 24px; }
+  .story__note { margin-top: 8px; }
+  html:not(.js) .step__inline { display: block; }
+  @media (min-width: 1000px) {
+    .story__grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 56px; align-items: start; }
+    .story__stage { display: block; position: sticky; top: 10vh; }
+    .step { min-height: 78vh; display: flex; flex-direction: column; justify-content: center; opacity: 0.35; transition: opacity .5s var(--ease); padding: 0; }
+    .step.active { opacity: 1; }
+    .step__inline { display: none; }
+    html:not(.js) .step { opacity: 1; min-height: 0; padding: 40px 0; }
+    html:not(.js) .story__stage { display: none; }
+    html:not(.js) .step__inline { display: block; }
+    .slides { position: relative; aspect-ratio: 16 / 10; }
+    .slide { position: absolute; inset: 0; opacity: 0; transition: opacity .6s var(--ease); }
+    .slide.on { opacity: 1; }
+    .slide img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  }
+  .principles { display: grid; gap: 28px 40px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); padding: 24px var(--gutter) 56px; border-top: 1px solid var(--line); }
+  .principles h3 { font-size: 1.05rem; margin-bottom: 6px; }
+  .principles h3::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--sun); margin-right: 10px; box-shadow: 0 0 0 4px var(--sun-glow); }
+  .principles p { color: var(--muted); font-size: 0.95rem; }
 
   /* Devices */
   .devices { display: grid; gap: 48px; align-items: center; }
@@ -543,9 +604,16 @@ const tabs = [
   .stops li:hover { background: var(--accent-soft); padding-inline: 12px; }
   .stops b { font-weight: 700; }
   .stops span { color: var(--muted); }
+  .phones { display: flex; justify-content: center; align-items: center; gap: 0; }
+  .phones .phone { margin: 0; flex: 0 1 auto; }
+  .phone--main { width: min(46vw, 270px); z-index: 2; }
+  .phone--side { width: min(34vw, 210px); opacity: .92; }
+  .phone--side:first-child { margin-right: -22px; transform: rotate(-4deg); }
+  .phone--side:last-child { margin-left: -22px; transform: rotate(4deg); }
+  @media (max-width: 520px) { .phone--side { display: none; } .phone--main { width: min(70vw, 280px); } }
   .phone { max-width: 300px; margin: 0 auto; border: 8px solid var(--ink); border-radius: 38px; overflow: hidden; background: var(--paper); box-shadow: var(--shadow); transition: transform .5s var(--ease); }
-  .phone:hover { transform: translateY(-6px) rotate(-1.2deg); }
-  @media (min-width: 960px) { .devices { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 96px; } .phone { margin: 0 auto 0 0; } }
+  .phone:hover { transform: translateY(-6px); }
+  @media (min-width: 960px) { .devices { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 72px; } }
 
   /* Host */
   .host { display: grid; gap: 32px; align-items: center; }

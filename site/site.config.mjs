@@ -16,7 +16,7 @@ export default {
   site: `https://${owner}.github.io`,
   base: `/${repoName}`,
   // Shown in the footer. State real constraints (synthetic data, alpha, etc.).
-  footnote: "Orbit is AGPL-3.0. Android is verified on an emulator only; real-device testing is still pending.",
+  footnote: "Orbit is AGPL-3.0. Android is smoke-tested on an emulator and one real phone (Android 16); wider device testing is still pending.",
   // Markdown rendered in place under /guide (repo-relative globs, "!" excludes).
   // No copies: a doc fixed in the repo is fixed on the site at the next build.
   guide: ["docs/*.md", "README.md"],

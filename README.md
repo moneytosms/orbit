@@ -23,7 +23,7 @@ Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked dra
 - Single-user login with password, optional TOTP, and revocable Devices.
 - Todoist import (`orbit import todoist`), an MCP server (`orbit mcp`), and server backup/restore commands.
 
-Status: all v1 features listed above are built. Android is verified on an emulator; the real-device checklist ([docs/android-checklist.md](docs/android-checklist.md)) is still pending.
+Status: all v1 features listed above are built. Android is smoke-tested on an emulator and one real phone; the full real-device checklist ([docs/android-checklist.md](docs/android-checklist.md)) is still pending.
 
 ## Architecture
 
@@ -81,7 +81,7 @@ Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications
 
 Android 12+ (minSdk 31). Download `Orbit-<version>-android.apk` from the GitHub Release and sideload it (Obtainium can track releases). On first launch the app shows a page asking for your server URL, saves it, then opens it. The release APK only talks to HTTPS servers. Install steps, widgets and battery settings: [docs/install.md](docs/install.md#4-android). The manual test plan is [docs/android-checklist.md](docs/android-checklist.md).
 
-Status: verified on an emulator only. It has not yet been tested on real devices, so OEM battery behaviour and reminder reliability are unconfirmed.
+Status: smoke-tested on an emulator and on one real phone (Android 16): launch, sign-up, quick add and sync. Only one device so far, so OEM battery behaviour, widgets on a home screen and reminder reliability are unconfirmed.
 
 ### CLI
 
