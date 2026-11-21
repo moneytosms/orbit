@@ -45,8 +45,18 @@ try {
 
       await page.goto(`${origin}${cfg.base}/guide/`);
       assert.equal(await overflow(page), false, `${label}/guide: horizontal overflow`);
+      assert.equal(await page.locator(".guide__section").count(), 5, `${label}/guide: five guide sections`);
+      assert.ok(await page.getByRole("heading", { name: "Pick your path" }).isVisible(), `${label}/guide: guide index`);
+      await page.goto(`${origin}${cfg.base}/guide/sections/reference/`);
+      assert.ok(await page.getByRole("heading", { name: "Reference" }).isVisible(), `${label}/guide: section overview`);
+      await page.goto(`${origin}${cfg.base}/guide/readme/`);
+      await page.waitForURL((url) => url.pathname === `${cfg.base}/guide/what-is-orbit/`);
+      assert.equal(new URL(page.url()).pathname, `${cfg.base}/guide/what-is-orbit/`, `${label}/guide: legacy README redirect`);
+      await page.goto(`${origin}${cfg.base}/guide/what-is-orbit/`);
+      assert.ok(await page.getByRole("heading", { name: "What Orbit is" }).isVisible(), `${label}/guide: manifest title`);
+      assert.ok(await page.getByRole("link", { name: "Install" }).last().isVisible(), `${label}/guide: next page`);
       if (width >= 960) {
-        const term = (await page.locator(".guide__menu a").first().innerText()).split(/\s+/)[0];
+        const term = (await page.locator(".guide__section a").first().innerText()).split(/\s+/)[0];
         await page.locator(".pagefind-ui__search-input").fill(term);
         await page.locator(".pagefind-ui__result-link").first().waitFor();
         const href = await page.locator(".pagefind-ui__result-link").first().getAttribute("href");

@@ -5,6 +5,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import cfg from "../site.config.mjs";
+import manifest from "../guide.manifest.mjs";
+import { GUIDE_PATTERNS, GUIDE_REDIRECTS, isGuidePath, isInternalGuidePath, slugFor } from "../src/lib/slug.mjs";
 
 const here = fileURLToPath(new URL("..", import.meta.url));
 const dist = resolve(process.argv[2] ?? join(here, "dist"));
@@ -27,6 +29,61 @@ if (!existsSync(dist)) {
   console.error(`Build output not found: ${dist}`);
   process.exit(2);
 }
+
+const guideItems = manifest.flatMap((section) => section.items);
+const guideIds = guideItems.map((item) => item.id);
+const checkedTitles = [];
+for (const [id, count] of [...new Set(guideIds)].map((id) => [id, guideIds.filter((candidate) => candidate === id).length])) {
+  if (count !== 1) failures.push(`Guide manifest: ${id} appears ${count} times`);
+}
+const sourceMarkdown = [...walk(repo).filter((path) => extname(path).toLowerCase() === ".md")]
+  .filter((path) => !relative(repo, path).split(sep).some((part) => [".git", "node_modules", "dist", ".astro"].includes(part)));
+const guideMarkdown = sourceMarkdown.filter((path) => isGuidePath(relative(repo, path).split(sep).join("/")));
+for (const file of sourceMarkdown) {
+  const id = relative(repo, file).split(sep).join("/");
+  if (id.startsWith("docs/") && !isGuidePath(id) && !isInternalGuidePath(id)) {
+    failures.push(`Markdown under docs/ must be in the guide manifest or explicitly internal: ${id}`);
+  }
+}
+for (const file of guideMarkdown) {
+  const id = relative(repo, file).split(sep).join("/");
+  const count = guideIds.filter((candidate) => candidate === id).length;
+  if (count !== 1) failures.push(`Guide manifest: ${id} matched by guide patterns ${GUIDE_PATTERNS.join(", ")} but listed ${count} times`);
+}
+for (const item of guideItems) {
+  const file = resolve(repo, item.id);
+  if (!existsSync(file)) {
+    failures.push(`Guide manifest: missing source ${item.id}`);
+    continue;
+  }
+  if (!isGuidePath(item.id)) failures.push(`Guide manifest: ${item.id} is not matched by configured guide patterns`);
+  const source = readFileSync(file, "utf8");
+  const h1 = [...stripMarkdownCode(source).matchAll(/^\s{0,3}#\s+(.+?)\s*#*\s*$/gm)].map((match) => match[1].trim());
+  if (h1.length > 1 || (h1.length === 0 && !item.title)) failures.push(`Guide manifest: ${item.id} needs exactly one H1 or a manifest title`);
+  const title = (item.title ?? h1[0] ?? "").replace(/[`*_]/g, "").trim().toLowerCase();
+  if (item.summary && item.summary.length > 160) failures.push(`Guide manifest: summary for ${item.id} exceeds 160 characters`);
+  if (title) checkedTitles.push(title);
+}
+for (const title of new Set(checkedTitles)) if (checkedTitles.filter((candidate) => candidate === title).length > 1) failures.push(`Guide manifest: duplicate page title “${title}”`);
+for (const [oldPath, destination] of Object.entries(GUIDE_REDIRECTS)) {
+  const rel = `${oldPath.replace(/^\//, "")}/index.html`;
+  const redirectFile = join(dist, rel);
+  const target = destination;
+  if (!existsSync(redirectFile)) failures.push(`Guide redirect missing output: ${oldPath}`);
+  else if (!readFileSync(redirectFile, "utf8").includes(target)) failures.push(`Guide redirect ${oldPath} does not point to ${target}`);
+}
+for (const item of guideItems) {
+  const slug = item.slug ?? slugFor(item.id);
+  const routeFile = slug ? join(dist, "guide", ...slug.split("/"), "index.html") : join(dist, "guide", "index.html");
+  const basedRouteFile = join(dist, base.replace(/^\//, "").replace(/\/$/, ""), "guide", ...slug.split("/"), "index.html");
+  if (!existsSync(routeFile) && !existsSync(basedRouteFile)) failures.push(`Guide route missing output: /guide/${slug}`);
+}
+for (const section of manifest) {
+  const sectionFile = join(dist, "guide", "sections", section.slug, "index.html");
+  if (!existsSync(sectionFile)) failures.push(`Guide section route missing output: /guide/sections/${section.slug}`);
+}
+if (!existsSync(join(dist, "guide", "index.html"))) failures.push("Guide index route missing output: /guide/");
+console.log(`Checked guide structure: ${manifest.length} sections, ${guideItems.length} pages, ${guideMarkdown.length} source files.`);
 
 const htmlFiles = walk(dist).filter((path) => extname(path) === ".html");
 const pages = new Map();
