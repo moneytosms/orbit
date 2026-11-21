@@ -693,7 +693,7 @@ export const quickTitle = (p: Parsed) =>
  * Saves a parsed quick-add line. The Task goes under the named Area or Project, else `fallbackParentId`;
  * unknown `#labels` are created; priority, due and labels go in one `task.update`. Returns the new id.
  */
-export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<string> {
+export async function quickAdd(p: Parsed, fallbackParentId: string, forceParent = false): Promise<string> {
   const name = p.place?.toLowerCase()
   const areas = await tree()
   const place =
@@ -717,7 +717,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string): Promise<str
       ids.add(id)
     }
   }
-  const id = await createTask(quickTitle(p), place || fallbackParentId)
+  const id = await createTask(quickTitle(p), forceParent ? fallbackParentId : place || fallbackParentId)
   const patch: TaskPatch = {}
   if (p.description) patch.description = p.description
   if (p.priority != null) patch.priority = p.priority as Task['priority']

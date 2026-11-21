@@ -3,8 +3,6 @@
   import Auth from './lib/screens/Auth.svelte'
   import Banner from './lib/Banner.svelte'
   import Backlinks from './lib/Backlinks.svelte'
-  import RoadmapBuilder from './lib/RoadmapBuilder.svelte'
-  import { Button } from './lib/components/ui/button'
   import Area from './lib/screens/Area.svelte'
   import Goals from './lib/screens/Goals.svelte'
   import Roadmap from './lib/screens/Roadmap.svelte'
@@ -52,7 +50,6 @@
   let linkedTask = $state(readTaskLink())
   let toast = $state('')
   let version = $state(0)
-  let building = $state(false)
   let hide: ReturnType<typeof setTimeout>
 
   onRejected((code) => {
@@ -157,7 +154,7 @@
 {#if gate === 'setup' || gate === 'login'}
   <Auth mode={gate} {pending} done={enter} />
 {:else if gate === 'app'}
-  <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()}>
+  <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()} onchange={refresh}>
     {#snippet children(add)}
       {#if screen.name === 'page'}
         <Page id={screen.id} onchange={refresh} />
@@ -176,7 +173,7 @@
       {:else if screen.name === 'area'}
         {#key screen.id}
           {@const areaId = screen.id}
-          <Area id={areaId} {areas} onchange={refresh}>
+          <Area id={areaId} {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
             {#snippet tasks()}
               <Inbox parentId={areaId} {title} {rows} onchange={refresh} onadd={add} />
             {/snippet}
@@ -201,10 +198,6 @@
         {/if}
         <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
         {#if screen.name === 'project'}
-          <div>
-            <Button variant="ghost" size="sm" onclick={() => (building = true)}>Start from 30-day plan</Button>
-          </div>
-          <RoadmapBuilder bind:open={building} {areas} ownerId={screen.id} ownerName={title} onchange={refresh} />
           <Backlinks id={screen.id} {version} />
         {/if}
       {:else if screen.name === 'goals'}

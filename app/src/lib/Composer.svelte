@@ -17,9 +17,10 @@
   let {
     prefill = '',
     parentId,
+    forceParent = false,
     autofocus = true,
     onsaved,
-  }: { prefill?: string; parentId: string; autofocus?: boolean; onsaved?: () => void } = $props()
+  }: { prefill?: string; parentId: string; forceParent?: boolean; autofocus?: boolean; onsaved?: () => void } = $props()
 
   // Read once: the composer is mounted fresh each time it opens.
   let draft = $state(untrack(() => prefill))
@@ -96,7 +97,7 @@
   async function save(e: SubmitEvent) {
     e.preventDefault()
     if (!quickTitle(parsed).trim()) return
-    await quickAdd(parsed, parentId)
+    await quickAdd(parsed, parentId, forceParent)
     draft = ''
     caret = 0
     await loadKnown()

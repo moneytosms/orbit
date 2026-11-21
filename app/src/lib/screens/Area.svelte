@@ -4,10 +4,10 @@
   import Empty from '$lib/Empty.svelte'
   import FolderKanban from '@lucide/svelte/icons/folder-kanban'
   import type { Snippet } from 'svelte'
+  import EntityCreateMenu from '$lib/EntityCreateMenu.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import Banner from '$lib/Banner.svelte'
-  import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import Backlinks from '$lib/Backlinks.svelte'
   import { areaStats, openCounts, roadmapsIn, upNextIn, type AreaStats } from '$lib/area'
   import {
@@ -31,7 +31,14 @@
     areas,
     onchange,
     tasks,
-  }: { id: string; areas: Awaited<ReturnType<typeof tree>>; onchange: () => void; tasks: Snippet } = $props()
+    onnewtask,
+  }: {
+    id: string
+    areas: Awaited<ReturnType<typeof tree>>
+    onchange: () => void
+    tasks: Snippet
+    onnewtask: (prefill: string) => void
+  } = $props()
 
   const area = $derived(areas.find((a) => a.area.id === id))
   const projects = $derived(area?.projects ?? [])
@@ -42,7 +49,6 @@
   let next = $state<NextItem[]>([])
   let counts = $state(new Map<string, number>())
   let maps = $state<Roadmap[]>([])
-  let building = $state(false)
   let pageList = $state<Page[]>([])
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
@@ -98,6 +104,7 @@
   }
   async function newPage() {
     const pid = await createPage(id, 'Untitled')
+    onchange()
     location.hash = `#/page/${pid}`
   }
 
@@ -121,15 +128,18 @@
       onchange()
     }}
   />
-  <input
-    aria-label="Area name"
-    value={area.area.name}
-    class="page-title w-full bg-transparent outline-none focus-visible:underline"
-    onblur={rename}
-    onkeydown={(e) => {
-      if (e.key === 'Enter') e.currentTarget.blur()
-    }}
-  />
+  <div class="flex items-center gap-1">
+    <input
+      aria-label="Area name"
+      value={area.area.name}
+      class="page-title min-w-0 flex-1 bg-transparent outline-none focus-visible:underline"
+      onblur={rename}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
+    />
+    <EntityCreateMenu ownerId={id} ownerName={area.area.name} ownerKind="area" {areas} {onchange} {onnewtask} />
+  </div>
 
   <div class="flex flex-col gap-4">
     <ul class="grid grid-cols-2 gap-2 desk:grid-cols-4">
@@ -203,7 +213,7 @@
       {:else}
         <Empty
           icon={FolderKanban}
-          text="Projects group the tasks for one outcome in this Area. Add one from the sidebar."
+          text="Projects group the tasks for one outcome in this Area. Create one from the title menu or sidebar."
         />
       {/if}
     </section>
@@ -218,11 +228,6 @@
         </ul>
       </section>
     {/if}
-
-    <div>
-      <Button variant="ghost" size="sm" onclick={() => (building = true)}>New roadmap</Button>
-    </div>
-    <RoadmapBuilder bind:open={building} {areas} ownerId={id} ownerName={area.area.name} {onchange} />
 
     <div>
       <div class="mb-3 flex gap-1" role="tablist">

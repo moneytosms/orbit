@@ -11,6 +11,7 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import * as Dialog from '$lib/components/ui/dialog'
   import Composer from './Composer.svelte'
+  import EntityCreateMenu from './EntityCreateMenu.svelte'
   import Palette from './Palette.svelte'
   import { runAction, setFocusedTask, ui } from '$lib/actions'
   import { clearCursor, isTyping, matcher } from '$lib/keys'
@@ -45,6 +46,7 @@
     areas,
     inboxCount,
     parentId,
+    onchange,
     children,
   }: {
     screen: Screen
@@ -52,13 +54,15 @@
     areas: { area: Area; projects: Project[] }[]
     inboxCount: number
     parentId: string
-    children: Snippet<[(prefill?: string) => void]>
+    onchange: () => void
+    children: Snippet<[(prefill?: string, scoped?: boolean) => void]>
   } = $props()
   let drawer = $state(false)
   let composing = $state(false)
   let palette = $state(false)
   let help = $state(false)
   let prefill = $state('')
+  let forceParent = $state(false)
   let wide = $state(false)
   let composerOpener: HTMLElement | null = null
 
@@ -116,10 +120,11 @@
   }
 
   // Desktop gets a centred Dialog, phones a bottom Sheet.
-  function open(text = '') {
+  function open(text = '', scoped = false) {
     composerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     drawer = false
     prefill = text
+    forceParent = scoped
     wide = matchMedia('(min-width: 768px)').matches
     composing = true
   }
@@ -446,7 +451,19 @@
       <Button variant="ghost" size="icon" class="desk:hidden" aria-label="Open menu" onclick={() => (drawer = true)}>
         <Menu />
       </Button>
-      <span class="flex-1 text-center font-medium text-muted desk:text-left">{title}</span>
+      <div class="flex flex-1 items-center justify-center gap-1 desk:justify-start">
+        <span class="font-medium text-muted">{title}</span>
+        {#if screen.name === 'project'}
+          <EntityCreateMenu
+            ownerId={screen.id}
+            ownerName={title}
+            ownerKind="project"
+            {areas}
+            {onchange}
+            onnewtask={(text) => open(text, true)}
+          />
+        {/if}
+      </div>
       <Button variant="ghost" class="hidden desk:inline-flex" onclick={newTask}>
         <Plus /> New task <kbd class="rounded-sm bg-sunk px-1.5 text-[0.7188rem] text-muted">Q</kbd>
       </Button>
@@ -528,7 +545,7 @@
       showCloseButton={false}
     >
       {@render composerHeader()}
-      <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
+      <Composer {prefill} {parentId} {forceParent} onsaved={() => (composing = false)} />
     </Dialog.Content>
   </Dialog.Root>
 {:else}
@@ -540,7 +557,7 @@
       showCloseButton={false}
     >
       {@render composerHeader()}
-      <Composer {prefill} {parentId} onsaved={() => (composing = false)} />
+      <Composer {prefill} {parentId} {forceParent} onsaved={() => (composing = false)} />
     </Sheet.Content>
   </Sheet.Root>
 {/if}

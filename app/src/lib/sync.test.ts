@@ -371,6 +371,23 @@ test('quickAdd applies priority, due and a known label in one update', async () 
   expect(sent).toMatchObject([{ args: { id, priority: 1, label_ids: [errand] } }])
 })
 
+test('a scoped task keeps its selected parent when an Area and Project share a name', async () => {
+  await createArea('Same')
+  await createArea('Container')
+  const container = (await tree()).find((x) => x.area.name === 'Container')!.area
+  await createProject(container.id, 'Same')
+  const project = (await tree()).find((x) => x.area.id === container.id)!.projects[0]
+  const parsed = JSON.parse(
+    parse_quick_add(
+      'Ship @Same',
+      '2026-11-19T10:00',
+      JSON.stringify({ areas: ['Same'], goals: [], pages: [], labels: [] }),
+    ),
+  )
+  const id = await quickAdd(parsed, project.id, true)
+  expect((await getTask(id))?.parent_id).toBe(project.id)
+})
+
 test('quickAdd preserves normalized capture source in the task description', async () => {
   const parsed = parseLine('[Notion – all-in-one](https://notion.so/workspace?ref=abc)')
   expect(parsed).toMatchObject({
