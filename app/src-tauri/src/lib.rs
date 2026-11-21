@@ -56,9 +56,13 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     let handle = app.handle().clone();
     tray::build(&handle)?;
     let args: Vec<String> = std::env::args().collect();
-    desktop::apply_flag(&handle, &args);
+    // `--server` already chose a destination; otherwise the window still holds the bundled UI.
+    let flagged = desktop::apply_flag(&handle, &args);
     reminders::start(handle.clone());
     desktop::check_update(handle.clone());
+    if !flagged {
+        desktop::launch(&handle);
+    }
     if !has_flag(&args, "--hidden") {
         tray::show_main(&handle);
     }

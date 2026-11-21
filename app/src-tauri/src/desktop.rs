@@ -20,6 +20,12 @@ pub fn saved() -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
+/// The bundled launcher documents, whichever way WebKit names the root of the packaged assets:
+/// `tauri://localhost/`, `/index.html` or an empty path all mean "the app's own start page".
+fn is_launcher(url: &Url) -> bool {
+    is_bundled(url) && matches!(url.path(), "/" | "" | "/index.html")
+}
+
 fn save(url: &str) -> std::io::Result<()> {
     std::fs::create_dir_all(crate::token::data_dir())?;
     std::fs::write(file(), url)
@@ -56,16 +62,26 @@ fn reachable(server: &str) -> bool {
     })
 }
 
-/// Saves the server URL (from the first-run page) and opens it in the window.
+/// Saves the server URL (from the first-run page) and opens it in the window. An address that does
+/// not answer opens the retry page instead of a dead WebView.
 #[tauri::command]
-pub fn set_server(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
+pub async fn set_server(window: tauri::WebviewWindow, url: String) -> Result<(), String> {
     let url: Url = url.trim().parse().map_err(|_| "not a URL".to_string())?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("use an http or https URL".into());
     }
     trusted(&window)?;
-    store(&url)?;
-    window.navigate(url).map_err(|e| e.to_string())
+    let server = store(&url)?;
+    // Off the main thread: the reachability check can block for seconds.
+    let to = tauri::async_runtime::spawn_blocking(move || match reachable(&server) {
+        true => server,
+        false => format!("{BUNDLED}?down={server}"),
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    window
+        .navigate(to.parse().map_err(|_| "not a URL".to_string())?)
+        .map_err(|e| e.to_string())
 }
 
 fn store(url: &Url) -> Result<String, String> {
@@ -82,13 +98,14 @@ fn store(url: &Url) -> Result<String, String> {
 }
 
 /// `--server <url>`: saves the server and, if the window is up, opens it there.
-pub fn apply_flag(app: &AppHandle, args: &[String]) {
+/// Returns whether it navigated, so startup does not ask for a destination twice.
+pub fn apply_flag(app: &AppHandle, args: &[String]) -> bool {
     let Some(raw) = args
         .iter()
         .position(|a| a == "--server")
         .and_then(|i| args.get(i + 1))
     else {
-        return;
+        return false;
     };
     match raw
         .trim()
@@ -96,30 +113,56 @@ pub fn apply_flag(app: &AppHandle, args: &[String]) {
         .map_err(|e| e.to_string())
         .and_then(|u| store(&u).map(|_| u))
     {
-        Ok(url) => {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.navigate(url);
-            }
+        Ok(url) => app
+            .get_webview_window("main")
+            .is_some_and(|w| w.navigate(url).is_ok()),
+        Err(e) => {
+            eprintln!("orbit: --server {raw}: {e}");
+            false
         }
-        Err(e) => eprintln!("orbit: --server {raw}: {e}"),
     }
 }
 
+/// Where the window goes first: the saved server, the server page when none is saved, or the server
+/// page with `?down=` when the saved server does not answer.
+fn first_stop() -> String {
+    match saved() {
+        Some(s) if reachable(&s) => s,
+        Some(s) => format!("{BUNDLED}?down={s}"),
+        None => BUNDLED.to_string(),
+    }
+}
+
+/// Sends the window to its first stop as soon as it exists. The window is created with the bundled
+/// Svelte UI, which would otherwise land the user on a login screen that has no server to talk to.
+pub fn launch(app: &AppHandle) {
+    let app = app.clone();
+    // Off this thread: the reachability check can block for seconds, and the window may not exist yet.
+    std::thread::spawn(move || {
+        let window = std::iter::repeat_with(|| {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            app.get_webview_window("main")
+        })
+        .take(60)
+        .flatten()
+        .next();
+        let Some(window) = window else { return };
+        if let Ok(to) = first_stop().parse::<Url>() {
+            let _ = window.navigate(to);
+        }
+    });
+}
+
 /// Once the bundled launcher page has loaded, send the window to the saved server or the server page.
-/// A navigation sooner than this is dropped.
+/// A navigation issued before the page loads is dropped, so this is the second try at the same thing.
 pub fn on_page_load(webview: &Webview, url: &Url, event: PageLoadEvent) {
-    if event != PageLoadEvent::Finished || !is_bundled(url) || url.path() != "/" {
+    if event != PageLoadEvent::Finished || !is_launcher(url) {
         return;
     }
     let webview = webview.clone();
     // Off this thread: the reachability check can block for seconds.
     tauri::async_runtime::spawn_blocking(move || {
-        let to = match saved() {
-            Some(s) if reachable(&s) => s.parse::<Url>().ok(),
-            Some(s) => Url::parse_with_params(BUNDLED, [("down", s)]).ok(),
-            None => BUNDLED.parse().ok(),
-        };
-        if let Some(to) = to {
+        if let Ok(to) = first_stop().parse::<Url>() {
             let _ = webview.navigate(to);
         }
     });
@@ -157,5 +200,20 @@ mod tests {
         assert!(is_bundled(&"tauri://localhost/".parse().unwrap()));
         assert!(!is_bundled(&"https://orbit.example.com/".parse().unwrap()));
         assert!(!is_bundled(&"http://localhost:5173/".parse().unwrap()));
+    }
+
+    #[test]
+    fn launcher_documents() {
+        for ok in ["/", "", "/index.html"] {
+            let url = format!("tauri://localhost{ok}").parse().unwrap();
+            assert!(is_launcher(&url), "{ok:?} is the bundled UI");
+        }
+        // The server page is a destination, not a launcher: redirecting from it would loop.
+        assert!(!is_launcher(
+            &"tauri://localhost/server.html?down=http://x"
+                .parse()
+                .unwrap()
+        ));
+        assert!(!is_launcher(&"https://orbit.example.com/".parse().unwrap()));
     }
 }
