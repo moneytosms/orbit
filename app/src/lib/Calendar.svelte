@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { Calendar } from 'fullcalendar'
   import dayGrid from 'fullcalendar/daygrid'
   import timeGrid from 'fullcalendar/timegrid'
@@ -90,7 +90,8 @@
         if (range?.from !== from || range?.to !== to) range = { from, to }
       },
     })
-    c.render()
+    // datesSet fires inside render and reads `range`; untracked so a view switch doesn't re-run this attachment
+    untrack(() => c.render())
     cal = c
     return () => {
       c.destroy()
