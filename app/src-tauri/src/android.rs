@@ -86,12 +86,19 @@ async fn set_server(
         return Err("use an http or https URL".into());
     }
     trusted(&app, &window)?;
-    call(
-        &app,
-        "setServer",
-        json!({ "server": url.as_str().trim_end_matches('/') }),
-    )?;
-    window.navigate(url).map_err(|e| e.to_string())
+    let server = url.as_str().trim_end_matches('/').to_string();
+    call(&app, "setServer", json!({ "server": server }))?;
+    // Off this thread: the reachability check can block for seconds. An address that does not answer
+    // opens the retry page instead of a dead WebView.
+    let to = tauri::async_runtime::spawn_blocking(move || match reachable(&server) {
+        true => url.to_string(),
+        false => format!("http://tauri.localhost/server.html?down={server}"),
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    window
+        .navigate(to.parse().map_err(|_| "not a URL".to_string())?)
+        .map_err(|e| e.to_string())
 }
 
 /// Whether something accepts a connection at the server URL's host and port within 3 s.

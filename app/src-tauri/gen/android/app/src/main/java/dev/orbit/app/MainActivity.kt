@@ -3,6 +3,7 @@ package dev.orbit.app
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.webkit.WebView
 import android.content.Intent
 import androidx.activity.enableEdgeToEdge
@@ -12,12 +13,13 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     web = webView
-    webView.padForSystemBars()
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    // The content root, not the WebView: a WebView ignores its own padding, so pages drew under the bars.
+    findViewById<View>(android.R.id.content).padForSystemBars()
     Link.set(intent)
     Sync.schedule(this)
     WidgetRefresh.schedule(this)

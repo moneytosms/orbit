@@ -124,6 +124,7 @@ fun View.padForSystemBars() {
         v.setPadding(b.left, b.top, b.right, b.bottom)
         insets
     }
+    requestApplyInsets()
 }
 
 /** Dark status-bar icons on the light theme, light ones on the dark theme (edge-to-edge screens draw under the bar). */
