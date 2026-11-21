@@ -2,7 +2,7 @@
 //! Every write takes `now` so callers (and tests) own the clock.
 use orbit_core::{
     Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task, Uuid,
-    apply, new_id,
+    apply, new_id, parse,
 };
 use rusqlite::{Connection, OptionalExtension};
 
@@ -79,6 +79,91 @@ impl Client {
         set_meta(&tx, "auth", token)?;
         tx.commit()?;
         Ok(device)
+    }
+
+    /// Queues an Inbox task from quick-add text: title, due, priority, labels and `@Area`/`@project`
+    /// applied (`now_local` is `YYYY-MM-DDTHH:MM`). Goal and page tokens are parsed but not applied
+    /// yet. Returns the id and the parsed title; blank or token-only text is an error.
+    pub fn capture(
+        &mut self,
+        text: &str,
+        id: Option<Uuid>,
+        now_local: &str,
+        now_ms: u64,
+    ) -> Result<(Uuid, String)> {
+        let rows = self.rows()?;
+        let mut known = parse::Known::default();
+        for r in &rows {
+            match r {
+                Row::Area(a) => known.areas.push(a.name.clone()),
+                Row::Project(p) => known.areas.push(p.name.clone()),
+                Row::Goal(g) => known.goals.push(g.name.clone()),
+                Row::Page(p) => known.pages.push(p.title.clone()),
+                Row::Label(l) => known.labels.push(l.name.clone()),
+                _ => {}
+            }
+        }
+        let parsed = parse::parse(text.trim(), now_local, &known);
+        if parsed.title.is_empty() {
+            return Err("empty capture".into());
+        }
+        let id = match id {
+            Some(id) => {
+                self.enqueue(
+                    Op::TaskCreate {
+                        id,
+                        title: parsed.title.clone(),
+                        parent_id: None,
+                        order: String::new(),
+                    },
+                    now_ms,
+                )?;
+                id
+            }
+            None => self.create_task(&parsed.title, now_ms)?,
+        };
+        // An unknown `@name` leaves the task in the Inbox.
+        let place = parsed.place.as_deref().and_then(|p| {
+            rows.iter().find_map(|r| match r {
+                Row::Area(a) if a.name.eq_ignore_ascii_case(p) => Some(a.id),
+                Row::Project(x) if x.name.eq_ignore_ascii_case(p) => Some(x.id),
+                _ => None,
+            })
+        });
+        if let Some(parent_id) = place {
+            self.enqueue(
+                Op::ItemMove {
+                    id,
+                    parent_id: Some(parent_id),
+                    order: String::new(),
+                },
+                now_ms,
+            )?;
+        }
+        let label_ids: Vec<Uuid> = rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Label(l) if parsed.labels.contains(&l.name) => Some(l.id),
+                _ => None,
+            })
+            .collect();
+        let mut patch = serde_json::Map::new();
+        if let Some(d) = &parsed.due {
+            patch.insert(
+                "due".into(),
+                serde_json::json!({ "date": d.date, "time": d.time }),
+            );
+        }
+        if let Some(p) = parsed.priority {
+            patch.insert("priority".into(), serde_json::json!(p));
+        }
+        if !label_ids.is_empty() {
+            patch.insert("label_ids".into(), serde_json::json!(label_ids));
+        }
+        if !patch.is_empty() {
+            self.update_task(id, serde_json::Value::Object(patch), now_ms)?;
+        }
+        Ok((id, parsed.title))
     }
 
     pub fn create_task(&mut self, title: &str, now_ms: u64) -> Result<Uuid> {

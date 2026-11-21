@@ -449,24 +449,18 @@ pub fn add(words: &[String], id: Option<&str>, dry_run: bool) -> Done {
             json!({ "id": id, "title": title, "created": false, "dry_run": true }),
         ));
     }
-    let now = now_ms();
-    let id = match id {
-        Some(id) => {
-            ctx.client
-                .enqueue(
-                    Op::TaskCreate {
-                        id,
-                        title: title.clone(),
-                        parent_id: None,
-                        order: String::new(),
-                    },
-                    now,
-                )
-                .map_err(internal)?;
-            id
-        }
-        None => ctx.client.create_task(&title, now).map_err(internal)?,
-    };
+    let local = chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string();
+    let (id, title) = ctx
+        .client
+        .capture(&title, id, &local, now_ms())
+        .map_err(|e| match e.to_string().as_str() {
+            "empty capture" => fail(
+                "title_required",
+                "a task needs a title, not only quick-add tokens",
+                Some("orbit add \"buy milk tomorrow p1\""),
+            ),
+            _ => internal(e),
+        })?;
     Ok((
         format!("added {}: {title}", short(id)),
         json!({ "id": id, "title": title, "created": true, "dry_run": false }),

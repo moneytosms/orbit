@@ -54,9 +54,9 @@ enum Cmd {
     /// Show the server, sign-in state and unsynced count.
     #[command(after_help = "Examples:\n  orbit status\n  orbit --json status")]
     Status,
-    /// Add a task.
+    /// Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project.
     #[command(
-        after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run"
+        after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow 9am p2 #health\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run"
     )]
     Add {
         #[arg(required = true)]

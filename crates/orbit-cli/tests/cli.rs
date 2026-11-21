@@ -112,6 +112,20 @@ fn add_then_ls_snapshot() {
 }
 
 #[test]
+fn add_applies_quick_add_syntax() {
+    let d = tempfile::tempdir().unwrap();
+    let added = orbit(d.path(), &["--json", "add", "pay rent tomorrow p1"]).json();
+    assert_eq!(added["title"], "pay rent");
+    let task = &orbit(d.path(), &["--json", "show", added["id"].as_str().unwrap()]).json()["task"];
+    assert_eq!(task["priority"], 1, "{task}");
+    assert!(task["due"]["date"].is_string(), "{task}");
+
+    let only_tokens = orbit(d.path(), &["--json", "add", "p1"]);
+    assert_eq!(only_tokens.code, 1);
+    assert_eq!(only_tokens.json()["error"]["code"], "title_required");
+}
+
+#[test]
 fn add_with_id_is_idempotent() {
     let d = tempfile::tempdir().unwrap();
     let first = orbit(d.path(), &["--json", "add", "--id", A, "once"]).json();

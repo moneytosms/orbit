@@ -14,7 +14,7 @@ Commands:
   logout       Sign this device out. Unsynced changes wait for the next login
   sync         Send queued changes to the server and fetch the rest
   status       Show the server, sign-in state and unsynced count
-  add          Add a task
+  add          Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
   ls           List open tasks
   next         Show what to do next
   done         Complete a task
@@ -142,7 +142,7 @@ Examples:
 ### `orbit add`
 
 ```text
-Add a task
+Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
 
 Usage: orbit add [OPTIONS] <TITLE>...
 
@@ -165,7 +165,7 @@ Options:
 
 Examples:
   orbit add "buy milk"
-  orbit add call the dentist tomorrow
+  orbit add call the dentist tomorrow 9am p2 #health
   orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 "buy milk" --dry-run
 ```
 

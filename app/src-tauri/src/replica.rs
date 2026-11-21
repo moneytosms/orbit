@@ -2,7 +2,7 @@
 //! (share target, WorkManager) with no window. Rust is the only SQLite writer and the only sender.
 #![cfg_attr(not(target_os = "android"), allow(dead_code))] // JNI entry points are Android-only
 use orbit_client::{Client, Result};
-use orbit_core::{Op, Row, Task, Uuid, goal, next, parse, reminder, routine, view};
+use orbit_core::{Op, Row, Task, Uuid, goal, next, reminder, routine, view};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -57,74 +57,10 @@ fn area_filter(area: &str) -> Result<Option<Uuid>> {
     })
 }
 
-/// The names quick-add can resolve against.
-fn known(rows: &[Row]) -> parse::Known {
-    let mut k = parse::Known::default();
-    for r in rows {
-        match r {
-            Row::Area(a) => k.areas.push(a.name.clone()),
-            Row::Project(p) => k.areas.push(p.name.clone()),
-            Row::Goal(g) => k.goals.push(g.name.clone()),
-            Row::Page(p) => k.pages.push(p.title.clone()),
-            Row::Label(l) => k.labels.push(l.name.clone()),
-            _ => {}
-        }
-    }
-    k
-}
-
-/// Queues an Inbox task offline, with quick-add syntax applied to its title, due, priority and
-/// labels. No network, no UI. Goal and page tokens are parsed but not applied yet.
+/// Queues an Inbox task offline, with quick-add syntax applied (see `Client::capture`). No network, no UI.
 pub fn capture(dir: &str, text: &str) -> Result<Value> {
-    let text = text.trim();
-    if text.is_empty() {
-        return Err("empty capture".into());
-    }
     with(dir, "", |c| {
-        let rows = c.rows()?;
-        let parsed = parse::parse(text, &now_local(), &known(&rows));
-        if parsed.title.is_empty() {
-            return Err("empty capture".into());
-        }
-        let label_ids: Vec<Uuid> = rows
-            .iter()
-            .filter_map(|r| match r {
-                Row::Label(l) if parsed.labels.contains(&l.name) => Some(l.id),
-                _ => None,
-            })
-            .collect();
-        let id = c.create_task(&parsed.title, now_ms())?;
-        // `@Area` or `@project`, matched by name; an unknown name leaves the task in the Inbox.
-        let place = parsed.place.as_deref().and_then(|p| {
-            rows.iter().find_map(|r| match r {
-                Row::Area(a) if a.name.eq_ignore_ascii_case(p) => Some(a.id),
-                Row::Project(x) if x.name.eq_ignore_ascii_case(p) => Some(x.id),
-                _ => None,
-            })
-        });
-        if let Some(parent_id) = place {
-            c.enqueue(
-                Op::ItemMove {
-                    id,
-                    parent_id: Some(parent_id),
-                    order: String::new(),
-                },
-                now_ms(),
-            )?;
-        }
-        let mut patch = serde_json::Map::new();
-        if let Some(d) = &parsed.due {
-            patch.insert("due".into(), json!({ "date": d.date, "time": d.time }));
-        }
-        if let Some(p) = parsed.priority {
-            patch.insert("priority".into(), json!(p));
-        }
-        if !label_ids.is_empty() {
-            patch.insert("label_ids".into(), json!(label_ids));
-        }
-        if !patch.is_empty() {
-            c.update_task(id, Value::Object(patch), now_ms())?;
-        }
+        let (id, _) = c.capture(text, None, &now_local(), now_ms())?;
         Ok(json!({ "id": id }))
     })
 }
