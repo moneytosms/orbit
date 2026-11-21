@@ -1,6 +1,12 @@
-# Orbit
+<p align="center"><img src="assets/readme/hero.svg" alt="Orbit: a planner you host yourself. Four orbits around a sun labelled Today." width="100%"></p>
+
+<p align="center"><a href="https://moneytosms.github.io/orbit/">Website</a> · <a href="https://moneytosms.github.io/orbit/guide/">Guide</a> · <a href="https://github.com/moneytosms/orbit/releases">Releases</a></p>
 
 Orbit is a self-hostable personal planner. You capture tasks quickly, then organise them under Areas and Projects and tie them to Goals and Routines. A small Rust server holds the data in SQLite. The web app, a Linux desktop app, an Android app and a CLI sync with it, and each keeps an offline copy.
+
+<p align="center"><img src="assets/readme/home-desktop.png" alt="Orbit Home on desktop: what is due, routines, upcoming tasks and goal progress." width="100%"></p>
+
+Screenshot: the web app on made-up demo data.
 
 **Install:** set up the server with [docs/deploy.md](docs/deploy.md), then install the clients (web, Linux, Android, CLI) with [docs/install.md](docs/install.md).
 

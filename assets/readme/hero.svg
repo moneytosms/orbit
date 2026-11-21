@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="100%" role="img" aria-label="Orbit: a planner you host yourself. Four orbits around a sun labelled Today.">
+  <title>Orbit: a planner you host yourself</title>
+  <rect width="1200" height="360" rx="20" fill="#fbfaf8"/>
+  <rect x="0.5" y="0.5" width="1199" height="359" rx="19.5" fill="none" stroke="#ebe7e0"/>
+  <g transform="rotate(-18 900 180)" fill="none" stroke="#dcd5ca" stroke-width="2" stroke-dasharray="3 8">
+    <ellipse cx="900" cy="180" rx="110" ry="46"/>
+    <ellipse cx="900" cy="180" rx="170" ry="72"/>
+    <ellipse cx="900" cy="180" rx="230" ry="98"/>
+    <ellipse cx="900" cy="180" rx="290" ry="124"/>
+  </g>
+  <g transform="rotate(-18 900 180)">
+    <circle cx="1010" cy="180" r="9" fill="#b37419"/>
+    <circle cx="730" cy="180" r="10" fill="#3b6cb0"/>
+    <circle cx="900" cy="252" r="11" fill="#468253"/>
+    <circle cx="1190" cy="180" r="12" fill="#ad4f66"/>
+  </g>
+  <circle cx="900" cy="180" r="56" fill="#c2552f"/>
+  <text x="900" y="188" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" font-weight="700" fill="#ffffff">Today</text>
+  <text x="64" y="150" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="84" font-weight="700" fill="#2a2723" letter-spacing="-2">Orbit</text>
+  <text x="66" y="206" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="30" fill="#6b665e">A planner you host yourself.</text>
+  <text x="66" y="250" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" fill="#a3441f">Tasks, goals and routines. One SQLite file. Web, Linux, Android, CLI.</text>
+</svg>
