@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.1 - 2026-11-21
+
+### Bug fixes
+
+- Orbit add applies quick-add syntax via shared client capture
+- Keep WorkManager and app classes in android release build
+- Desktop app opens server page on first launch
+
+### Documentation
+
+- Add project site, guide and README redesign
+- Restructure deploy guide, auto-create data dir, add systemd unit
+
+### Features
+
+- Labelled Add task, Add area and Add project in sidebar
+
 ## 0.1.0 - 2026-11-20
 
 ### Bug fixes
@@ -24,6 +41,7 @@
 - Keep Project id narrowed for the banner
 - Widgets use the app accent on Android 12+; name quick-add and list widgets in the picker
 - Forward routine id through notification service worker
+- Install only platform-tools in the android release job
 
 ### Chores
 
