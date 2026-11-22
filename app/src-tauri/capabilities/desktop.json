@@ -25,6 +25,7 @@
     "allow-get-auto-updates",
     "allow-set-auto-updates",
     "allow-notify-upgrade-required",
-    "allow-clear-upgrade-required"
+    "allow-clear-upgrade-required",
+    "allow-shell-version"
   ]
 }

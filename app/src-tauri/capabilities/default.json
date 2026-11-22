@@ -9,6 +9,7 @@
     "allow-set-token",
     "allow-clear-token",
     "allow-has-token",
-    "allow-set-server"
+    "allow-set-server",
+    "allow-shell-version"
   ]
 }

@@ -13,6 +13,14 @@ const AUTO_UPDATES: &str = "auto-updates";
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 static LAST_REQUIRED_PROTOCOL: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
+
+/// The installed desktop shell version, which can differ from the server-loaded UI.
+#[tauri::command]
+pub fn shell_version(window: tauri::WebviewWindow) -> Result<String, String> {
+    trusted(&window)?;
+    Ok(env!("CARGO_PKG_VERSION").to_string())
+}
+
 fn file() -> PathBuf {
     crate::token::data_dir().join("server")
 }

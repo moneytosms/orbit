@@ -101,7 +101,8 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             desktop::get_auto_updates,
             desktop::set_auto_updates,
             desktop::notify_upgrade_required,
-            desktop::clear_upgrade_required
+            desktop::clear_upgrade_required,
+            desktop::shell_version
         ])
         .on_page_load(|webview, payload| {
             desktop::on_page_load(webview, payload.url(), payload.event());

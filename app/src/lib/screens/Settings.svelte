@@ -141,7 +141,7 @@
         .then((enabled) => (autoUpdates = enabled))
         .catch(() => {})
     }
-    if (isAndroidTauri()) {
+    if (isAndroidTauri() || isDesktopTauri()) {
       void invoke<string>('shell_version')
         .then((version) => {
           if (version) appVersion = version
