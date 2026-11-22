@@ -76,8 +76,10 @@ wait for your next login. The full command list is in [cli.md](cli.md), and man 
 
 ## 4. Update
 
-Run the install command again; it replaces the binary with the latest release. Run `orbit sync` first
-so no queued changes are left behind. A build-from-source install updates with `git pull` and
+Run `orbit self-update` to download the Linux release matching this CPU, verify its archive against
+`SHA256SUMS`, and atomically replace the CLI. `orbit self-update --dry-run` downloads and verifies
+the update without replacing the executable. A checksum or archive failure leaves the current CLI
+in place. A build-from-source install updates with `git pull` and
 `cargo install --path crates/orbit-cli --locked --force`.
 
 ## 5. Use it from AI tools

@@ -4,6 +4,7 @@ mod guide;
 mod mcp;
 mod out;
 mod refs;
+mod updates;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use out::{Done, print_err, print_ok};
@@ -57,6 +58,13 @@ enum Cmd {
     /// Show the server, sign-in state and unsynced count.
     #[command(after_help = "Examples:\n  orbit status\n  orbit --json status")]
     Status,
+    /// Check for and install a verified CLI release.
+    #[command(after_help = "Examples:\n  orbit self-update\n  orbit self-update --dry-run")]
+    SelfUpdate {
+        /// Download and verify the update without replacing this executable.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project.
     #[command(
         after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow 9am p2 #health\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run"
@@ -207,6 +215,7 @@ fn run(command: Cmd, no_color: bool) -> Done {
         Cmd::Logout { yes, dry_run } => cmd::logout(yes, dry_run),
         Cmd::Sync => cmd::sync(),
         Cmd::Status => cmd::status(),
+        Cmd::SelfUpdate { dry_run } => cmd::self_update(dry_run),
         Cmd::Add { title, id, dry_run } => cmd::add(&title, id.as_deref(), dry_run),
         Cmd::Ls { all, wide } => cmd::ls(all, wide, no_color),
         Cmd::Next { all, wide } => cmd::next(all, wide, no_color),

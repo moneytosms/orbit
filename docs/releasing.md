@@ -15,10 +15,34 @@ just release 0.1.0 --publish    # bumps the repo, commits, tags v0.1.0, pushes
 
 - `ghcr.io/<owner>/<repo>:<version>` and `:latest` (linux/amd64, linux/arm64)
 - `Orbit_<version>_amd64.AppImage` (Linux desktop)
+- `Orbit_<version>_amd64.AppImage.sig` and `latest.json` (desktop updater)
 - `Orbit-<version>-android.apk` (signed release APK)
+- `orbit-<version>-linux-x86_64.tar.gz` and `orbit-<version>-linux-aarch64.tar.gz` (CLI)
+- `SHA256SUMS` for the release assets
 - a GitHub Release `v<version>` with the changelog notes and all assets
 
 The `release` recipe is provided by `release.just`; the justfile must contain `import 'release.just'`.
+Before creating the GitHub Release, the workflow verifies both GHCR tags and checks the staged
+asset names, updater manifest, AppImage signature, APK, both CLI tarballs, and every `SHA256SUMS`
+entry with `scripts/check-release-assets.sh`. Run it locally against a staged `dist/` directory
+with `scripts/check-release-assets.sh X.Y.Z dist`; it performs no publishing.
+
+## Client and protocol policy
+
+- A patch or minor release without a protocol change is a server-only deploy. The server image
+  carries the UI, so web, desktop and Android shells receive UI changes on reload; no native
+  release is needed.
+- A protocol bump changes `PROTOCOL_V` and `MIN_CLIENT_PROTOCOL`. Keep accepting protocol `N-1`
+  for at least one minor release. Older clients receive HTTP 426 with an upgrade link and should
+  preserve queued changes. CLI users can run `orbit self-update` to install a verified release.
+- A native-only change, such as an Android notification or desktop tray fix, needs an APK/AppImage
+  release. The UI should continue to work with older shells.
+
+## Operator update path
+
+Most client changes ship with the server image. Pull the desired version and restart the container;
+the served UI updates with that deploy. Use a native release only for shell or protocol changes.
+`orbit status` reports the server version/protocol and whether the CLI needs updating.
 
 ## Secrets (GitHub Actions)
 
@@ -63,10 +87,14 @@ is lost, installed copies cannot verify updates signed with a new key, so users 
 After the GitHub Release is published:
 
 ```sh
-cd packaging/aur
-updpkgsums                      # replaces SKIP with the real sha256 of the AppImage
-makepkg --printsrcinfo > .SRCINFO
+just release-aur X.Y.Z
 ```
+
+This downloads the release AppImage with `gh`, updates the checksum and regenerates `.SRCINFO`.
+For an offline fixture, pass `--asset-dir DIR`; add `--dry-run` to preview without changing the
+files. Keep `SKIP` only in this repository's `PKGBUILD` template. Verify the checksum is 64
+hexadecimal characters before copying both files to the AUR repository. The staged release checks
+also verify the AppImage and its `SHA256SUMS` entry.
 
 Push `PKGBUILD` and `.SRCINFO` to the `orbit-bin` AUR repository. See `packaging/aur/README.md`.
 

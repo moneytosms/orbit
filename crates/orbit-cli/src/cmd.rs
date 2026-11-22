@@ -1,18 +1,18 @@
 //! The commands. Each returns the human text and the `--json` body; `main` prints them.
-use crate::out::{Done, R, fail, internal, table, usage};
+use crate::out::{Done, Fail, R, fail, internal, table, usage};
 use crate::refs;
 use orbit_client::{Client, Rejection, is_signed_out};
 use orbit_core::next::{Cfg, whats_next};
 use orbit_core::routine::{CheckState, checkin_id};
 use orbit_core::search::Index;
 use orbit_core::view::today_string;
-use orbit_core::{ErrorCode, Op, Row, Task, Uuid};
+use orbit_core::{ErrorCode, Op, PROTOCOL_V, Row, Task, UpgradeRequired, Uuid};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::error::Error;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Rows `ls`, `next` and `search` show before truncating, unless `--all`.
 const LIMIT: usize = 20;
@@ -184,21 +184,7 @@ pub fn sync() -> Done {
     let before = ctx.client.outbox_len().map_err(internal)?;
     let rejected = runtime()?
         .block_on(ctx.client.sync(now_ms()))
-        .map_err(|e| {
-            if is_signed_out(&*e) {
-                fail(
-                    "signed_out",
-                    "the server no longer accepts this device",
-                    Some("run `orbit login <url>`"),
-                )
-            } else {
-                fail(
-                    "network",
-                    e.to_string(),
-                    Some("changes stay queued; try again later"),
-                )
-            }
-        })?;
+        .map_err(|e| sync_error(&*e))?;
     let after = ctx.client.outbox_len().map_err(internal)?;
     let sent = before.saturating_sub(after);
     let rejections: Vec<Value> = rejected.iter().map(rejection_json).collect();
@@ -213,6 +199,34 @@ pub fn sync() -> Done {
     Ok((human, json!({ "sent": sent, "rejected": rejections })))
 }
 
+fn sync_error(e: &(dyn Error + Send + Sync + 'static)) -> Fail {
+    if is_signed_out(e) {
+        fail(
+            "signed_out",
+            "the server no longer accepts this device",
+            Some("run `orbit login <url>`"),
+        )
+    } else if let Some(upgrade) = e.downcast_ref::<UpgradeRequired>() {
+        upgrade_error(upgrade.client_protocol, upgrade.min_client_protocol)
+    } else {
+        fail(
+            "network",
+            e.to_string(),
+            Some("changes stay queued; try again later"),
+        )
+    }
+}
+
+fn upgrade_error(client_protocol: u32, min_client_protocol: u32) -> Fail {
+    fail(
+        "upgrade_required",
+        format!(
+            "This Orbit CLI is too old for that server (client protocol {client_protocol}, server needs {min_client_protocol}). Run `orbit self-update`."
+        ),
+        Some("run `orbit self-update` after checking your network connection"),
+    )
+}
+
 fn rejection_json(r: &Rejection) -> Value {
     let op = serde_json::to_value(&r.command.op).unwrap_or(Value::Null);
     json!({ "uuid": r.command.uuid, "type": op["type"], "code": code_name(r.code) })
@@ -224,15 +238,69 @@ pub fn status() -> Done {
     let pending = ctx.client.outbox_len().map_err(internal)?;
     let open_tasks = open_tasks(&ctx.client)?.len();
     let server = (!ctx.url.is_empty()).then(|| ctx.url.clone());
+    let versions = if ctx.url.is_empty() {
+        None
+    } else {
+        runtime()?.block_on(async {
+            tokio::time::timeout(Duration::from_secs(3), ctx.client.server_version())
+                .await
+                .ok()
+                .and_then(Result::ok)
+        })
+    };
+    let upgrade = versions
+        .as_ref()
+        .filter(|v| v.min_client_protocol > PROTOCOL_V);
+    let message = upgrade.map(|v| upgrade_error(PROTOCOL_V, v.min_client_protocol));
+    let status = if let Some(error) = &message {
+        error.message.clone()
+    } else if versions
+        .as_ref()
+        .is_some_and(|v| version_is_newer(&v.server, env!("CARGO_PKG_VERSION")))
+    {
+        "update available".into()
+    } else if versions.is_some() {
+        "up to date".into()
+    } else {
+        "server version unavailable".into()
+    };
+    let server_version = versions
+        .as_ref()
+        .map(|v| v.server.as_str())
+        .unwrap_or("unavailable");
+    let server_protocol = versions
+        .as_ref()
+        .map(|v| v.protocol.to_string())
+        .unwrap_or_else(|| "unavailable".into());
     let human = format!(
-        "server: {}\nsigned in: {}\nunsynced changes: {pending}\nopen tasks: {open_tasks}",
+        "client version: {}\nserver: {}\nserver version: {}\nprotocol: client {}, server {}\nupdate: {status}\nsigned in: {}\nunsynced changes: {pending}\nopen tasks: {open_tasks}",
+        env!("CARGO_PKG_VERSION"),
         server.as_deref().unwrap_or("none"),
+        server_version,
+        PROTOCOL_V,
+        server_protocol,
         if signed_in { "yes" } else { "no" },
     );
     Ok((
         human,
-        json!({ "server": server, "signed_in": signed_in, "unsynced": pending, "open_tasks": open_tasks }),
+        json!({ "server": server, "signed_in": signed_in, "unsynced": pending, "open_tasks": open_tasks, "client_version": env!("CARGO_PKG_VERSION"), "server_version": versions.as_ref().map(|v| &v.server), "client_protocol": PROTOCOL_V, "server_protocol": versions.as_ref().map(|v| v.protocol), "update": status, "upgrade_required": message.map(|error| json!({ "code": error.code, "message": error.message, "hint": error.hint, "client_protocol": PROTOCOL_V, "min_client_protocol": upgrade.map(|v| v.min_client_protocol), "upgrade": "https://github.com/moneytosms/orbit/releases/latest" })) }),
     ))
+}
+
+fn version_is_newer(left: &str, right: &str) -> bool {
+    fn parts(s: &str) -> Option<Vec<u64>> {
+        let values: Vec<_> = s
+            .split('.')
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .ok()?;
+        (values.len() == 3).then_some(values)
+    }
+    matches!((parts(left), parts(right)), (Some(a), Some(b)) if a > b)
+}
+
+pub fn self_update(dry_run: bool) -> Done {
+    crate::updates::self_update(dry_run)
 }
 
 pub fn export(file: &Path) -> Done {
@@ -961,4 +1029,34 @@ pub fn import_todoist(maps: &[String], yes: bool) -> Done {
         human.push_str(&format!("\nnever imported: {}\nrun `orbit sync` to fetch the new items", dropped.join(", ")));
         Ok((human, json!({ "committed": true, "report": report })))
     })
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+
+    #[test]
+    fn protocol_error_is_actionable_and_nonzero() {
+        let error = UpgradeRequired {
+            error: "upgrade_required".into(),
+            client_protocol: 1,
+            min_client_protocol: 2,
+            upgrade: "https://example.test/releases/latest".into(),
+        };
+        let failure = sync_error(&error);
+        assert_eq!(failure.code, "upgrade_required");
+        assert_eq!(failure.exit, 1);
+        assert!(
+            failure
+                .message
+                .contains("client protocol 1, server needs 2")
+        );
+        assert!(failure.message.contains("orbit self-update"));
+    }
+
+    #[test]
+    fn status_compares_versions_numerically() {
+        assert!(version_is_newer("0.10.0", "0.9.9"));
+        assert!(!version_is_newer("0.2.0", "0.2.0"));
+    }
 }

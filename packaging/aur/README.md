@@ -4,13 +4,20 @@
 
 ## Per release
 
-1. After `scripts/release.sh X.Y.Z --publish` and the release workflow finished, `pkgver` is already set. Fill in the checksum (downloads the AppImage; keep `sha256sums=('SKIP')` in this repo only until then):
+After `just release X.Y.Z --publish` and the GitHub Release workflow finishes, run:
 
-   ```sh
-   cd packaging/aur
-   updpkgsums
-   makepkg --printsrcinfo > .SRCINFO
-   makepkg --clean   # optional: build check, needs webkit2gtk-4.1 installed
-   ```
+```sh
+just release-aur X.Y.Z
+```
 
-2. Copy `PKGBUILD` and `.SRCINFO` into the AUR `orbit-bin` git repo, commit, push.
+This downloads the named AppImage with `gh`, computes its checksum, updates `PKGBUILD`, and
+regenerates `.SRCINFO`. To stage or test a local asset without network access, pass its directory:
+
+```sh
+just release-aur X.Y.Z --asset-dir /path/to/dist --dry-run
+```
+
+The checked-in `PKGBUILD` keeps `SKIP` as a template until a release asset exists; do not copy that
+placeholder to AUR. Copy the updated `PKGBUILD` and `.SRCINFO` into the AUR `orbit-bin` git repo,
+then commit and push there. `makepkg --clean` remains an optional local package build check and needs
+`webkit2gtk-4.1` installed.

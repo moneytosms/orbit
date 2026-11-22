@@ -4,8 +4,8 @@
 # Default is a dry run: the versions are bumped in a temp copy of the working tree and
 # verified there; nothing in the repo is changed and nothing is committed, tagged, pushed
 # or published. --publish bumps the repo, commits, tags vX.Y.Z and pushes. The tag push
-# starts .github/workflows/release.yml, which builds the GHCR image, AppImage and APK and
-# creates the GitHub Release with them.
+# starts .github/workflows/release.yml, which builds the GHCR image, AppImage, APK and CLI
+# assets, verifies their names and checksums, then creates the GitHub Release.
 set -euo pipefail
 
 usage() {
@@ -112,9 +112,10 @@ fi
 step "publish"
 run git push origin HEAD
 run git push origin "$TAG"
-echo "    tag push starts .github/workflows/release.yml: GHCR image (linux/amd64, linux/arm64),"
-echo "    AppImage (+ updater manifest when configured), signed APK, GitHub Release with assets."
-echo "    Then: updpkgsums + makepkg --printsrcinfo in packaging/aur, push orbit-bin to the AUR."
+echo "    tag push starts .github/workflows/release.yml: GHCR image, signed AppImage/APK, CLI tarballs,"
+echo "    checksummed GitHub Release assets."
+echo "    After the release workflow finishes, run: just release-aur $VERSION"
+echo "    Then copy packaging/aur/PKGBUILD and .SRCINFO to orbit-bin and push to the AUR."
 
 if ((PUBLISH)); then
   echo "released $TAG"

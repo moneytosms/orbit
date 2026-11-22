@@ -14,6 +14,7 @@ Commands:
   logout       Sign this device out. Unsynced changes wait for the next login
   sync         Send queued changes to the server and fetch the rest
   status       Show the server, sign-in state and unsynced count
+  self-update  Check for and install a verified CLI release
   add          Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
   ls           List open tasks in a terminal-width-aware table
   next         Show what to do next, with a reason for each item
@@ -152,6 +153,31 @@ Options:
 Examples:
   orbit status
   orbit --json status
+```
+
+### `orbit self-update`
+
+```text
+Check for and install a verified CLI release
+
+Usage: orbit self-update [OPTIONS]
+
+Options:
+      --dry-run
+          Download and verify the update without replacing this executable
+
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit self-update
+  orbit self-update --dry-run
 ```
 
 ### `orbit add`

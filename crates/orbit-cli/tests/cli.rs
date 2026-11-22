@@ -1,4 +1,9 @@
 //! The `orbit` binary end to end: `--json` snapshots, error envelopes, exit codes, and a real local server.
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+};
+use orbit_core::{PROTOCOL_V, UpgradeRequired, VersionInfo};
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -29,6 +34,7 @@ fn orbit(dir: &Path, args: &[&str]) -> Out {
         .env("ORBIT_DIR", dir)
         .env("ORBIT_SESSION", "test")
         .env("ORBIT_PASSWORD", PW)
+        .env("ORBIT_RELEASE_API", "http://127.0.0.1:1")
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -461,6 +467,92 @@ fn login_sync_and_status_round_trip() {
     assert_eq!(st["signed_in"], true);
     assert_eq!(st["unsynced"], 0);
     assert_eq!(st["server"], url.as_str());
+    assert_eq!(st["client_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(st["client_protocol"], orbit_core::PROTOCOL_V);
+    assert_eq!(st["server_protocol"], orbit_core::PROTOCOL_V);
+    assert_eq!(st["update"], "up to date");
+    assert!(st["upgrade_required"].is_null());
+}
+
+#[test]
+fn cli_reports_protocol_426_and_keeps_outbox_queued() {
+    let (url, _server) = server();
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(orbit(dir.path(), &["login", &url]).code, 0);
+    assert_eq!(orbit(dir.path(), &["add", "queued before upgrade"]).code, 0);
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let version = VersionInfo {
+                server: "0.3.0".into(),
+                protocol: PROTOCOL_V + 1,
+                min_client_protocol: PROTOCOL_V + 1,
+                min_shell_version: "0.0.0".into(),
+                built: "fixture".into(),
+                ui: "fixture".into(),
+            };
+            let upgrade = UpgradeRequired {
+                error: "upgrade_required".into(),
+                client_protocol: PROTOCOL_V,
+                min_client_protocol: PROTOCOL_V + 1,
+                upgrade: "https://example.test/releases/latest".into(),
+            };
+            let app = axum::Router::new()
+                .route(
+                    "/version",
+                    get(move || {
+                        let version = version.clone();
+                        async move { axum::Json(version) }
+                    }),
+                )
+                .route(
+                    "/sync",
+                    post(move || {
+                        let upgrade = upgrade.clone();
+                        async move { (StatusCode::UPGRADE_REQUIRED, axum::Json(upgrade)) }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            tx.send(format!("http://{}", listener.local_addr().unwrap()))
+                .unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    });
+    let upgrade_url = rx.recv().unwrap();
+    std::fs::write(dir.path().join("server"), &upgrade_url).unwrap();
+
+    let status_out = orbit(dir.path(), &["--json", "status"]);
+    assert_eq!(status_out.code, 0, "{}", status_out.stderr);
+    let status = status_out.json();
+    let guidance = format!(
+        "This Orbit CLI is too old for that server (client protocol {}, server needs {}). Run `orbit self-update`.",
+        PROTOCOL_V,
+        PROTOCOL_V + 1
+    );
+    assert_eq!(status["update"], guidance);
+    assert_eq!(status["upgrade_required"]["code"], "upgrade_required");
+    assert_eq!(
+        status["upgrade_required"]["min_client_protocol"],
+        PROTOCOL_V + 1
+    );
+    assert_eq!(status["upgrade_required"]["message"], guidance);
+
+    let sync = orbit(dir.path(), &["--json", "sync"]);
+    assert_eq!(sync.code, 1);
+    assert_eq!(sync.json()["error"]["code"], "upgrade_required");
+    assert_eq!(sync.json()["error"]["message"], guidance);
+    assert!(
+        sync.json()["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("orbit self-update")
+    );
+
+    let db = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    let client = orbit_client::Client::open(db, &upgrade_url).unwrap();
+    assert_eq!(client.outbox_len().unwrap(), 1);
 }
 
 #[test]

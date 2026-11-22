@@ -10,7 +10,7 @@ provides=('orbit-app')
 conflicts=('orbit-app')
 options=('!strip')
 source=("Orbit_${pkgver}_amd64.AppImage::https://github.com/moneytosms/orbit/releases/download/v${pkgver}/Orbit_${pkgver}_amd64.AppImage")
-# Replace SKIP with the release AppImage checksum: updpkgsums (see packaging/aur/README.md)
+# Replace SKIP and regenerate .SRCINFO with `just release-aur <version>` after release.
 sha256sums=('SKIP')
 
 package() {
