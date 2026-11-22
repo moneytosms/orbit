@@ -24,6 +24,8 @@ impl Row {
             Row::Routine(r) => r.trashed_at,
             Row::Roadmap(r) => r.trashed_at,
             Row::Phase(r) => r.trashed_at,
+            Row::GraphNode(r) => r.trashed_at,
+            Row::GraphEdge(r) => r.trashed_at,
             Row::Label(_)
             | Row::Settings(_)
             | Row::Completion(_)
@@ -60,6 +62,8 @@ impl Row {
             Row::Routine(r) => r.trashed_at = at,
             Row::Roadmap(r) => r.trashed_at = at,
             Row::Phase(r) => r.trashed_at = at,
+            Row::GraphNode(r) => r.trashed_at = at,
+            Row::GraphEdge(r) => r.trashed_at = at,
             Row::Label(_)
             | Row::Settings(_)
             | Row::Completion(_)

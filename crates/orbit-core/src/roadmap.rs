@@ -61,6 +61,224 @@ pub struct Placement {
     pub links: Vec<Uuid>,
 }
 
+/// A roadmap canvas node. Row references remain owned by their normal Orbit screens.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GraphNode {
+    pub id: Uuid,
+    pub roadmap_id: Uuid,
+    #[serde(rename = "node_kind")]
+    pub kind: NodeKind,
+    #[serde(default)]
+    pub ref_id: Option<Uuid>,
+    #[serde(default)]
+    pub title: String,
+    pub x: f64,
+    pub y: f64,
+    #[serde(default)]
+    pub band_id: Option<Uuid>,
+    /// The selected outgoing edge, if a decision has been made.
+    #[serde(default)]
+    pub taken_edge_id: Option<Uuid>,
+    #[serde(default)]
+    pub decided_at: Option<u64>,
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeKind {
+    Task,
+    Project,
+    Goal,
+    Milestone,
+    Decision,
+    Note,
+    Text,
+    Heading,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKind {
+    Then,
+    Blocks,
+    DependsOn,
+    Decides,
+}
+
+fn valid_node_reference(kind: NodeKind, ref_id: Option<Uuid>) -> bool {
+    match kind {
+        NodeKind::Task | NodeKind::Project | NodeKind::Goal | NodeKind::Milestone => {
+            ref_id.is_some()
+        }
+        NodeKind::Decision | NodeKind::Note | NodeKind::Text | NodeKind::Heading => {
+            ref_id.is_none()
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GraphEdge {
+    pub id: Uuid,
+    pub roadmap_id: Uuid,
+    pub source_id: Uuid,
+    pub target_id: Uuid,
+    #[serde(rename = "edge_kind")]
+    pub kind: EdgeKind,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub trashed_at: Option<u64>,
+}
+
+/// Stable identity shared by devices when upgrading legacy Placement rows.
+pub fn graph_node_id(roadmap_id: Uuid, item_id: Uuid) -> Uuid {
+    let id = roadmap_id.as_u128().rotate_left(29) ^ item_id.as_u128();
+    uuid::Builder::from_random_bytes(id.to_be_bytes()).into_uuid()
+}
+
+pub fn graph_edge_id(roadmap_id: Uuid, source_id: Uuid, target_id: Uuid) -> Uuid {
+    let id = roadmap_id.as_u128().rotate_left(17)
+        ^ source_id.as_u128().rotate_left(61)
+        ^ target_id.as_u128();
+    uuid::Builder::from_random_bytes(id.to_be_bytes()).into_uuid()
+}
+
+/// Convert old Placement rows into stable graph nodes. Existing graph nodes win, so this is
+/// safe to run repeatedly and preserves any later user edits.
+pub fn migrate_legacy_nodes(rows: &[Row]) -> Vec<GraphNode> {
+    let ids: BTreeMap<Uuid, &Row> = rows.iter().map(|r| (r.id(), r)).collect();
+    let existing: std::collections::BTreeSet<Uuid> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::GraphNode(n) => Some(n.id),
+            _ => None,
+        })
+        .collect();
+    let referenced: std::collections::BTreeSet<(Uuid, Uuid)> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::GraphNode(n) => n.ref_id.map(|item| (n.roadmap_id, item)),
+            _ => None,
+        })
+        .collect();
+    let mut placements: Vec<&Placement> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Placement(p)
+                if !existing.contains(&graph_node_id(p.roadmap_id, p.item_id))
+                    && !referenced.contains(&(p.roadmap_id, p.item_id)) =>
+            {
+                Some(p)
+            }
+            _ => None,
+        })
+        .collect();
+    placements.sort_by_key(|p| (p.roadmap_id, p.phase_id, p.item_id));
+    let mut offsets = BTreeMap::<(Uuid, Option<Uuid>), u32>::new();
+    placements
+        .into_iter()
+        .filter_map(|p| {
+            let item = *ids.get(&p.item_id)?;
+            let kind = match item {
+                Row::Task(_) => NodeKind::Task,
+                Row::Project(_) => NodeKind::Project,
+                Row::Goal(_) => NodeKind::Goal,
+                Row::Milestone(_) => NodeKind::Milestone,
+                _ => return None,
+            };
+            let slot = offsets.entry((p.roadmap_id, p.phase_id)).or_default();
+            let node = GraphNode {
+                id: graph_node_id(p.roadmap_id, p.item_id),
+                roadmap_id: p.roadmap_id,
+                kind,
+                ref_id: Some(p.item_id),
+                title: String::new(),
+                x: 40.0 + f64::from(*slot) * 320.0,
+                y: 40.0,
+                band_id: p.phase_id,
+                taken_edge_id: None,
+                decided_at: None,
+                trashed_at: None,
+            };
+            *slot += 1;
+            Some(node)
+        })
+        .collect()
+}
+
+pub fn migrate_legacy_edges(rows: &[Row]) -> Vec<GraphEdge> {
+    let node_ids: BTreeMap<(Uuid, Uuid), Uuid> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::GraphNode(n) => n.ref_id.map(|item| ((n.roadmap_id, item), n.id)),
+            _ => None,
+        })
+        .chain(
+            migrate_legacy_nodes(rows)
+                .iter()
+                .filter_map(|n| n.ref_id.map(|item| ((n.roadmap_id, item), n.id))),
+        )
+        .collect();
+    let mut edges = Vec::new();
+    let mut placements: Vec<&Placement> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Placement(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+    placements.sort_by_key(|p| (p.roadmap_id, p.item_id));
+    let mut seen = std::collections::BTreeSet::new();
+    for p in placements {
+        for target in &p.links {
+            let Some(source_id) = node_ids.get(&(p.roadmap_id, p.item_id)).copied() else {
+                continue;
+            };
+            let Some(target_id) = node_ids.get(&(p.roadmap_id, *target)).copied() else {
+                continue;
+            };
+            if *target == p.item_id {
+                continue;
+            }
+            let id = graph_edge_id(p.roadmap_id, p.item_id, *target);
+            if !seen.insert(id) || rows.iter().any(|r| r.id() == id) {
+                continue;
+            }
+            edges.push(GraphEdge {
+                id,
+                roadmap_id: p.roadmap_id,
+                source_id,
+                target_id,
+                kind: EdgeKind::Then,
+                label: String::new(),
+                trashed_at: None,
+            });
+        }
+    }
+    edges
+}
+
+pub fn edge_visible(edge: &GraphEdge, nodes: &[GraphNode]) -> bool {
+    if edge.trashed_at.is_some() {
+        return false;
+    }
+    let Some(source) = nodes
+        .iter()
+        .find(|n| n.id == edge.source_id && n.trashed_at.is_none())
+    else {
+        return false;
+    };
+    if !nodes
+        .iter()
+        .any(|n| n.id == edge.target_id && n.trashed_at.is_none())
+    {
+        return false;
+    }
+    source.decided_at.is_none() || source.taken_edge_id == Some(edge.id)
+}
+
 /// The same Roadmap and item always give the same Placement id.
 pub fn placement_id(roadmap_id: Uuid, item_id: Uuid) -> Uuid {
     let id = roadmap_id.as_u128() ^ item_id.as_u128().rotate_left(64);
@@ -204,6 +422,139 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
                 })),
                 Some(_) => Err(ErrorCode::BadField),
             }
+        }
+        Op::RoadmapNodeCreate {
+            id,
+            roadmap_id,
+            kind,
+            ref_id,
+            title,
+            x,
+            y,
+            band_id,
+        } => {
+            if existing.is_some() {
+                return Err(ErrorCode::Exists);
+            }
+            if !x.is_finite() || !y.is_finite() {
+                return Err(ErrorCode::BadField);
+            }
+            if !valid_node_reference(*kind, *ref_id) {
+                return Err(ErrorCode::BadField);
+            }
+            Ok(Row::GraphNode(GraphNode {
+                id: *id,
+                roadmap_id: *roadmap_id,
+                kind: *kind,
+                ref_id: *ref_id,
+                title: title.trim().to_string(),
+                x: *x,
+                y: *y,
+                band_id: *band_id,
+                taken_edge_id: None,
+                decided_at: None,
+                trashed_at: None,
+            }))
+        }
+        Op::RoadmapNodeUpdate {
+            title,
+            kind,
+            ref_id,
+            band_id,
+            ..
+        } => {
+            let Some(Row::GraphNode(old)) = existing else {
+                return Err(ErrorCode::NotFound);
+            };
+            let kind = kind.unwrap_or(old.kind);
+            let ref_id = ref_id.unwrap_or(old.ref_id);
+            if !valid_node_reference(kind, ref_id) {
+                return Err(ErrorCode::BadField);
+            }
+            Ok(Row::GraphNode(GraphNode {
+                title: title
+                    .as_ref()
+                    .map(|v| v.trim().to_string())
+                    .unwrap_or(old.title.clone()),
+                kind,
+                ref_id,
+                band_id: band_id.unwrap_or(old.band_id),
+                ..old
+            }))
+        }
+        Op::RoadmapNodeMove { x, y, .. } => {
+            let Some(Row::GraphNode(old)) = existing else {
+                return Err(ErrorCode::NotFound);
+            };
+            if !x.is_finite() || !y.is_finite() {
+                return Err(ErrorCode::BadField);
+            }
+            Ok(Row::GraphNode(GraphNode {
+                x: *x,
+                y: *y,
+                ..old
+            }))
+        }
+        Op::RoadmapNodeDecide {
+            edge_id,
+            decided_at,
+            ..
+        } => {
+            let Some(Row::GraphNode(old)) = existing else {
+                return Err(ErrorCode::NotFound);
+            };
+            if old.kind != NodeKind::Decision {
+                return Err(ErrorCode::BadField);
+            }
+            Ok(Row::GraphNode(GraphNode {
+                taken_edge_id: *edge_id,
+                decided_at: *decided_at,
+                ..old
+            }))
+        }
+        Op::RoadmapEdgeCreate {
+            id,
+            roadmap_id,
+            source_id,
+            target_id,
+            kind,
+            label,
+        } => {
+            if existing.is_some() {
+                return Err(ErrorCode::Exists);
+            }
+            if source_id == target_id {
+                return Err(ErrorCode::BadField);
+            }
+            Ok(Row::GraphEdge(GraphEdge {
+                id: *id,
+                roadmap_id: *roadmap_id,
+                source_id: *source_id,
+                target_id: *target_id,
+                kind: *kind,
+                label: label.trim().to_string(),
+                trashed_at: None,
+            }))
+        }
+        Op::RoadmapEdgeUpdate { kind, label, .. } => {
+            let Some(Row::GraphEdge(old)) = existing else {
+                return Err(ErrorCode::NotFound);
+            };
+            Ok(Row::GraphEdge(GraphEdge {
+                kind: kind.unwrap_or(old.kind),
+                label: label
+                    .as_ref()
+                    .map(|v| v.trim().to_string())
+                    .unwrap_or(old.label.clone()),
+                ..old
+            }))
+        }
+        Op::RoadmapEdgeDelete { .. } => {
+            let Some(Row::GraphEdge(mut edge)) = existing else {
+                return Err(ErrorCode::NotFound);
+            };
+            edge.trashed_at = Some(cmd.hlc.wall);
+            Ok(Row::GraphEdge(edge))
         }
         _ => Err(ErrorCode::BadField),
     }
@@ -907,5 +1258,231 @@ mod tests {
         assert!(!by(12).outside);
         assert_eq!(by(13).date, None);
         assert!(!by(13).outside);
+    }
+
+    #[test]
+    fn graph_migration_is_stable_and_keeps_placements_readable() {
+        let mut placement = place(60, 11);
+        if let Row::Placement(p) = &mut placement {
+            p.links = vec![uid(12)];
+        }
+        let rows = vec![
+            phase(60, "a", None, None, false),
+            task(11, uid(1), false),
+            task(12, uid(1), false),
+            placement,
+            place(60, 12),
+        ];
+        let nodes = migrate_legacy_nodes(&rows);
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].band_id, Some(uid(60)));
+        assert_eq!(nodes[0].ref_id, Some(uid(11)));
+        assert_eq!(nodes, migrate_legacy_nodes(&rows));
+        let mut edited = rows.clone();
+        edited.push(Row::GraphNode(GraphNode {
+            x: 999.0,
+            ..nodes[0].clone()
+        }));
+        assert_eq!(migrate_legacy_nodes(&edited).len(), 1);
+        let edges = migrate_legacy_edges(&[
+            rows[0].clone(),
+            rows[1].clone(),
+            rows[2].clone(),
+            rows[3].clone(),
+            rows[4].clone(),
+            edited[5].clone(),
+            Row::GraphNode(nodes[1].clone()),
+        ]);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source_id, nodes[0].id);
+        assert!(matches!(rows[3], Row::Placement(_)));
+    }
+
+    #[test]
+    fn graph_field_clocks_isolate_moves_and_decisions() {
+        let base = Row::GraphNode(GraphNode {
+            id: uid(1),
+            roadmap_id: uid(50),
+            kind: NodeKind::Decision,
+            ref_id: None,
+            title: "Choose".into(),
+            x: 0.0,
+            y: 0.0,
+            band_id: None,
+            taken_edge_id: None,
+            decided_at: None,
+            trashed_at: None,
+        });
+        let command = |op, wall| Command {
+            uuid: uid(wall as u128 + 100),
+            op,
+            hlc: Hlc {
+                wall,
+                counter: 0,
+                device: uid(90),
+            },
+        };
+        let mut clocks = crate::Clocks::new();
+        let moved = crate::apply_lww(
+            Some(base),
+            &mut clocks,
+            &command(
+                Op::RoadmapNodeMove {
+                    id: uid(1),
+                    x: 20.0,
+                    y: 30.0,
+                },
+                20,
+            ),
+        )
+        .unwrap();
+        let decided = crate::apply_lww(
+            Some(moved),
+            &mut clocks,
+            &command(
+                Op::RoadmapNodeDecide {
+                    id: uid(1),
+                    edge_id: Some(uid(2)),
+                    decided_at: Some(25),
+                },
+                25,
+            ),
+        )
+        .unwrap();
+        let stale_move = crate::apply_lww(
+            Some(decided),
+            &mut clocks,
+            &command(
+                Op::RoadmapNodeMove {
+                    id: uid(1),
+                    x: 1.0,
+                    y: 2.0,
+                },
+                10,
+            ),
+        )
+        .unwrap();
+        let Row::GraphNode(n) = stale_move else {
+            panic!()
+        };
+        assert_eq!(
+            (n.x, n.y, n.taken_edge_id, n.decided_at),
+            (20.0, 30.0, Some(uid(2)), Some(25))
+        );
+    }
+
+    #[test]
+    fn a_decision_hides_untaken_edges_without_deleting_them() {
+        let node = GraphNode {
+            id: uid(1),
+            roadmap_id: uid(50),
+            kind: NodeKind::Decision,
+            ref_id: None,
+            title: "Choose".into(),
+            x: 0.0,
+            y: 0.0,
+            band_id: None,
+            taken_edge_id: Some(uid(2)),
+            decided_at: Some(10),
+            trashed_at: None,
+        };
+        let taken = GraphEdge {
+            id: uid(2),
+            roadmap_id: uid(50),
+            source_id: uid(1),
+            target_id: uid(3),
+            kind: EdgeKind::Then,
+            label: "yes".into(),
+            trashed_at: None,
+        };
+        let untaken = GraphEdge {
+            id: uid(4),
+            label: "no".into(),
+            ..taken.clone()
+        };
+        let target = GraphNode {
+            id: uid(3),
+            roadmap_id: uid(50),
+            kind: NodeKind::Task,
+            ref_id: Some(uid(30)),
+            title: String::new(),
+            x: 0.0,
+            y: 0.0,
+            band_id: None,
+            taken_edge_id: None,
+            decided_at: None,
+            trashed_at: None,
+        };
+        assert!(edge_visible(&taken, &[node.clone(), target.clone()]));
+        assert!(!edge_visible(&untaken, &[node.clone(), target.clone()]));
+        assert_eq!(untaken.trashed_at, None);
+        let deleted = GraphEdge {
+            trashed_at: Some(11),
+            ..taken.clone()
+        };
+        assert!(!edge_visible(&deleted, &[node, target]));
+    }
+
+    #[test]
+    fn graph_rows_and_ops_have_stable_wire_shapes() {
+        let row = Row::GraphNode(GraphNode {
+            id: uid(1),
+            roadmap_id: uid(50),
+            kind: NodeKind::Decision,
+            ref_id: None,
+            title: "Choose".into(),
+            x: 12.0,
+            y: 24.0,
+            band_id: Some(uid(60)),
+            taken_edge_id: None,
+            decided_at: None,
+            trashed_at: None,
+        });
+        let value = serde_json::to_value(&row).unwrap();
+        assert_eq!(value["kind"], "graph_node");
+        assert_eq!(value["node_kind"], "decision");
+        assert_eq!(serde_json::from_value::<Row>(value).unwrap(), row);
+
+        let command: Command = serde_json::from_value(serde_json::json!({
+            "uuid": uid(80), "type": "roadmap.node.update",
+            "args": { "id": uid(1), "ref_id": null, "band_id": uid(61) },
+            "hlc": { "wall": 5, "counter": 0, "device": uid(90) }
+        }))
+        .unwrap();
+        assert!(matches!(command.op, Op::RoadmapNodeUpdate {
+            ref_id: Some(None), band_id: Some(Some(id)), ..
+        } if id == uid(61)));
+    }
+
+    #[test]
+    fn reference_node_kinds_require_a_row_reference() {
+        let cmd = cmd(Op::RoadmapNodeCreate {
+            id: uid(1),
+            roadmap_id: uid(50),
+            kind: NodeKind::Task,
+            ref_id: None,
+            title: String::new(),
+            x: 0.0,
+            y: 0.0,
+            band_id: None,
+        });
+        assert_eq!(apply(None, &cmd), Err(ErrorCode::BadField));
+    }
+
+    #[test]
+    fn legacy_roadmap_and_placement_rows_still_deserialize() {
+        let roadmap: Row = serde_json::from_value(serde_json::json!({
+            "kind": "roadmap", "id": uid(50), "parent_id": uid(1), "name": "Old", "order": "a"
+        }))
+        .unwrap();
+        let placement: Row = serde_json::from_value(serde_json::json!({
+            "kind": "placement", "id": uid(70), "roadmap_id": uid(50),
+            "item_id": uid(11), "phase_id": uid(60), "links": [uid(12)]
+        }))
+        .unwrap();
+        assert!(matches!(roadmap, Row::Roadmap(r) if r.created_at.is_none()));
+        assert!(
+            matches!(placement, Row::Placement(p) if p.phase_id == Some(uid(60)) && p.links == vec![uid(12)])
+        );
     }
 }

@@ -2,8 +2,9 @@ use axum::{
     Router,
     body::{Body, to_bytes},
     extract::ConnectInfo,
-    http::{Request, StatusCode, header},
+    http::{HeaderMap, Request, StatusCode, header},
 };
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use tower::ServiceExt;
@@ -40,6 +41,61 @@ async fn sync((app, token): &(Router, String), body: Value) -> (StatusCode, Valu
         status,
         serde_json::from_slice(&bytes).unwrap_or(Value::Null),
     )
+}
+
+async fn sync_graph(
+    (app, token): &(Router, String),
+    body: Value,
+    cursor: Option<&str>,
+) -> (StatusCode, Value, Option<String>) {
+    let mut req = Request::post("/sync")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header("x-orbit-graph", "v1");
+    if let Some(cursor) = cursor {
+        req = req.header("x-orbit-graph-cursor", cursor);
+    }
+    let res = app
+        .clone()
+        .oneshot(req.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let graph_cursor = res
+        .headers()
+        .get("x-orbit-graph-cursor")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        graph_cursor,
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+#[allow(dead_code)]
+enum LegacyRow {
+    Area(Value),
+    Project(Value),
+    Section(Value),
+    Task(Value),
+    Label(Value),
+    Settings(Value),
+    Completion(Value),
+    Goal(Value),
+    Milestone(Value),
+    Page(Value),
+    Purged(Value),
+    View(Value),
+    Routine(Value),
+    Checkin(Value),
+    Roadmap(Value),
+    Phase(Value),
+    Placement(Value),
+    Award(Value),
 }
 
 #[tokio::test]
@@ -1483,4 +1539,281 @@ async fn a_phase_gate_must_be_a_milestone_and_placement_links_converge() {
     );
     assert_eq!(row(&res, &phase)["gate_id"], ms);
     assert_eq!(row(&res, &placement)["links"], json!([PROJECT]));
+}
+
+#[tokio::test]
+async fn graph_nodes_edges_sync_across_devices_with_per_field_clocks() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (roadmap, phase, task_node, decision, edge) = (c(0x91), c(0x92), c(0x93), c(0x94), c(0x95));
+    let other_device = "01900000-0000-7000-8000-0000000000d2";
+    let create_request = json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0x96), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Plan" }), now + 1),
+        cmd(&c(0x97), "phase.create", json!({ "id": phase, "roadmap_id": roadmap, "name": "Stage" }), now + 2),
+        cmd(&c(0x98), "roadmap.node.create", json!({ "id": task_node, "roadmap_id": roadmap, "kind": "task", "ref_id": TASK, "title": "", "x": 10, "y": 20, "band_id": phase }), now + 3),
+        cmd(&c(0x99), "roadmap.node.create", json!({ "id": decision, "roadmap_id": roadmap, "kind": "decision", "title": "Choose", "x": 40, "y": 20 }), now + 4),
+        cmd(&c(0x9a), "roadmap.edge.create", json!({ "id": edge, "roadmap_id": roadmap, "source_id": decision, "target_id": task_node, "kind": "decides", "label": "yes" }), now + 5),
+    ]});
+    serde_json::from_value::<orbit_core::SyncRequest>(create_request.clone()).unwrap();
+    let (create_status, created, create_cursor) = sync_graph(&app, create_request, None).await;
+    assert_eq!(create_status, StatusCode::OK, "{created:?}");
+    assert!(created.get("statuses").is_some(), "{created:?}");
+    for n in [0x96, 0x97, 0x98, 0x99, 0x9a] {
+        assert_eq!(
+            created["statuses"][c(n)],
+            json!({ "status": "ok" }),
+            "{n:x}: {created:?}"
+        );
+    }
+    let move_newer = cmd_from(
+        other_device,
+        &c(0x9b),
+        "roadmap.node.move",
+        json!({ "id": task_node, "x": 80, "y": 90 }),
+        now + 10,
+    );
+    let choose = cmd(
+        &c(0x9c),
+        "roadmap.node.decide",
+        json!({ "id": decision, "edge_id": edge, "decided_at": now + 11 }),
+        now + 11,
+    );
+    let (_, update, update_cursor) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": created["token"], "commands": [move_newer, choose] }),
+        create_cursor.as_deref(),
+    )
+    .await;
+    assert_eq!(update["statuses"][c(0x9b)], json!({ "status": "ok" }));
+    assert_eq!(update["statuses"][c(0x9c)], json!({ "status": "ok" }));
+    let stale = cmd(
+        &c(0x9d),
+        "roadmap.node.move",
+        json!({ "id": task_node, "x": 1, "y": 2 }),
+        now + 9,
+    );
+    let stale_decision = cmd_from(
+        other_device,
+        &c(0xa3),
+        "roadmap.node.decide",
+        json!({ "id": decision, "edge_id": null, "decided_at": null }),
+        now + 8,
+    );
+    let (_, replica, _) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": created["token"], "commands": [stale, stale_decision] }),
+        create_cursor.as_deref(),
+    )
+    .await;
+    assert_eq!(replica["statuses"][c(0x9d)], json!({ "status": "ok" }));
+    assert_eq!(replica["statuses"][c(0xa3)], json!({ "status": "ok" }));
+    let node = row(&replica, &task_node);
+    assert_eq!(
+        (
+            node["x"].as_f64(),
+            node["y"].as_f64(),
+            node["band_id"].as_str()
+        ),
+        (Some(80.0), Some(90.0), Some(phase.as_str()))
+    );
+    let decision_row = row(&replica, &decision);
+    assert_eq!(decision_row["taken_edge_id"], edge);
+    assert_eq!(decision_row["decided_at"], now + 11);
+
+    let (_, rejected, _) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": replica["token"], "commands": [
+            cmd(&c(0x9e), "roadmap.node.decide", json!({ "id": task_node, "edge_id": edge, "decided_at": now + 12 }), now + 12),
+            cmd(&c(0x9f), "roadmap.edge.create", json!({ "id": c(0xa0), "roadmap_id": roadmap, "source_id": decision, "target_id": TASK, "kind": "then" }), now + 13),
+        ]}),
+        update_cursor.as_deref(),
+    ).await;
+    assert_eq!(
+        rejected["statuses"][c(0x9e)],
+        json!({ "status": "error", "code": "bad_field" })
+    );
+    assert_eq!(
+        rejected["statuses"][c(0x9f)],
+        json!({ "status": "error", "code": "bad_parent" })
+    );
+}
+
+#[tokio::test]
+async fn graph_capability_gets_full_first_pull_then_incremental_graph_delta() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (roadmap, node) = (c(0xf1), c(0xf2));
+    let (_, created) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xb3), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Plan" }), now + 1),
+            cmd(&c(0xb4), "roadmap.node.create", json!({ "id": node, "roadmap_id": roadmap, "kind": "text", "title": "Draft", "x": 1, "y": 2 }), now + 2),
+        ]}),
+    )
+    .await;
+    assert_eq!(created["statuses"][c(0xb3)], json!({ "status": "ok" }));
+    assert_eq!(created["statuses"][c(0xb4)], json!({ "status": "ok" }));
+    let (status, first, cursor) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": created["token"], "commands": [] }),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(first["full"].as_bool().unwrap());
+    assert!(
+        first["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == node),
+        "{first:?}"
+    );
+    let cursor = cursor.unwrap();
+
+    let (status, moved, next_cursor) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": created["token"], "commands": [
+            cmd(&c(0xb5), "roadmap.node.move", json!({ "id": node, "x": 8, "y": 9 }), now + 3),
+        ]}),
+        Some(&cursor),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(moved["full"], false);
+    assert_eq!(
+        moved["delta"],
+        json!([{ "kind": "graph_node", "id": node, "roadmap_id": roadmap, "node_kind": "text", "ref_id": null, "title": "Draft", "x": 8.0, "y": 9.0, "band_id": null, "taken_edge_id": null, "decided_at": null, "trashed_at": null }])
+    );
+    let cursor_seq = cursor.strip_prefix("v1:").unwrap().parse::<u64>().unwrap();
+    let next_seq = next_cursor
+        .unwrap()
+        .strip_prefix("v1:")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
+    assert!(next_seq > cursor_seq);
+}
+
+#[tokio::test]
+async fn startup_migrates_stored_placements_once_and_keeps_the_legacy_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let roadmap = c(0xa1);
+    let phase = c(0xa2);
+    let second_task = c(0xa3);
+    let (_, made) = sync(&app, json!({ "v": 1, "token": t0, "commands": [
+        cmd(&c(0xa4), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Legacy" }), now + 1),
+        cmd(&c(0xa5), "phase.create", json!({ "id": phase, "roadmap_id": roadmap, "name": "Week" }), now + 2),
+        cmd(&c(0xa6), "task.create", json!({ "id": second_task, "parent_id": PROJECT, "title": "Second" }), now + 3),
+    ]})).await;
+    let rm: orbit_core::Uuid = roadmap.parse().unwrap();
+    let p: orbit_core::Uuid = phase.parse().unwrap();
+    let first: orbit_core::Uuid = TASK.parse().unwrap();
+    let second: orbit_core::Uuid = second_task.parse().unwrap();
+    let legacy_a = orbit_core::Row::Placement(orbit_core::roadmap::Placement {
+        id: orbit_core::roadmap::placement_id(rm, first),
+        roadmap_id: rm,
+        item_id: first,
+        phase_id: Some(p),
+        links: vec![second],
+    });
+    let legacy_b = orbit_core::Row::Placement(orbit_core::roadmap::Placement {
+        id: orbit_core::roadmap::placement_id(rm, second),
+        roadmap_id: rm,
+        item_id: second,
+        phase_id: Some(p),
+        links: vec![],
+    });
+    let db = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    for legacy in [legacy_a, legacy_b] {
+        db.execute("INSERT INTO rows (id, data, clocks, seq) VALUES (?1, ?2, '{}', (SELECT MAX(seq)+1 FROM rows))",
+            rusqlite::params![legacy.id().to_string(), serde_json::to_string(&legacy).unwrap()]).unwrap();
+    }
+    drop(db);
+    let (reopened, _) = orbit_server::app(dir.path()).unwrap();
+    let (status, migrated, graph_cursor) = sync_graph(
+        &(reopened.clone(), app.1.clone()),
+        json!({ "v": 1, "token": made["token"], "commands": [] }),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(migrated["full"].as_bool().unwrap());
+    assert!(graph_cursor.as_deref().unwrap().starts_with("v1:"));
+    let nodes: Vec<_> = migrated["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "graph_node")
+        .collect();
+    let edges: Vec<_> = migrated["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "graph_edge")
+        .collect();
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(edges.len(), 1);
+    assert!(nodes.iter().all(|n| n["band_id"] == phase));
+    assert!(
+        migrated["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == "placement")
+    );
+
+    // A strict legacy tagged Row enum can still parse every row from its normal v1 pull.
+    let (_, legacy) = sync(
+        &(reopened.clone(), app.1.clone()),
+        json!({ "v": 1, "token": made["token"], "commands": [] }),
+    )
+    .await;
+    let old_rows: Vec<LegacyRow> = serde_json::from_value(legacy["delta"].clone()).unwrap();
+    assert!(
+        old_rows
+            .iter()
+            .any(|r| matches!(r, LegacyRow::Placement(_)))
+    );
+    assert!(
+        legacy["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| { r["kind"] != "graph_node" && r["kind"] != "graph_edge" })
+    );
+
+    // Simulate expired graph tombstones disappearing from row storage. The durable migration
+    // marker must still prevent rebuilding those deterministic IDs from surviving Placements.
+    let mut db = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    for id in nodes
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .chain(edges.iter().map(|e| e["id"].as_str().unwrap()))
+    {
+        db.execute("DELETE FROM rows WHERE id = ?1", [id]).unwrap();
+    }
+    drop(db);
+    drop(reopened);
+    let (again, _) = orbit_server::app(dir.path()).unwrap();
+    let (_, after_restart, _) = sync_graph(
+        &(again, app.1.clone()),
+        json!({ "v": 1, "token": made["token"], "commands": [] }),
+        None,
+    )
+    .await;
+    assert!(
+        !after_restart["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == "graph_node" || r["kind"] == "graph_edge")
+    );
 }

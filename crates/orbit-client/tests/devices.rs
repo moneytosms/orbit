@@ -1,8 +1,18 @@
 mod common;
-use axum::{Json, http::StatusCode, routing::post};
+use axum::{
+    Json, Router,
+    http::{StatusCode, header::HeaderValue},
+    response::IntoResponse,
+    routing::post,
+};
 use common::{PASSWORD, device, replica, server};
 use orbit_core::{
-    Due, ErrorCode, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, UpgradeRequired, Uuid, completion_id,
+    Due, ErrorCode, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, Status, SyncRequest, SyncResponse,
+    UpgradeRequired, Uuid, completion_id,
+};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 const HOUR: u64 = 3_600_000;
@@ -162,6 +172,90 @@ fn native_prediction_reverses_only_exact_cascade_completions() {
         c.task(recurring).unwrap().unwrap().due.unwrap().date,
         "2026-11-23"
     );
+}
+
+#[tokio::test]
+async fn graph_outbox_waits_for_capability_and_survives_a_plain_v1_server() {
+    let requests = Arc::new(Mutex::new(Vec::<Vec<bool>>::new()));
+    let graph_enabled = Arc::new(AtomicBool::new(false));
+    let app = {
+        let requests = requests.clone();
+        let graph_enabled = graph_enabled.clone();
+        Router::new().route(
+            "/sync",
+            post(move |Json(req): Json<SyncRequest>| {
+                let requests = requests.clone();
+                let graph_enabled = graph_enabled.clone();
+                async move {
+                    let graph_flags = req
+                        .commands
+                        .iter()
+                        .map(|cmd| {
+                            matches!(
+                                cmd.op,
+                                Op::RoadmapNodeCreate { .. }
+                                    | Op::RoadmapNodeMove { .. }
+                                    | Op::RoadmapEdgeCreate { .. }
+                            )
+                        })
+                        .collect();
+                    requests.lock().unwrap().push(graph_flags);
+                    let statuses = req
+                        .commands
+                        .into_iter()
+                        .map(|cmd| (cmd.uuid, Status::Ok))
+                        .collect();
+                    let mut res = (
+                        StatusCode::OK,
+                        Json(SyncResponse {
+                            statuses,
+                            delta: vec![],
+                            token: 0,
+                            clock: None,
+                            full: false,
+                        }),
+                    )
+                        .into_response();
+                    if graph_enabled.load(Ordering::SeqCst) {
+                        res.headers_mut()
+                            .insert("x-orbit-graph-cursor", HeaderValue::from_static("v1:0"));
+                    }
+                    res
+                }
+            }),
+        )
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let mut client = replica(&url);
+    let task = client.create_task("Legacy compatible", 1000).unwrap();
+    client
+        .enqueue(
+            Op::RoadmapNodeCreate {
+                id: "01900000-0000-7000-8000-0000000000e1".parse().unwrap(),
+                roadmap_id: "01900000-0000-7000-8000-0000000000e2".parse().unwrap(),
+                kind: orbit_core::roadmap::NodeKind::Task,
+                ref_id: Some(task),
+                title: String::new(),
+                x: 0.0,
+                y: 0.0,
+                band_id: None,
+            },
+            1001,
+        )
+        .unwrap();
+
+    client.sync(2000).await.unwrap();
+    assert_eq!(*requests.lock().unwrap(), vec![vec![false]]);
+
+    graph_enabled.store(true, Ordering::SeqCst);
+    client.sync(3000).await.unwrap();
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1], Vec::<bool>::new());
+    assert_eq!(requests[2], vec![true]);
 }
 
 #[tokio::test]

@@ -349,6 +349,10 @@ pub enum Row {
     Roadmap(roadmap::Roadmap),
     Phase(roadmap::Phase),
     Placement(roadmap::Placement),
+    #[serde(rename = "graph_node")]
+    GraphNode(roadmap::GraphNode),
+    #[serde(rename = "graph_edge")]
+    GraphEdge(roadmap::GraphEdge),
     Award(Award),
 }
 
@@ -372,6 +376,8 @@ impl Row {
             Row::Roadmap(r) => r.id,
             Row::Phase(p) => p.id,
             Row::Placement(p) => p.id,
+            Row::GraphNode(n) => n.id,
+            Row::GraphEdge(e) => e.id,
             Row::Award(a) => a.id,
         }
     }
@@ -397,6 +403,8 @@ impl Row {
             Row::Roadmap(r) => Some(r.parent_id),
             Row::Phase(p) => Some(p.roadmap_id),
             Row::Placement(p) => Some(p.roadmap_id),
+            Row::GraphNode(n) => Some(n.roadmap_id),
+            Row::GraphEdge(e) => Some(e.roadmap_id),
         }
     }
 
@@ -944,6 +952,60 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         links: Option<Vec<Uuid>>,
     },
+    #[serde(rename = "roadmap.node.create")]
+    RoadmapNodeCreate {
+        id: Uuid,
+        roadmap_id: Uuid,
+        kind: roadmap::NodeKind,
+        #[serde(default)]
+        ref_id: Option<Uuid>,
+        #[serde(default)]
+        title: String,
+        x: f64,
+        y: f64,
+        #[serde(default)]
+        band_id: Option<Uuid>,
+    },
+    #[serde(rename = "roadmap.node.update")]
+    RoadmapNodeUpdate {
+        id: Uuid,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        kind: Option<roadmap::NodeKind>,
+        #[serde(default, deserialize_with = "some")]
+        ref_id: Option<Option<Uuid>>,
+        #[serde(default, deserialize_with = "some")]
+        band_id: Option<Option<Uuid>>,
+    },
+    #[serde(rename = "roadmap.node.move")]
+    RoadmapNodeMove { id: Uuid, x: f64, y: f64 },
+    #[serde(rename = "roadmap.node.decide")]
+    RoadmapNodeDecide {
+        id: Uuid,
+        edge_id: Option<Uuid>,
+        decided_at: Option<u64>,
+    },
+    #[serde(rename = "roadmap.edge.create")]
+    RoadmapEdgeCreate {
+        id: Uuid,
+        roadmap_id: Uuid,
+        source_id: Uuid,
+        target_id: Uuid,
+        kind: roadmap::EdgeKind,
+        #[serde(default)]
+        label: String,
+    },
+    #[serde(rename = "roadmap.edge.update")]
+    RoadmapEdgeUpdate {
+        id: Uuid,
+        #[serde(default)]
+        kind: Option<roadmap::EdgeKind>,
+        #[serde(default)]
+        label: Option<String>,
+    },
+    #[serde(rename = "roadmap.edge.delete")]
+    RoadmapEdgeDelete { id: Uuid },
     #[serde(rename = "area.update")]
     AreaUpdate {
         id: Uuid,
@@ -1042,7 +1104,14 @@ impl Op {
             | Op::PhaseComplete { id }
             | Op::PhaseUncomplete { id }
             | Op::AreaUpdate { id, .. }
-            | Op::PlacementSet { id, .. } => *id,
+            | Op::PlacementSet { id, .. }
+            | Op::RoadmapNodeCreate { id, .. }
+            | Op::RoadmapNodeUpdate { id, .. }
+            | Op::RoadmapNodeMove { id, .. }
+            | Op::RoadmapNodeDecide { id, .. }
+            | Op::RoadmapEdgeCreate { id, .. }
+            | Op::RoadmapEdgeUpdate { id, .. }
+            | Op::RoadmapEdgeDelete { id } => *id,
             Op::ReminderAdd { task_id, .. }
             | Op::ReminderRemove { task_id, .. }
             | Op::ReminderSnooze { task_id, .. }
@@ -1066,6 +1135,8 @@ impl Op {
                 | Op::RoutineCreate { .. }
                 | Op::RoadmapCreate { .. }
                 | Op::PhaseCreate { .. }
+                | Op::RoadmapNodeCreate { .. }
+                | Op::RoadmapEdgeCreate { .. }
                 | Op::AwardGrant { .. }
         )
     }
@@ -1083,6 +1154,9 @@ impl Op {
             Op::CheckinSet { routine_id, .. } => Some(*routine_id),
             Op::RoadmapCreate { parent_id, .. } => Some(*parent_id),
             Op::PhaseCreate { roadmap_id, .. } | Op::PlacementSet { roadmap_id, .. } => {
+                Some(*roadmap_id)
+            }
+            Op::RoadmapNodeCreate { roadmap_id, .. } | Op::RoadmapEdgeCreate { roadmap_id, .. } => {
                 Some(*roadmap_id)
             }
             Op::ItemMove { parent_id, .. } => *parent_id,
@@ -1104,6 +1178,8 @@ impl Op {
             | Op::RoutineCreate { .. }
             | Op::RoadmapCreate { .. }
             | Op::PhaseCreate { .. }
+            | Op::RoadmapNodeCreate { .. }
+            | Op::RoadmapEdgeCreate { .. }
             | Op::LabelCreate { .. }
             | Op::AwardGrant { .. } => vec![],
             Op::ViewDelete { .. } => vec!["trashed_at"],
@@ -1341,6 +1417,32 @@ impl Op {
                 }
                 f
             }
+            Op::RoadmapNodeUpdate {
+                title,
+                kind,
+                ref_id,
+                band_id,
+                ..
+            } => [
+                ("title", title.is_some()),
+                ("kind", kind.is_some()),
+                ("ref_id", ref_id.is_some()),
+                ("band_id", band_id.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
+            Op::RoadmapNodeMove { .. } => vec!["x", "y"],
+            Op::RoadmapNodeDecide { .. } => vec!["taken_edge_id", "decided_at"],
+            Op::RoadmapEdgeUpdate { kind, label, .. } => {
+                [("kind", kind.is_some()), ("label", label.is_some())]
+                    .into_iter()
+                    .filter(|(_, present)| *present)
+                    .map(|(f, _)| f)
+                    .collect()
+            }
+            Op::RoadmapEdgeDelete { .. } => vec!["trashed_at"],
             Op::AreaUpdate {
                 name,
                 color,
@@ -1681,6 +1783,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 Some(
                     Row::Phase(_)
                     | Row::Placement(_)
+                    | Row::GraphNode(_)
+                    | Row::GraphEdge(_)
                     | Row::Award(_)
                     | Row::Label(_)
                     | Row::Settings(_)
@@ -1843,7 +1947,14 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::PhaseUpdate { .. }
         | Op::PhaseComplete { .. }
         | Op::PhaseUncomplete { .. }
-        | Op::PlacementSet { .. } => roadmap::apply(existing, cmd),
+        | Op::PlacementSet { .. }
+        | Op::RoadmapNodeCreate { .. }
+        | Op::RoadmapNodeUpdate { .. }
+        | Op::RoadmapNodeMove { .. }
+        | Op::RoadmapNodeDecide { .. }
+        | Op::RoadmapEdgeCreate { .. }
+        | Op::RoadmapEdgeUpdate { .. }
+        | Op::RoadmapEdgeDelete { .. } => roadmap::apply(existing, cmd),
         Op::AwardGrant {
             id,
             badge,
@@ -2231,7 +2342,10 @@ pub fn check_parent(child: &Row, parent: Option<&Row>) -> Result<(), ErrorCode> 
         (Row::Roadmap(_), Row::Area(a)) => a.id != INBOX,
         (Row::Roadmap(_), Row::Project(_) | Row::Goal(_)) => true,
         (Row::Page(_), Row::Roadmap(_)) => true,
-        (Row::Phase(_) | Row::Placement(_), Row::Roadmap(_)) => true,
+        (
+            Row::Phase(_) | Row::Placement(_) | Row::GraphNode(_) | Row::GraphEdge(_),
+            Row::Roadmap(_),
+        ) => true,
         _ => false,
     };
     if ok {

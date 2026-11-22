@@ -8,6 +8,9 @@ use rusqlite::{Connection, OptionalExtension};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+const GRAPH_CAPABILITY: &str = "x-orbit-graph";
+const GRAPH_CURSOR: &str = "x-orbit-graph-cursor";
+
 pub struct Client {
     db: Connection,
     url: String,
@@ -387,15 +390,28 @@ impl Client {
     /// (401, 426, ...) the outbox stays queued and the error is returned.
     pub async fn sync(&mut self, now_ms: u64) -> Result<Vec<Rejection>> {
         let mut rejected = Vec::new();
+        let mut graph_supported = false;
         loop {
-            let commands = outbox(&self.db, 100)?;
+            let commands: Vec<_> = outbox(&self.db, usize::MAX)?
+                .into_iter()
+                .filter(|cmd| graph_supported || !is_graph_op(&cmd.op))
+                .take(100)
+                .collect();
             let token = meta(&self.db, "token")?.map(|t| t.parse()).transpose()?;
+            let previous_graph_cursor = meta(&self.db, "graph_cursor")?;
             let req = SyncRequest {
                 v: PROTOCOL_V,
                 token,
                 commands,
             };
-            let mut post = self.http.post(format!("{}/sync", self.url)).json(&req);
+            let mut post = self
+                .http
+                .post(format!("{}/sync", self.url))
+                .header(GRAPH_CAPABILITY, "v1")
+                .json(&req);
+            if let Some(cursor) = previous_graph_cursor.as_deref() {
+                post = post.header(GRAPH_CURSOR, cursor);
+            }
             if let Some(token) = meta(&self.db, "auth")? {
                 post = post.bearer_auth(token);
             }
@@ -408,6 +424,13 @@ impl Client {
                 }
                 return Err(Box::new(http_error));
             }
+            let response_graph_cursor = res
+                .headers()
+                .get(GRAPH_CURSOR)
+                .and_then(|v| v.to_str().ok())
+                .filter(|v| v.starts_with("v1:"))
+                .map(str::to_owned);
+            graph_supported = response_graph_cursor.is_some();
             let res: SyncResponse = res.error_for_status()?.json().await?;
 
             let tx = self.db.transaction()?;
@@ -431,7 +454,14 @@ impl Client {
                 tx.execute("DELETE FROM outbox WHERE uuid = ?", [cmd.uuid.to_string()])?;
             }
             if res.full {
-                tx.execute("DELETE FROM rows", [])?;
+                if previous_graph_cursor.is_some() && response_graph_cursor.is_none() {
+                    tx.execute(
+                        "DELETE FROM rows WHERE json_extract(data, '$.kind') NOT IN ('graph_node', 'graph_edge')",
+                        [],
+                    )?;
+                } else {
+                    tx.execute("DELETE FROM rows", [])?;
+                }
             }
             for r in &res.delta {
                 match r {
@@ -442,6 +472,11 @@ impl Client {
                 }
             }
             set_meta(&tx, "token", &res.token.to_string())?;
+            if let Some(cursor) = &response_graph_cursor {
+                set_meta(&tx, "graph_cursor", cursor)?;
+            } else {
+                tx.execute("DELETE FROM meta WHERE key = 'graph_cursor'", [])?;
+            }
             if let Some(seen) = &res.clock {
                 let observed = clock(&tx, now_ms)?.observe(seen, now_ms);
                 set_meta(&tx, "hlc", &serde_json::to_string(&observed)?)?;
@@ -453,10 +488,17 @@ impl Client {
                 let _ = predict(&tx, &cmd);
             }
             tx.commit()?;
-            // A partly answered batch would be resent as-is: stop rather than loop.
-            if req.commands.len() < 100 || answered < req.commands.len() {
+            if answered < req.commands.len() {
                 return Ok(rejected);
             }
+            let remaining = outbox(&self.db, usize::MAX)?;
+            if req.commands.len() == 100 {
+                continue;
+            }
+            if graph_supported && remaining.iter().any(|cmd| is_graph_op(&cmd.op)) {
+                continue;
+            }
+            return Ok(rejected);
         }
     }
 }
@@ -632,6 +674,19 @@ fn uncomplete_descendants(
         db.execute("DELETE FROM rows WHERE id = ?", [completion.id.to_string()])?;
     }
     Ok(())
+}
+
+fn is_graph_op(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::RoadmapNodeCreate { .. }
+            | Op::RoadmapNodeUpdate { .. }
+            | Op::RoadmapNodeMove { .. }
+            | Op::RoadmapNodeDecide { .. }
+            | Op::RoadmapEdgeCreate { .. }
+            | Op::RoadmapEdgeUpdate { .. }
+            | Op::RoadmapEdgeDelete { .. }
+    )
 }
 
 fn outbox(db: &Connection, limit: usize) -> Result<Vec<Command>> {

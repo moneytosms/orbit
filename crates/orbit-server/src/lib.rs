@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::State,
-    http::{StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
@@ -22,6 +22,10 @@ use std::{
 
 /// How long a command uuid's status is kept for replays.
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+const GRAPH_CAPABILITY: &str = "x-orbit-graph";
+const GRAPH_CURSOR: &str = "x-orbit-graph-cursor";
+const GRAPH_CURSOR_V1: &str = "v1:";
+const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 // Release builds set these so `/version` describes immutable build inputs.
 const SERVER_COMMIT: &str = match option_env!("ORBIT_COMMIT") {
@@ -86,7 +90,7 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
 
 /// `app` reading Todoist at `todoist_base` instead of the real API. For tests.
 pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router, Option<String>)> {
-    let conn = open(data_dir)?;
+    let mut conn = open(data_dir)?;
     auth::migrate(&conn)?;
     todoist::migrate(&conn)?;
     // `clocks` is the row's per-field last-writer HLCs (JSON); it never leaves the server.
@@ -112,6 +116,7 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
     if load(&conn, &inbox.id().to_string())?.is_none() {
         write(&conn, &inbox, &Clocks::new())?;
     }
+    migrate_legacy_roadmaps(&mut conn)?;
     let setup = auth::setup_code(&conn)?;
     let max_blob = blobs::max_bytes();
     let shared = Shared {
@@ -170,7 +175,12 @@ pub fn with_web(router: Router, dir: &Path) -> Router {
     router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
 }
 
-async fn sync(State(st): State<St>, _: auth::Device, Json(req): Json<SyncRequest>) -> Response {
+async fn sync(
+    State(st): State<St>,
+    _: auth::Device,
+    headers: HeaderMap,
+    Json(req): Json<SyncRequest>,
+) -> Response {
     match check_version(PROTOCOL_V, req.v) {
         Err(VersionError::TooOld) => {
             return (
@@ -191,8 +201,24 @@ async fn sync(State(st): State<St>, _: auth::Device, Json(req): Json<SyncRequest
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
     let mut conn = lock(&st.db);
-    match run(&mut conn, &st.data, req) {
-        Ok(response) => Json(response).into_response(),
+    let graph = headers.get(GRAPH_CAPABILITY).and_then(|v| v.to_str().ok()) == Some("v1");
+    let graph_cursor = graph
+        .then(|| headers.get(GRAPH_CURSOR).and_then(|v| v.to_str().ok()))
+        .flatten()
+        .and_then(|v| v.strip_prefix(GRAPH_CURSOR_V1))
+        .and_then(|v| v.parse::<u64>().ok());
+    match run(&mut conn, &st.data, req, graph, graph_cursor) {
+        Ok(response) => {
+            let graph_token = response.token;
+            let mut response = Json(response).into_response();
+            if graph
+                && graph_token <= JS_SAFE_INTEGER_MAX
+                && let Ok(value) = HeaderValue::from_str(&format!("{GRAPH_CURSOR_V1}{graph_token}"))
+            {
+                response.headers_mut().insert(GRAPH_CURSOR, value);
+            }
+            response
+        }
         Err(e) => {
             eprintln!("sync failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -316,7 +342,13 @@ async fn disk(
     Ok(Json(serde_json::json!({ "free_bytes": free_bytes })))
 }
 
-fn run(conn: &mut Connection, data: &Path, req: SyncRequest) -> rusqlite::Result<SyncResponse> {
+fn run(
+    conn: &mut Connection,
+    data: &Path,
+    req: SyncRequest,
+    graph: bool,
+    graph_cursor: Option<u64>,
+) -> rusqlite::Result<SyncResponse> {
     let now = now_ms();
     conn.execute(
         "DELETE FROM processed WHERE at < ?",
@@ -338,11 +370,21 @@ fn run(conn: &mut Connection, data: &Path, req: SyncRequest) -> rusqlite::Result
     let max = max_seq(conn)?;
     // A token from before a data reset, or from before purged tombstones were dropped, can't be
     // trusted: send everything.
-    let since = req
-        .token
-        .filter(|&t| t <= max as u64 && t >= purge_seq as u64)
-        .unwrap_or(0);
-    let full = req.token.is_some() && since == 0 && req.token != Some(0);
+    let (since, full) = if graph {
+        match graph_cursor
+            .filter(|&t| t <= JS_SAFE_INTEGER_MAX && t <= max as u64 && t >= purge_seq as u64)
+        {
+            Some(t) => (t, false),
+            None => (0, true),
+        }
+    } else {
+        let since = req
+            .token
+            .filter(|&t| t <= max as u64 && t >= purge_seq as u64)
+            .unwrap_or(0);
+        let full = req.token.is_some() && since == 0 && req.token != Some(0);
+        (since, full)
+    };
     let mut stmt =
         conn.prepare("SELECT id, data, clocks, seq FROM rows WHERE seq > ? ORDER BY seq")?;
     let mut token = since;
@@ -365,6 +407,14 @@ fn run(conn: &mut Connection, data: &Path, req: SyncRequest) -> rusqlite::Result
         {
             rows.push((id, row));
         }
+    }
+    if !graph {
+        rows.retain(|(_, (data, _))| {
+            !matches!(
+                serde_json::from_str::<Row>(data),
+                Ok(Row::GraphNode(_) | Row::GraphEdge(_))
+            )
+        });
     }
     let mut delta = Vec::new();
     let mut clock: Option<Hlc> = None;
@@ -718,6 +768,13 @@ fn check_tree(
             | Op::PhaseCreate { .. }
             | Op::PlacementSet { .. }
             | Op::PhaseUpdate { .. }
+            | Op::RoadmapNodeCreate { .. }
+            | Op::RoadmapNodeUpdate { .. }
+            | Op::RoadmapNodeMove { .. }
+            | Op::RoadmapNodeDecide { .. }
+            | Op::RoadmapEdgeCreate { .. }
+            | Op::RoadmapEdgeUpdate { .. }
+            | Op::RoadmapEdgeDelete { .. }
     ) {
         return Ok(None);
     }
@@ -753,6 +810,48 @@ fn check_tree(
         if let Some(phase_id) = pl.phase_id {
             let phase = load_row(conn, &phase_id.to_string())?;
             if !matches!(phase, Some(Row::Phase(p)) if p.roadmap_id == pl.roadmap_id) {
+                return Ok(Some(ErrorCode::BadParent));
+            }
+        }
+    }
+    if let Row::GraphNode(node) = &candidate {
+        let ref_row = node
+            .ref_id
+            .map(|id| load_row(conn, &id.to_string()))
+            .transpose()?
+            .flatten();
+        let valid_ref = match (node.kind, ref_row.as_ref()) {
+            (orbit_core::roadmap::NodeKind::Task, Some(Row::Task(_)))
+            | (orbit_core::roadmap::NodeKind::Project, Some(Row::Project(_)))
+            | (orbit_core::roadmap::NodeKind::Goal, Some(Row::Goal(_)))
+            | (orbit_core::roadmap::NodeKind::Milestone, Some(Row::Milestone(_))) => true,
+            (
+                orbit_core::roadmap::NodeKind::Decision
+                | orbit_core::roadmap::NodeKind::Note
+                | orbit_core::roadmap::NodeKind::Text
+                | orbit_core::roadmap::NodeKind::Heading,
+                None,
+            ) => node.ref_id.is_none(),
+            _ => false,
+        };
+        if !valid_ref {
+            return Ok(Some(ErrorCode::BadParent));
+        }
+        if let Some(band_id) = node.band_id
+            && !matches!(load_row(conn, &band_id.to_string())?, Some(Row::Phase(p)) if p.roadmap_id == node.roadmap_id)
+        {
+            return Ok(Some(ErrorCode::BadParent));
+        }
+        if let Some(edge_id) = node.taken_edge_id
+            && !matches!(load_row(conn, &edge_id.to_string())?, Some(Row::GraphEdge(e)) if e.roadmap_id == node.roadmap_id && e.source_id == node.id)
+        {
+            return Ok(Some(ErrorCode::BadParent));
+        }
+    }
+    if let Row::GraphEdge(edge) = &candidate {
+        for id in [edge.source_id, edge.target_id] {
+            if !matches!(load_row(conn, &id.to_string())?, Some(Row::GraphNode(n)) if n.roadmap_id == edge.roadmap_id)
+            {
                 return Ok(Some(ErrorCode::BadParent));
             }
         }
@@ -901,6 +1000,81 @@ fn all_rows(conn: &Connection) -> rusqlite::Result<Vec<Row>> {
         rows.push(serde_json::from_str(&data?).map_err(json_err)?);
     }
     Ok(rows)
+}
+
+/// Materialize deterministic graph rows for old Placement data. Writes are idempotent so a
+/// partial startup migration safely finishes on the next open.
+fn migrate_legacy_roadmaps(conn: &mut Connection) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute_batch("CREATE TABLE IF NOT EXISTS roadmap_graph_migrations (id TEXT PRIMARY KEY)")?;
+    let mut rows = all_rows(&tx)?;
+    let mut row_ids: std::collections::BTreeSet<String> = {
+        let mut stmt = tx.prepare("SELECT id FROM rows")?;
+        stmt.query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let node_candidates = orbit_core::roadmap::migrate_legacy_nodes(&rows);
+    let placements: Vec<_> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Placement(p) => Some(p.clone()),
+            _ => None,
+        })
+        .collect();
+    for placement in placements {
+        let id = orbit_core::roadmap::graph_node_id(placement.roadmap_id, placement.item_id);
+        let key = id.to_string();
+        if !matches!(rows.iter().find(|r| r.id() == placement.item_id), Some(item) if orbit_core::roadmap::is_placeable(item))
+        {
+            continue;
+        }
+        let marked: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM roadmap_graph_migrations WHERE id = ?1)",
+            [&key],
+            |r| r.get(0),
+        )?;
+        if marked {
+            continue;
+        }
+        let already_represented = row_ids.contains(&key)
+            || rows.iter().any(|r| matches!(r, Row::GraphNode(n) if n.roadmap_id == placement.roadmap_id && n.ref_id == Some(placement.item_id)));
+        let candidate = node_candidates.iter().find(|n| n.id == id);
+        if !already_represented && let Some(node) = candidate {
+            let row = Row::GraphNode(node.clone());
+            write(&tx, &row, &Clocks::new())?;
+            rows.push(row);
+            row_ids.insert(key.clone());
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO roadmap_graph_migrations (id) VALUES (?1)",
+            [&key],
+        )?;
+    }
+    for edge in orbit_core::roadmap::migrate_legacy_edges(&rows) {
+        let key = edge.id.to_string();
+        let marked: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM roadmap_graph_migrations WHERE id = ?1)",
+            [&key],
+            |r| r.get(0),
+        )?;
+        if marked {
+            continue;
+        }
+        let endpoints_live = [edge.source_id, edge.target_id].into_iter().all(|id| {
+            rows.iter()
+                .any(|r| matches!(r, Row::GraphNode(n) if n.id == id && n.trashed_at.is_none()))
+        });
+        if !row_ids.contains(&key) && endpoints_live {
+            let row = Row::GraphEdge(edge);
+            write(&tx, &row, &Clocks::new())?;
+            row_ids.insert(key.clone());
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO roadmap_graph_migrations (id) VALUES (?1)",
+            [&key],
+        )?;
+    }
+    tx.commit()
 }
 
 /// Open Inbox Tasks: not done and not in the Trash.
