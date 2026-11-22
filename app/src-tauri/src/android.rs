@@ -74,6 +74,18 @@ async fn take_link(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Strin
     )
 }
 
+/// The installed Android shell version, which can differ from the server-loaded UI.
+#[tauri::command]
+async fn shell_version(app: tauri::AppHandle, window: tauri::WebviewWindow) -> String {
+    if trusted(&app, &window).is_err() {
+        return String::new();
+    }
+    call(&app, "shellVersion", json!({})).map_or_else(
+        |_| String::new(),
+        |v| v["version"].as_str().unwrap_or_default().into(),
+    )
+}
+
 /// Saves the server URL (from the first-run page) and opens it in the window.
 #[tauri::command]
 async fn set_server(
@@ -133,7 +145,8 @@ pub fn builder() -> tauri::Builder<Wry> {
             clear_token,
             has_token,
             set_server,
-            take_link
+            take_link,
+            shell_version
         ])
         // The bundled index.html is only a launcher: once it has loaded, send the window to the saved
         // server, or to the server-URL page. A navigation sooner than this is dropped.

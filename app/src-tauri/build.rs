@@ -11,6 +11,7 @@ fn main() {
             "notify_upgrade_required",
             "clear_upgrade_required",
             "take_link",
+            "shell_version",
         ]),
     ))
     .unwrap();

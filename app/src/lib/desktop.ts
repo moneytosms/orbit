@@ -5,8 +5,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { ui } from './actions'
 import { createToken } from './auth'
 import { sync } from './sync'
+import { inTauri } from './platform'
 
-export const inTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+export { inTauri } from './platform'
 
 let started = false
 

@@ -1,19 +1,29 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { invoke } from '@tauri-apps/api/core'
   import { req, tx } from './db'
   import { checkServerVersion, currentUpdates, loadUpdates, onUpdates, uiHash, type UpdateState } from './updates'
+  import { checkAndroidShellRelease, type AndroidShellRelease } from './androidRelease'
+  import { isAndroidTauri } from './platform'
 
   let updates: UpdateState = $state(currentUpdates())
   let pending = $state(0)
   let waitingWorker: ServiceWorker | undefined
   let reloadAfterActivation = false
   let swWaiting = $state(false)
+  let shellRelease = $state<AndroidShellRelease | null>(null)
   const readPending = async () => (pending = await tx(['outbox'], (s) => req(s('outbox').count())))
 
   onMount(() => {
     const off = onUpdates((value) => (updates = value))
     void loadUpdates().then(readPending)
     void checkServerVersion().catch(() => {})
+    if (isAndroidTauri()) {
+      void invoke<string>('shell_version')
+        .then((version) => (version ? checkAndroidShellRelease(version) : null))
+        .then((release) => (shellRelease = release))
+        .catch(() => {})
+    }
     const poll = setInterval(() => void checkServerVersion().catch(() => {}), 300_000)
     const queuePoll = setInterval(() => void readPending(), 2_000)
     const changed = () => void readPending()
@@ -46,7 +56,7 @@
   })
 
   const uiChanged = $derived(!!updates.version?.ui && updates.version.ui !== 'unknown' && updates.version.ui !== uiHash)
-  const notice = $derived(!!updates.upgrade || uiChanged || swWaiting)
+  const notice = $derived(!!updates.upgrade || uiChanged || swWaiting || !!shellRelease)
   const reloadUpdate = () => {
     if (!waitingWorker) return location.reload()
     reloadAfterActivation = true
@@ -71,11 +81,21 @@
       >
     {:else if uiChanged}
       <p class="mt-1 text-sm text-muted">A newer app build is available. Reload Orbit to use it.</p>
-    {:else}
+    {:else if swWaiting}
       <p class="mt-1 text-sm text-muted">A new app version is ready to install.</p>
+    {:else}
+      <p class="mt-1 text-sm text-muted">A newer Android app is available.</p>
     {/if}
     {#if swWaiting || uiChanged}
       <button class="btn mt-2" onclick={reloadUpdate}>Reload to update</button>
+    {/if}
+    {#if shellRelease}
+      <a
+        class="mt-2 inline-flex rounded-full border border-accent-line bg-accent-soft px-3 py-1 text-sm font-medium text-accent-text"
+        href={shellRelease.url}
+        target="_blank"
+        rel="noreferrer">Update available · Download APK {shellRelease.version}</a
+      >
     {/if}
   </aside>
 {/if}

@@ -36,6 +36,7 @@ function appFingerprint() {
   return hash.digest('hex').slice(0, 16)
 }
 const uiHash = process.env.VITE_ORBIT_UI_HASH ?? appFingerprint()
+const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -70,7 +71,7 @@ export default defineConfig({
       },
     },
   ],
-  define: { __ORBIT_UI_HASH__: JSON.stringify(uiHash) },
+  define: { __ORBIT_APP_VERSION__: JSON.stringify(appVersion), __ORBIT_UI_HASH__: JSON.stringify(uiHash) },
   resolve: { alias: { $lib: path.resolve('./src/lib') } },
   // svelte-tiptap ships .svelte files, so Vite must prebundle its ProseMirror deps together or dev serves two copies.
   optimizeDeps: {

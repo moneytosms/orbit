@@ -20,6 +20,7 @@
     "allow-clear-token",
     "allow-has-token",
     "allow-set-server",
-    "allow-take-link"
+    "allow-take-link",
+    "allow-shell-version"
   ]
 }

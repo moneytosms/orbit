@@ -12,7 +12,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
-  import { inTauri } from '$lib/desktop'
+  import { isAndroidTauri, isDesktopTauri } from '$lib/platform'
   import * as auth from '$lib/auth'
   import TodoistImport from '$lib/TodoistImport.svelte'
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
@@ -131,11 +131,23 @@
 
   let exporting = $state(false)
   let updates: UpdateState = $state(currentUpdates())
+  let appVersion = $state(__ORBIT_APP_VERSION__)
   let autoUpdates = $state(true)
   onMount(() => {
     const off = onUpdates((value) => (updates = value))
     void checkServerVersion().catch(() => {})
-    if (inTauri()) void invoke<boolean>('get_auto_updates').then((enabled) => (autoUpdates = enabled))
+    if (isDesktopTauri()) {
+      void invoke<boolean>('get_auto_updates')
+        .then((enabled) => (autoUpdates = enabled))
+        .catch(() => {})
+    }
+    if (isAndroidTauri()) {
+      void invoke<string>('shell_version')
+        .then((version) => {
+          if (version) appVersion = version
+        })
+        .catch(() => {})
+    }
     return off
   })
   async function setAutoUpdates(value: boolean) {
@@ -716,13 +728,13 @@
     <section id="about" class="panel scroll-mt-4">
       <h2 class="panel-title">About Orbit</h2>
       <dl class="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
-        <dt class="text-muted">App build</dt>
+        <dt class="text-muted">App version</dt>
+        <dd>{appVersion}</dd>
+        <dt class="text-muted">UI version</dt>
         <dd>{uiHash}</dd>
-        <dt class="text-muted">Server build</dt>
-        <dd>{updates.version?.built ?? 'Unavailable'}</dd>
-        <dt class="text-muted">Server UI build</dt>
-        <dd>{updates.version?.ui ?? 'Unavailable'}</dd>
-        <dt class="text-muted">Sync protocol</dt>
+        <dt class="text-muted">Server version</dt>
+        <dd>{updates.version?.server ?? 'Unavailable'}</dd>
+        <dt class="text-muted">Protocol</dt>
         <dd>
           {updates.version ? `${updates.version.min_client_protocol}–${updates.version.protocol}` : 'Unavailable'}
         </dd>
@@ -741,7 +753,13 @@
       {#if updates.version?.min_shell_version && updates.version.min_shell_version !== '0.0.0'}
         <p class="mt-2 text-sm text-muted">Minimum shell version: {updates.version.min_shell_version}</p>
       {/if}
-      {#if inTauri()}
+      <a
+        class="link mt-2 inline-block"
+        href="https://github.com/moneytosms/orbit/blob/main/docs/releasing.md"
+        target="_blank"
+        rel="noreferrer">Compatibility and update policy</a
+      >
+      {#if isDesktopTauri()}
         {#snippet updateChecksControl()}
           <Checkbox
             checked={autoUpdates}

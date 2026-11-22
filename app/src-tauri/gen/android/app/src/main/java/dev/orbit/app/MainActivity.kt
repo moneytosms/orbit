@@ -25,6 +25,7 @@ class MainActivity : TauriActivity() {
     WidgetRefresh.schedule(this)
     askNotificationPermission()
     BatteryGuidance.maybeShow(this)
+    ShellUpdate.check(this)
   }
 
   override fun onNewIntent(intent: Intent) {

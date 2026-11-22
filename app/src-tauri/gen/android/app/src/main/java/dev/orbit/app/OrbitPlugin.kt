@@ -37,4 +37,10 @@ class OrbitPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun takeLink(invoke: Invoke) = invoke.resolve(JSObject().put("link", Link.take()))
+
+    @Command
+    fun shellVersion(invoke: Invoke) = invoke.resolve(JSObject().put(
+        "version",
+        activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "unknown"
+    ))
 }
