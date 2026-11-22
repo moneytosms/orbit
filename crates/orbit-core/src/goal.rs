@@ -314,6 +314,7 @@ mod tests {
                 id: uid(n),
                 parent_id: uid(100),
                 name: "R".into(),
+                icon: String::new(),
                 schedule: Schedule::Daily,
                 start: "2026-03-02".into(),
                 length_days: None,

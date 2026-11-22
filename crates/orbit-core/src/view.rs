@@ -1334,6 +1334,7 @@ mod tests {
             id: Uuid::from_u128(1),
             parent_id: Uuid::from_u128(2),
             name: "R".into(),
+            icon: String::new(),
             schedule: crate::routine::Schedule::Every { n: 2 },
             start: "2026-03-02".into(),
             length_days: Some(5),

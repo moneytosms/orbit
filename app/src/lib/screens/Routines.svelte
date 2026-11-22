@@ -13,6 +13,7 @@
     resumeRoutine,
     routines,
     routineStats,
+    routineIcon,
     unarchiveItem,
     type DayState,
     type Routine,
@@ -133,7 +134,9 @@
           {e.today === 'done' ? '✓' : e.today === 'skipped' ? '↷' : ''}
         </button>
         <div class="min-w-0 flex-1">
-          <div class="truncate font-medium">{e.routine.name}</div>
+          <div class="flex min-w-0 items-center gap-2 font-medium">
+            <span>{routineIcon(e.routine)}</span><span class="truncate">{e.routine.name}</span>
+          </div>
           <div class="text-xs text-muted">
             {e.stats.paused ? 'Paused · ' : ''}{e.routine.time ?? 'Anytime'}
           </div>
@@ -169,7 +172,7 @@
       <h2 class="panel-title">Archived</h2>
       {#each archived as r (r.id)}
         <div class="panel flex items-center justify-between">
-          <span>{r.name}</span>
+          <span>{routineIcon(r)} {r.name}</span>
           <Button variant="ghost" size="sm" onclick={() => unarchive(r)}>Unarchive</Button>
         </div>
       {/each}

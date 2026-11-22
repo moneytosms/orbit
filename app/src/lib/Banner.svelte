@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button'
   import { addFile, blobUrl } from '$lib/blobs'
+  import IconPicker from '$lib/IconPicker.svelte'
 
   type Patch = { icon?: string; cover?: string }
   // Rows cached before icons existed have neither field.
@@ -10,15 +11,10 @@
     onsave,
   }: { icon?: string; cover?: string; onsave: (patch: Patch) => void | Promise<void> } = $props()
 
-  const EMOJI = (
-    '📁 📂 🏠 🏡 💼 💻 📚 📖 📝 📌 📎 📅 ⏰ ✅ 🎯 🚀 💡 🔧 🛠️ 🧪 🎨 🎵 🎬 📷 ✈️ 🚗 🚲 🏃 🏋️ 🧘 ' +
-    '🍎 🥗 🍳 ☕ 🛒 💰 💳 📈 🧾 🎓 🧠 ❤️ 🌱 🌳 🌊 ⭐ 🔥 🎁 🐶 🐱 👪 👤 🧹 🪴 🛏️ 🔑 📞 ✉️ 🌍 🏆'
-  ).split(' ')
   const COLORS = ['#c2552f', '#d9822b', '#e0b04a', '#7a9a5b', '#4f8a7b', '#5b7fa6', '#8a6bb0', '#b5566f']
   const MAX_WIDTH = 1600
 
-  let panel = $state<'icon' | 'cover' | null>(null)
-  let typed = $state('')
+  let panel = $state<'cover' | null>(null)
   let error = $state('')
   let busy = $state(false)
   let imageUrl = $state('')
@@ -42,13 +38,6 @@
     error = ''
     panel = null
     await onsave(patch)
-  }
-
-  function setTyped(e: SubmitEvent) {
-    e.preventDefault()
-    const first = [...new Intl.Segmenter().segment(typed.trim())][0]?.segment
-    typed = ''
-    if (first) save({ icon: first })
   }
 
   /** Scales an image wider than MAX_WIDTH down to a JPEG; smaller ones go up untouched. */
@@ -101,28 +90,13 @@
     ></div>
   {/if}
   <div class="flex flex-wrap items-end gap-1 px-1 {cover ? '-mt-7' : 'pt-1'}">
-    {#if icon}
-      <button
-        type="button"
-        aria-label="Change icon"
-        aria-expanded={panel === 'icon'}
-        onclick={() => (panel = panel === 'icon' ? null : 'icon')}
-        class="grid size-14 place-items-center rounded-xl text-4xl leading-none hover:bg-hover {cover
-          ? 'border border-line bg-surface shadow-1'
-          : ''}"
-      >
-        {icon}
-      </button>
-    {:else}
-      <button
-        type="button"
-        class={chip}
-        aria-expanded={panel === 'icon'}
-        onclick={() => (panel = panel === 'icon' ? null : 'icon')}
-      >
-        Add icon
-      </button>
-    {/if}
+    <IconPicker
+      {icon}
+      onselect={(icon) => save({ icon })}
+      triggerClass={icon
+        ? `grid size-14 place-items-center rounded-xl text-4xl leading-none hover:bg-hover ${cover ? 'border border-line bg-surface shadow-1' : ''}`
+        : chip}
+    />
     <button
       type="button"
       class={chip}
@@ -133,35 +107,7 @@
     </button>
   </div>
 
-  {#if panel === 'icon'}
-    <div role="group" aria-label="Icon picker" class="mt-2 rounded-xl border border-line bg-surface p-3 shadow-1">
-      <ul class="grid grid-cols-10 gap-0.5 max-[420px]:grid-cols-6">
-        {#each EMOJI as e (e)}
-          <li>
-            <button
-              type="button"
-              aria-label="Use {e}"
-              onclick={() => save({ icon: e })}
-              class="grid size-8 place-items-center rounded-md text-xl hover:bg-hover"
-            >
-              {e}
-            </button>
-          </li>
-        {/each}
-      </ul>
-      <form class="mt-2 flex gap-2" onsubmit={setTyped}>
-        <input
-          bind:value={typed}
-          aria-label="Any emoji"
-          placeholder="Type or paste an emoji"
-          class="h-9 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 text-sm"
-        />
-        <Button type="submit" size="sm" variant="ghost">Set</Button>
-        {#if icon}<Button type="button" size="sm" variant="ghost" onclick={() => save({ icon: '' })}>Remove</Button
-          >{/if}
-      </form>
-    </div>
-  {:else if panel === 'cover'}
+  {#if panel === 'cover'}
     <div role="group" aria-label="Cover picker" class="mt-2 rounded-xl border border-line bg-surface p-3 shadow-1">
       <ul class="flex flex-wrap gap-2">
         {#each COLORS as c (c)}

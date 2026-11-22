@@ -64,8 +64,11 @@ import {
   archivedRoutines,
   createRoutine,
   localDay,
+  localMinute,
   routineStats,
+  routineIcon,
   routines,
+  updateRoutine,
   whatsNext,
   pinItem,
   notToday,
@@ -750,6 +753,53 @@ const shiftDay = (day: string, by: number) => {
   d.setUTCDate(d.getUTCDate() + by)
   return d.toISOString().slice(0, 10)
 }
+
+test('a Routine icon syncs through create and update, with a stable legacy fallback', async () => {
+  const legacy = { id: 'legacy-routine-id', icon: '' }
+  expect(routineIcon(legacy)).toBe(routineIcon(legacy))
+  expect(routineIcon({ ...legacy, icon: '🏃' })).toBe('🏃')
+  await createArea('Health')
+  const [{ area }] = (await tree()).filter((x) => x.area.name === 'Health')
+  const id = await createRoutine(area.id, {
+    name: 'Meds',
+    icon: '💊',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: '09:00',
+    goal_id: null,
+  })
+  expect((await routines()).find((r) => r.id === id)?.icon).toBe('💊')
+  await updateRoutine(id, { icon: '🌱' })
+  expect((await routines()).find((r) => r.id === id)?.icon).toBe('🌱')
+})
+
+test('shared WASM reminder fires include explicit icons and keep legacy titles', async () => {
+  await createArea('Reminder routines')
+  const [{ area }] = (await tree()).filter((x) => x.area.name === 'Reminder routines')
+  const future = new Date(`${await localMinute()}:00Z`)
+  future.setUTCMinutes(future.getUTCMinutes() + 30)
+  const reminder = future.toISOString().slice(11, 16)
+  const iconed = await createRoutine(area.id, {
+    name: 'Morning run',
+    icon: '🏃',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: null,
+    goal_id: null,
+    reminder,
+  })
+  const legacy = await createRoutine(area.id, {
+    name: 'Stretch',
+    schedule: { kind: 'daily' },
+    length_days: null,
+    time: null,
+    goal_id: null,
+    reminder,
+  })
+  const fires = await reminderSchedule()
+  expect(fires.find((fire) => fire.routine_id === iconed)).toMatchObject({ title: '🏃 Morning run', late: false })
+  expect(fires.find((fire) => fire.routine_id === legacy)).toMatchObject({ title: 'Stretch', late: false })
+})
 
 test('a Routine ticked today counts a streak; clearing the tick undoes it', async () => {
   await createArea('Health')

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { glance, type Glance } from '$lib/dashboard'
   import { goals, localDay, routines, routineStats, stardust, visibleSnapshot } from '$lib/sync'
+  import WidgetSkeleton from './WidgetSkeleton.svelte'
 
-  let { version = 0 }: { version?: number } = $props()
+  let { version = 0, onmeta }: { version?: number; onmeta?: (value: string) => void } = $props()
   let g = $state<Glance & { done: number; routinesDue: number }>()
 
   $effect(() => {
@@ -19,6 +20,7 @@
     }
     const activeGoals = (await goals()).length
     g = { ...base, activeGoals, done: (await stardust()).targets.today_done, routinesDue }
+    onmeta?.(`${base.dueToday} due · ${base.overdue} overdue · ${activeGoals} active goals`)
   }
   const stats = $derived(
     g
@@ -33,11 +35,15 @@
   )
 </script>
 
-<dl class="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-5">
-  {#each stats as [label, n] (label)}
-    <div>
-      <dd class="text-xl font-semibold leading-tight">{n}</dd>
-      <dt class="text-xs text-muted">{label}</dt>
-    </div>
-  {/each}
-</dl>
+{#if g}
+  <dl class="grid grid-cols-2 gap-x-2 gap-y-0 sm:grid-cols-5">
+    {#each stats as [label, n] (label)}
+      <div>
+        <dd class="text-base font-semibold leading-tight">{n}</dd>
+        <dt class="text-[0.6875rem] text-muted">{label}</dt>
+      </div>
+    {/each}
+  </dl>
+{:else}
+  <WidgetSkeleton rows={1} />
+{/if}

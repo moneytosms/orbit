@@ -206,6 +206,8 @@ export type Routine = {
   id: string
   parent_id: string
   name: string
+  /** An emoji, or "" for older rows without an icon. */
+  icon: string
   schedule: Schedule
   start: string
   length_days: number | null
@@ -1065,7 +1067,18 @@ export const setDayStart = (day_start: string) => enqueue('settings.update', { d
 
 /** Visible Routines (not archived or trashed), in display order. */
 export async function routines(): Promise<Routine[]> {
-  return (await visibleRows()).filter((r): r is Routine => r.kind === 'routine').sort(byOrder)
+  return (await visibleRows())
+    .filter((r): r is Routine => r.kind === 'routine')
+    .map((r) => ({ ...r, icon: r.icon ?? '' }))
+    .sort(byOrder)
+}
+const ROUTINE_ICONS = ['🌱', '✨', '☀️', '🌿', '⭐', '🍀', '🌙', '🪴']
+/** Stable fallback for routines created before icons were synced. */
+export const routineIcon = (routine: Pick<Routine, 'id' | 'icon'>) => {
+  if (routine.icon) return routine.icon
+  let hash = 0
+  for (const char of routine.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return ROUTINE_ICONS[hash % ROUTINE_ICONS.length]
 }
 /** Moves Routines past their length to Archived, history kept; already archived ones are not listed. */
 async function archiveEndedRoutines() {
@@ -1079,6 +1092,7 @@ export async function archivedRoutines(): Promise<Routine[]> {
 }
 export type RoutineInput = {
   name: string
+  icon?: string
   schedule: Schedule
   length_days: number | null
   time: string | null
@@ -1086,6 +1100,7 @@ export type RoutineInput = {
   /** `HH:MM` daily reminder on scheduled days. */
   reminder?: string | null
 }
+export type RoutinePatch = Partial<RoutineInput>
 /** Creates a Routine under an Area or Project, starting on the Day-start date; returns its id. */
 export async function createRoutine(parentId: string, input: RoutineInput): Promise<string> {
   const id = newId()
@@ -1103,7 +1118,7 @@ export async function createRoutine(parentId: string, input: RoutineInput): Prom
   if (reminder) await enqueue('routine.update', { id, reminder })
   return id
 }
-export const updateRoutine = (id: string, patch: Partial<RoutineInput>) => enqueue('routine.update', { id, ...patch })
+export const updateRoutine = (id: string, patch: RoutinePatch) => enqueue('routine.update', { id, ...patch })
 /** Ticks a Routine's day as done or skipped; the same day on two Devices is one Check-in. */
 export const checkIn = (id: string, date: string, state: CheckState) =>
   enqueue('checkin.set', { id: checkin_id(id, date), routine_id: id, date, state })
@@ -1305,8 +1320,9 @@ export async function localMinute(now = Date.now()): Promise<string> {
 /** The reminders due or coming up (under an hour late ones included), soonest first, from core. */
 export async function reminderSchedule(now = Date.now()): Promise<Fire[]> {
   const default_reminder = await getDefaultReminder()
+  const rows = await allRows()
   return JSON.parse(
-    reminder_schedule(JSON.stringify(await allRows()), await localMinute(now), JSON.stringify({ default_reminder })),
+    reminder_schedule(JSON.stringify(rows), await localMinute(now), JSON.stringify({ default_reminder })),
   )
 }
 

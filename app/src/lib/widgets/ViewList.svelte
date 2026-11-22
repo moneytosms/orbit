@@ -1,18 +1,36 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
   import ListChecks from '@lucide/svelte/icons/list-checks'
-  import { runView, type Row } from '$lib/sync'
+  import { taskIsUpcoming } from '$lib/dashboard'
+  import { localDay, runView, type Row } from '$lib/sync'
+  import WidgetSkeleton from './WidgetSkeleton.svelte'
 
-  let { viewId, version = 0, limit = 8 }: { viewId: string; version?: number; limit?: number } = $props()
+  let {
+    viewId,
+    version = 0,
+    limit = 8,
+    futureOnly = false,
+    onmeta,
+  }: {
+    viewId: string
+    version?: number
+    limit?: number
+    futureOnly?: boolean
+    onmeta?: (value: string) => void
+  } = $props()
   let rows = $state<Row[]>([])
   let loaded = $state(false)
 
   $effect(() => {
     void version
     const id = viewId
-    runView(id).then((r) => {
-      rows = r.groups.flatMap((g) => g.rows).slice(0, limit)
+    Promise.all([runView(id), futureOnly ? localDay() : Promise.resolve('')]).then(([r, today]) => {
+      rows = r.groups
+        .flatMap((g) => g.rows)
+        .filter((row) => !futureOnly || taskIsUpcoming(row, today))
+        .slice(0, limit)
       loaded = true
+      onmeta?.(`${rows.length} upcoming item${rows.length === 1 ? '' : 's'}`)
     })
   })
   const label = (r: Row) => ('title' in r ? r.title : 'name' in r ? r.name : r.kind)
@@ -21,12 +39,15 @@
 
 {#if loaded && rows.length === 0}
   <Empty icon={ListChecks} text="This view has no items yet." label="Add a task" href="#/inbox" />
+{:else if !loaded}
+  <WidgetSkeleton />
+{:else}
+  <ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+    {#each rows as r (r.id)}
+      <li class="flex min-h-[2rem] items-center gap-3 px-1">
+        <span class="task-title-1 flex-1" title={label(r)}>{label(r)}</span>
+        {#if due(r)}<span class="shrink-0 text-xs text-muted">{due(r)}</span>{/if}
+      </li>
+    {/each}
+  </ul>
 {/if}
-<ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-  {#each rows as r (r.id)}
-    <li class="flex min-h-[2rem] items-center gap-3 px-1">
-      <span class="task-title-1 flex-1" title={label(r)}>{label(r)}</span>
-      {#if due(r)}<span class="shrink-0 text-xs text-muted">{due(r)}</span>{/if}
-    </li>
-  {/each}
-</ul>

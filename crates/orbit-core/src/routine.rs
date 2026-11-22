@@ -38,6 +38,9 @@ pub struct Routine {
     /// An Area or a Project.
     pub parent_id: Uuid,
     pub name: String,
+    /// An emoji shown with the Routine, or empty for none.
+    #[serde(default)]
+    pub icon: String,
     pub schedule: Schedule,
     /// `YYYY-MM-DD`, the creator's Day start date.
     pub start: String,
@@ -345,6 +348,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             id,
             parent_id,
             name,
+            icon,
             schedule,
             start,
             length_days,
@@ -363,6 +367,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 id: *id,
                 parent_id: *parent_id,
                 name: name.into(),
+                icon: icon.clone(),
                 schedule: *schedule,
                 start: start.clone(),
                 length_days: *length_days,
@@ -380,6 +385,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         }
         Op::RoutineUpdate {
             name,
+            icon,
             schedule,
             length_days,
             time,
@@ -397,6 +403,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             };
             let r = Routine {
                 name,
+                icon: icon.clone().unwrap_or(old.icon.clone()),
                 schedule: schedule.unwrap_or(old.schedule),
                 length_days: length_days.unwrap_or(old.length_days),
                 time: time.clone().unwrap_or(old.time.clone()),
@@ -484,6 +491,7 @@ mod tests {
             id: uid(1),
             parent_id: uid(100),
             name: "R".into(),
+            icon: String::new(),
             schedule,
             start: start.into(),
             length_days: None,
@@ -709,6 +717,7 @@ mod tests {
             id: uid(1),
             parent_id: uid(100),
             name: name.into(),
+            icon: "🌱".into(),
             schedule,
             start: "2026-03-02".into(),
             length_days: None,
@@ -733,6 +742,7 @@ mod tests {
             Err(ErrorCode::BadField)
         );
         let row = apply(None, &cmd(create(Schedule::Daily, "R"))).unwrap();
+        assert!(matches!(&row, Row::Routine(r) if r.icon == "🌱"));
         assert_eq!(
             apply(Some(row.clone()), &cmd(create(Schedule::Daily, "R"))),
             Err(ErrorCode::Exists)
@@ -742,6 +752,7 @@ mod tests {
             &cmd(Op::RoutineUpdate {
                 id: uid(1),
                 name: None,
+                icon: Some("🏃".into()),
                 schedule: None,
                 length_days: Some(Some(30)),
                 time: Some(Some("07:30".into())),
@@ -755,11 +766,13 @@ mod tests {
             (r.length_days, r.time.as_deref(), r.goal_id),
             (Some(30), Some("07:30"), Some(uid(5)))
         );
+        assert_eq!(r.icon, "🏃");
         let cleared = apply(
             Some(set),
             &cmd(Op::RoutineUpdate {
                 id: uid(1),
                 name: None,
+                icon: None,
                 schedule: None,
                 length_days: Some(None),
                 time: Some(None),
@@ -773,6 +786,45 @@ mod tests {
             (r.length_days, r.time.clone(), r.goal_id),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn routine_icons_round_trip_through_create_and_update_ops() {
+        let created: Op =
+            serde_json::from_value(serde_json::to_value(create(Schedule::Daily, "Run")).unwrap())
+                .unwrap();
+        let row = apply(None, &cmd(created)).unwrap();
+        assert!(matches!(&row, Row::Routine(r) if r.icon == "🌱"));
+
+        let updated: Op = serde_json::from_value(
+            serde_json::to_value(Op::RoutineUpdate {
+                id: uid(1),
+                name: None,
+                icon: Some("🏃".into()),
+                schedule: None,
+                length_days: None,
+                time: None,
+                goal_id: None,
+                reminder: None,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let row = apply(Some(row), &cmd(updated)).unwrap();
+        assert!(matches!(&row, Row::Routine(r) if r.icon == "🏃"));
+    }
+
+    #[test]
+    fn older_routine_rows_default_to_an_empty_icon() {
+        let r: Routine = serde_json::from_value(serde_json::json!({
+            "id": uid(1),
+            "parent_id": uid(100),
+            "name": "Old routine",
+            "schedule": { "kind": "daily" },
+            "start": "2026-03-02"
+        }))
+        .unwrap();
+        assert_eq!(r.icon, "");
     }
 
     #[test]

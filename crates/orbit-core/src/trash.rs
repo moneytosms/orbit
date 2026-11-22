@@ -381,6 +381,7 @@ mod tests {
             id: uid(n),
             parent_id: parent,
             name: "R".into(),
+            icon: String::new(),
             schedule: crate::routine::Schedule::Daily,
             start: "2026-03-02".into(),
             length_days: None,

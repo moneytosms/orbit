@@ -171,7 +171,12 @@ pub fn schedule(rows: &[Row], now_local: &str, cfg: &Config) -> Vec<Fire> {
                             if *routine_id == r.id && *d == date)
                     });
                     if !checked {
-                        push(None, Some(r.id), None, day * 1440 + time, &r.name);
+                        let title = if r.icon.is_empty() {
+                            r.name.clone()
+                        } else {
+                            format!("{} {}", r.icon, r.name)
+                        };
+                        push(None, Some(r.id), None, day * 1440 + time, &title);
                     }
                 }
             }
@@ -384,6 +389,7 @@ mod tests {
             id: uid(7),
             parent_id: uid(100),
             name: "Stretch".into(),
+            icon: String::new(),
             schedule: Schedule::Weekdays,
             start: "2026-03-02".into(),
             length_days: None,
@@ -423,6 +429,22 @@ mod tests {
         c.cleared = true;
         assert_eq!(times(&rows, "2026-03-02T07:00", &ON).len(), 2);
         assert!(times(&[Row::Routine(routine(None))], "2026-03-02T07:00", &ON).is_empty());
+    }
+
+    #[test]
+    fn routine_fire_title_includes_explicit_icon_and_preserves_legacy_title() {
+        let mut iconed = routine(Some("07:30"));
+        iconed.id = uid(8);
+        iconed.icon = "🏃".into();
+        let rows = [Row::Routine(iconed), Row::Routine(routine(Some("07:30")))];
+
+        let fires = schedule(&rows, "2026-03-02T07:00", &ON);
+        let explicit = fires.iter().find(|f| f.routine_id == Some(uid(8))).unwrap();
+        assert_eq!(explicit.title, "🏃 Stretch");
+        assert_eq!(explicit.at, "2026-03-02T07:30");
+        let legacy = fires.iter().find(|f| f.routine_id == Some(uid(7))).unwrap();
+        assert_eq!(legacy.title, "Stretch");
+        assert_eq!(legacy.at, "2026-03-02T07:30");
     }
 
     fn cmd(op: Op) -> Command {

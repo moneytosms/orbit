@@ -21,6 +21,7 @@
   let editing = $state(false)
   let adding = $state(false)
   let viewChoices = $state<View[]>([])
+  let summaries = $state<Record<string, string>>({})
   let dragging = false
   let grid: HTMLDivElement | undefined = $state()
 
@@ -34,6 +35,17 @@
   const hidden = $derived(layout.filter((w) => w.hidden))
   const viewName = (w: Widget) => viewChoices.find((v) => v.id === w.view_id)?.name ?? 'View'
   const title = (w: Widget) => (w.kind === 'view' ? viewName(w) : titleOf(w.kind))
+  const href = (w: Widget) =>
+    w.kind === 'routines' || w.kind === 'streaks'
+      ? '#/routines'
+      : w.kind === 'goals'
+        ? '#/goals'
+        : w.kind === 'upcoming'
+          ? '#/upcoming'
+          : w.kind === 'view'
+            ? `#/view/${w.view_id}`
+            : '#/upcoming'
+  const setSummary = (id: string, value: string) => (summaries = { ...summaries, [id]: value })
 
   async function loadViews() {
     viewChoices = await views()
@@ -180,12 +192,14 @@
       aria-label={title(w)}
       tabindex={editing ? 0 : undefined}
       onkeydown={(e) => key(e, w)}
-      class="panel relative flex min-h-24 min-w-0 flex-col overflow-hidden desk:min-h-0 desk:[grid-column:var(--c)] desk:[grid-row:var(--r)] {editing
+      class="panel relative flex min-h-24 min-w-0 flex-col overflow-hidden {w.kind === 'glance'
+        ? 'p-2'
+        : ''} desk:min-h-0 desk:[grid-column:var(--c)] desk:[grid-row:var(--r)] {editing
         ? 'outline-dashed outline-1 outline-line-strong focus-visible:outline-2 focus-visible:outline-accent'
         : ''}"
       style="--c: {w.x + 1} / span {w.w}; --r: {w.y + 1} / span {w.h}"
     >
-      <header class="mb-2 flex items-center gap-1">
+      <header class="{w.kind === 'glance' ? 'mb-0' : 'mb-2'} flex min-w-0 items-start gap-2">
         {#if editing}
           <button
             type="button"
@@ -194,7 +208,10 @@
             onpointerdown={(e) => drag(e, w, 'move')}><GripVertical size={15} /></button
           >
         {/if}
-        <h2 class="flex-1 truncate text-[0.9062rem] font-semibold">{title(w)}</h2>
+        <div class="min-w-0 flex-1">
+          <h2 class="truncate text-[0.9062rem] font-semibold">{title(w)}</h2>
+          <p class="truncate text-xs text-muted">{summaries[w.id] ?? 'Loading…'}</p>
+        </div>
         {#if editing}
           <button type="button" aria-label="Hide {title(w)}" class={iconBtn} onclick={() => hide(w)}
             ><EyeOff size={15} /></button
@@ -203,21 +220,24 @@
       </header>
       <div class="min-h-0 flex-1 overflow-auto">
         {#if w.kind === 'glance'}
-          <Glance {version} />
+          <Glance {version} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'next'}
-          <NextList {version} {onchange} />
+          <NextList {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'routines'}
-          <RoutineTicks {version} />
+          <RoutineTicks {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'upcoming'}
-          <Upcoming {version} />
+          <Upcoming {version} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'goals'}
-          <GoalProgress {version} />
+          <GoalProgress {version} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'streaks'}
-          <Streaks {version} />
+          <Streaks {version} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'view' && w.view_id}
-          <ViewList viewId={w.view_id} {version} />
+          <ViewList viewId={w.view_id} {version} onmeta={(value) => setSummary(w.id, value)} />
         {/if}
       </div>
+      <a href={href(w)} class="{w.kind === 'glance' ? 'mt-0' : 'mt-2'} self-start text-xs text-muted hover:text-text"
+        >Open →</a
+      >
       {#if editing}
         <button
           type="button"

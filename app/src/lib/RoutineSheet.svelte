@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Sheet from '$lib/components/ui/sheet'
   import { Button } from '$lib/components/ui/button'
+  import IconPicker from '$lib/IconPicker.svelte'
   import {
     createRoutine,
     goals as listGoals,
@@ -29,6 +30,7 @@
     'h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line'
 
   let name = $state('')
+  let icon = $state('')
   let kind = $state<Schedule['kind']>('daily')
   let n = $state(2)
   let ongoing = $state(true)
@@ -42,6 +44,7 @@
   $effect(() => {
     if (!open) return
     name = routine?.name ?? ''
+    icon = routine?.icon ?? ''
     const s = routine?.schedule
     kind = s?.kind ?? 'daily'
     n = s && 'n' in s ? s.n : 2
@@ -67,6 +70,7 @@
     if (!title || !parentId) return
     const input: RoutineInput = {
       name: title,
+      icon,
       schedule: schedule(),
       length_days: ongoing ? null : Math.max(1, Math.round(Number(days)) || 1),
       time: time || null,
@@ -84,6 +88,10 @@
   <Sheet.Content side="right" class="overflow-y-auto sm:max-w-[420px]">
     <Sheet.Title class="sr-only">{routine ? 'Edit Routine' : 'New Routine'}</Sheet.Title>
     <form class="flex flex-col gap-4 pt-1 pr-10" onsubmit={save}>
+      <div class="grid gap-1.5">
+        <p class="text-xs font-medium text-muted">Icon</p>
+        <IconPicker {icon} onselect={(value) => (icon = value)} />
+      </div>
       <div class="grid gap-1.5">
         <label for="routine-name" class="text-xs font-medium text-muted">Name</label>
         <input id="routine-name" bind:value={name} class={inputClass} />

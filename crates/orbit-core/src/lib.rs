@@ -805,6 +805,8 @@ pub enum Op {
         id: Uuid,
         parent_id: Uuid,
         name: String,
+        #[serde(default)]
+        icon: String,
         schedule: routine::Schedule,
         /// `YYYY-MM-DD`, the creator's Day start date.
         start: String,
@@ -822,6 +824,8 @@ pub enum Op {
         id: Uuid,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         schedule: Option<routine::Schedule>,
         #[serde(
@@ -1359,6 +1363,7 @@ impl Op {
             Op::TaskComplete { .. } | Op::TaskUncomplete { .. } => vec!["completed_at"],
             Op::RoutineUpdate {
                 name,
+                icon,
                 schedule,
                 length_days,
                 time,
@@ -1367,6 +1372,7 @@ impl Op {
                 ..
             } => [
                 ("name", name.is_some()),
+                ("icon", icon.is_some()),
                 ("schedule", schedule.is_some()),
                 ("length_days", length_days.is_some()),
                 ("time", time.is_some()),

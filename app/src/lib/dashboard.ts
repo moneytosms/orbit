@@ -99,3 +99,7 @@ export function glance(rows: Row[], today: string): Glance {
   }
   return g
 }
+
+/** Whether a View row belongs in Upcoming without duplicating What's next's current tasks. */
+export const taskIsUpcoming = <T extends { kind: string; due?: { date: string } | null }>(row: T, today: string) =>
+  row.kind !== 'task' || row.due == null || row.due.date > today
