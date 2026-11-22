@@ -176,7 +176,7 @@
           {@const areaId = screen.id}
           <Area id={areaId} {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
             {#snippet tasks()}
-              <Inbox parentId={areaId} {title} {rows} onchange={refresh} onadd={add} />
+              <Inbox parentId={areaId} {title} {rows} onchange={refresh} />
             {/snippet}
           </Area>
         {/key}
@@ -197,7 +197,7 @@
             {/key}
           {/if}
         {/if}
-        <Inbox parentId={parent} {title} {rows} onchange={refresh} onadd={add} />
+        <Inbox parentId={parent} {title} {rows} onchange={refresh} />
         {#if screen.name === 'project'}
           <Backlinks id={screen.id} {version} />
         {/if}
