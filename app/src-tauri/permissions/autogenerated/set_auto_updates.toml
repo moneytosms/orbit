@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-auto-updates"
+description = "Enables the set_auto_updates command without any pre-configured scope."
+commands.allow = ["set_auto_updates"]
+
+[[permission]]
+identifier = "deny-set-auto-updates"
+description = "Denies the set_auto_updates command without any pre-configured scope."
+commands.deny = ["set_auto_updates"]

@@ -6,6 +6,10 @@ fn main() {
             "clear_token",
             "has_token",
             "set_server",
+            "get_auto_updates",
+            "set_auto_updates",
+            "notify_upgrade_required",
+            "clear_upgrade_required",
             "take_link",
         ]),
     ))

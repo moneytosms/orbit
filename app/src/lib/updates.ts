@@ -1,4 +1,5 @@
 import { req, tx } from './db'
+import { invoke } from '@tauri-apps/api/core'
 
 export type UpgradeRequired = {
   error: 'upgrade_required'
@@ -44,6 +45,9 @@ export async function setUpgrade(upgrade: UpgradeRequired) {
   const next = { ...state, upgrade }
   await tx(['meta'], async (s) => void s('meta').put(next, KEY))
   publish(next)
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    void invoke('notify_upgrade_required', { minClientProtocol: upgrade.min_client_protocol }).catch(() => {})
+  }
 }
 
 export async function clearUpgrade() {
@@ -52,6 +56,9 @@ export async function clearUpgrade() {
   const next = { ...state, upgrade: null }
   await tx(['meta'], async (s) => void s('meta').put(next, KEY))
   publish(next)
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    void invoke('clear_upgrade_required').catch(() => {})
+  }
 }
 
 export async function checkServerVersion(): Promise<UpdateState> {

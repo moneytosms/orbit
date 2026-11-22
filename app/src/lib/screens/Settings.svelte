@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { invoke } from '@tauri-apps/api/core'
   import Laptop from '@lucide/svelte/icons/laptop'
   import Smartphone from '@lucide/svelte/icons/smartphone'
   import Globe from '@lucide/svelte/icons/globe'
@@ -11,6 +12,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
+  import { inTauri } from '$lib/desktop'
   import * as auth from '$lib/auth'
   import TodoistImport from '$lib/TodoistImport.svelte'
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
@@ -129,11 +131,21 @@
 
   let exporting = $state(false)
   let updates: UpdateState = $state(currentUpdates())
+  let autoUpdates = $state(true)
   onMount(() => {
     const off = onUpdates((value) => (updates = value))
     void checkServerVersion().catch(() => {})
+    if (inTauri()) void invoke<boolean>('get_auto_updates').then((enabled) => (autoUpdates = enabled))
     return off
   })
+  async function setAutoUpdates(value: boolean) {
+    autoUpdates = value
+    try {
+      await invoke('set_auto_updates', { enabled: value })
+    } catch {
+      autoUpdates = !value
+    }
+  }
   let exportMsg = $state('')
   async function exportAll() {
     exporting = true
@@ -728,6 +740,22 @@
       {/if}
       {#if updates.version?.min_shell_version && updates.version.min_shell_version !== '0.0.0'}
         <p class="mt-2 text-sm text-muted">Minimum shell version: {updates.version.min_shell_version}</p>
+      {/if}
+      {#if inTauri()}
+        {#snippet updateChecksControl()}
+          <Checkbox
+            checked={autoUpdates}
+            aria-label="Automatically check for desktop updates"
+            onCheckedChange={(value) => void setAutoUpdates(value === true)}
+          />
+        {/snippet}
+        <div class="mt-3 border-t border-line pt-1">
+          {@render row(
+            'Automatic desktop updates',
+            'Check on launch and every 6 hours. Signed updates are staged until restart.',
+            updateChecksControl,
+          )}
+        </div>
       {/if}
     </section>
 

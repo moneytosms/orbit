@@ -3,11 +3,15 @@
 //! reaches the few commands in `capabilities/desktop.json`.
 use std::net::ToSocketAddrs;
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Manager, Url, Webview};
+use tauri::{AppHandle, Emitter, Manager, Url, Webview};
 use tauri_plugin_notification::NotificationExt;
 
 const BUNDLED: &str = "tauri://localhost/server.html";
+const AUTO_UPDATES: &str = "auto-updates";
+const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+static LAST_REQUIRED_PROTOCOL: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
 fn file() -> PathBuf {
     crate::token::data_dir().join("server")
@@ -168,27 +172,133 @@ pub fn on_page_load(webview: &Webview, url: &Url, event: PageLoadEvent) {
     });
 }
 
-/// Checks for a new AppImage at start, installs it and says so; the user restarts to apply it.
+fn auto_updates_enabled() -> bool {
+    auto_updates_at(&crate::token::data_dir().join(AUTO_UPDATES))
+}
+
+fn auto_updates_at(path: &std::path::Path) -> bool {
+    std::fs::read_to_string(path)
+        .map(|value| value.trim() != "false")
+        .unwrap_or(true)
+}
+
+fn save_auto_updates(enabled: bool) -> std::io::Result<()> {
+    std::fs::create_dir_all(crate::token::data_dir())?;
+    std::fs::write(
+        crate::token::data_dir().join(AUTO_UPDATES),
+        enabled.to_string(),
+    )
+}
+
+#[tauri::command]
+pub fn get_auto_updates(window: tauri::WebviewWindow) -> Result<bool, String> {
+    trusted(&window)?;
+    Ok(auto_updates_enabled())
+}
+
+#[tauri::command]
+pub fn set_auto_updates(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    trusted(&window)?;
+    save_auto_updates(enabled).map_err(|e| e.to_string())?;
+    if enabled {
+        let app = window.app_handle().clone();
+        tauri::async_runtime::spawn(async move { check_once(&app).await });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn notify_upgrade_required(
+    window: tauri::WebviewWindow,
+    min_client_protocol: u32,
+) -> Result<(), String> {
+    trusted(&window)?;
+    crate::tray::upgrade_required(window.app_handle(), min_client_protocol);
+    let mut last = LAST_REQUIRED_PROTOCOL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if *last == Some(min_client_protocol) {
+        return Ok(());
+    }
+    *last = Some(min_client_protocol);
+    window
+        .app_handle()
+        .notification()
+        .builder()
+        .title("Orbit update required")
+        .body(format!(
+            "This server requires sync protocol {min_client_protocol}. Queued changes remain on this device."
+        ))
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_upgrade_required(window: tauri::WebviewWindow) -> Result<(), String> {
+    trusted(&window)?;
+    *LAST_REQUIRED_PROTOCOL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    crate::tray::clear_upgrade_required(window.app_handle());
+    Ok(())
+}
+
+/// Checks on startup and every six hours while automatic checks are enabled.
 pub fn check_update(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        use tauri_plugin_updater::UpdaterExt;
-        let result: Result<(), Box<dyn std::error::Error>> = async {
-            let Some(update) = app.updater()?.check().await? else {
-                return Ok(());
-            };
-            update.download_and_install(|_, _| {}, || {}).await?;
-            app.notification()
-                .builder()
-                .title("Orbit updated")
-                .body("Orbit updated, restart to apply")
-                .show()?;
-            Ok(())
-        }
-        .await;
-        if let Err(e) = result {
-            eprintln!("orbit: update check failed: {e}");
+        loop {
+            if auto_updates_enabled() {
+                check_once(&app).await;
+            }
+            tokio::time::sleep(UPDATE_INTERVAL).await;
         }
     });
+}
+
+async fn check_once(app: &AppHandle) {
+    let result: Result<(), Box<dyn std::error::Error>> = async {
+        let updater = updater(app)?;
+        let Some(update) = updater.check().await? else {
+            return Ok(());
+        };
+        let version = update.version.clone();
+        let notes = update
+            .body
+            .clone()
+            .unwrap_or_else(|| "A new Orbit version is ready.".into());
+        update.download_and_install(|_, _| {}, || {}).await?;
+        crate::tray::update_ready(app, &version);
+        app.notification()
+            .builder()
+            .title(format!("Orbit {version} is ready"))
+            .body(format!(
+                "{notes}\nRestart Orbit from the tray menu to apply."
+            ))
+            .show()?;
+        let _ = app.emit("orbit://update-ready", (version, notes));
+        Ok(())
+    }
+    .await;
+    if let Err(e) = result {
+        eprintln!("orbit: update check failed: {e}");
+    }
+}
+
+fn updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Box<dyn std::error::Error>> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let mut builder = app.updater_builder();
+    // Disposable local updater feeds are only accepted by debug builds. Release builds always
+    // use the pinned, signed endpoint and public key from tauri.conf.json.
+    if cfg!(debug_assertions) {
+        if let Ok(endpoint) = std::env::var("ORBIT_UPDATE_ENDPOINT") {
+            builder = builder.endpoints(vec![endpoint.parse()?])?;
+        }
+        if let Ok(pubkey) = std::env::var("ORBIT_UPDATE_PUBKEY") {
+            builder = builder.pubkey(pubkey);
+        }
+    }
+    Ok(builder.build()?)
 }
 
 #[cfg(test)]
@@ -215,5 +325,16 @@ mod tests {
                 .unwrap()
         ));
         assert!(!is_launcher(&"https://orbit.example.com/".parse().unwrap()));
+    }
+
+    #[test]
+    fn auto_update_preference_defaults_on_and_persists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(AUTO_UPDATES);
+        assert!(auto_updates_at(&path));
+        std::fs::write(&path, "false").unwrap();
+        assert!(!auto_updates_at(&path));
+        std::fs::write(&path, "true").unwrap();
+        assert!(auto_updates_at(&path));
     }
 }

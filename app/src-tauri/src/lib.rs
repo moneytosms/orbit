@@ -97,7 +97,11 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             set_token,
             clear_token,
             has_token,
-            desktop::set_server
+            desktop::set_server,
+            desktop::get_auto_updates,
+            desktop::set_auto_updates,
+            desktop::notify_upgrade_required,
+            desktop::clear_upgrade_required
         ])
         .on_page_load(|webview, payload| {
             desktop::on_page_load(webview, payload.url(), payload.event());

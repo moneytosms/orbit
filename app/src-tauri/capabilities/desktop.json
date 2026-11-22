@@ -21,6 +21,10 @@
     "allow-set-token",
     "allow-clear-token",
     "allow-has-token",
-    "allow-set-server"
+    "allow-set-server",
+    "allow-get-auto-updates",
+    "allow-set-auto-updates",
+    "allow-notify-upgrade-required",
+    "allow-clear-upgrade-required"
   ]
 }
