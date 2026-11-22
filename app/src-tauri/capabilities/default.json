@@ -1,7 +1,8 @@
 {
   "identifier": "default",
   "windows": [
-    "main"
+    "main",
+    "capture"
   ],
   "permissions": [
     "core:default",
@@ -10,6 +11,10 @@
     "allow-clear-token",
     "allow-has-token",
     "allow-set-server",
-    "allow-shell-version"
+    "allow-shell-version",
+    "allow-capture-task",
+    "allow-get-capture-shortcut",
+    "allow-set-capture-shortcut",
+    "allow-hide-capture"
   ]
 }

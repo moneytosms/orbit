@@ -133,10 +133,20 @@
   let updates: UpdateState = $state(currentUpdates())
   let appVersion = $state(__ORBIT_APP_VERSION__)
   let autoUpdates = $state(true)
+  let captureShortcut = $state('ALT+T')
+  let captureShortcutError = $state('')
+  let recordingShortcut = $state(false)
+  let captureShortcutInput = $state<HTMLInputElement>()
   onMount(() => {
     const off = onUpdates((value) => (updates = value))
     void checkServerVersion().catch(() => {})
     if (isDesktopTauri()) {
+      void invoke<[string, string | null]>('get_capture_shortcut')
+        .then(([shortcut, error]) => {
+          captureShortcut = shortcut
+          captureShortcutError = error ?? ''
+        })
+        .catch(() => {})
       void invoke<boolean>('get_auto_updates')
         .then((enabled) => (autoUpdates = enabled))
         .catch(() => {})
@@ -224,12 +234,43 @@
     ['appearance', 'Appearance'],
     ['reminders', 'Reminders'],
     ['general', 'Day and calendar'],
+    ['capture-shortcut', 'Quick capture'],
     ['account', 'Account and devices'],
     ['targets', 'Productivity'],
     ['data', 'Data'],
     ['about', 'About'],
     ['advanced', 'Advanced'],
   ]
+
+  async function recordCaptureShortcut(event: KeyboardEvent) {
+    if (!recordingShortcut) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.key === 'Escape') {
+      recordingShortcut = false
+      return
+    }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return
+    const mods = [event.ctrlKey && 'CTRL', event.altKey && 'ALT', event.shiftKey && 'SHIFT', event.metaKey && 'SUPER'].filter(Boolean)
+    if (!mods.length || event.key.length !== 1) {
+      captureShortcutError = 'Use at least one modifier and a letter or number.'
+      return
+    }
+    const next = `${mods.join('+')}+${event.key.toUpperCase()}`
+    try {
+      await invoke('set_capture_shortcut', { shortcut: next })
+      captureShortcut = next
+      captureShortcutError = ''
+      recordingShortcut = false
+    } catch (error) {
+      captureShortcutError = String(error)
+    }
+  }
+
+  function beginCaptureShortcut() {
+    recordingShortcut = true
+    requestAnimationFrame(() => captureShortcutInput?.focus())
+  }
   const jump = (id: string) => {
     const el = document.getElementById(id)
     if (el instanceof HTMLDetailsElement) el.open = true
@@ -568,6 +609,27 @@
       {@render row('Day starts at', 'Routines roll over to a new day at this time.', dayControl)}
       {@render row('Timezone', 'Days and due times are read in this zone.', zoneControl)}
     </section>
+
+    {#if isDesktopTauri()}
+      <section id="capture-shortcut" class="panel scroll-mt-4">
+        <h2 class="panel-title">Quick capture</h2>
+        <div class="flex flex-wrap items-center gap-3">
+          <input
+            aria-label="Quick capture shortcut"
+            bind:this={captureShortcutInput}
+            readonly
+            value={recordingShortcut ? 'Press a key combination…' : captureShortcut.replaceAll('ALT', 'Alt').replaceAll('CTRL', 'Ctrl').replaceAll('SHIFT', 'Shift').replaceAll('SUPER', 'Super')}
+            onkeydown={recordCaptureShortcut}
+            onclick={beginCaptureShortcut}
+            onblur={() => (recordingShortcut = false)}
+            class="h-[2.125rem] w-56 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+          />
+          <Button size="sm" onclick={beginCaptureShortcut}>{recordingShortcut ? 'Press shortcut' : 'Change'}</Button>
+        </div>
+        {#if captureShortcutError}<p role="status" class="mt-2 text-sm text-warn-text">{captureShortcutError}</p>{/if}
+        <p class="mt-2 text-sm text-muted">Opens a small capture window. Captures are saved on this device and sync when online.</p>
+      </section>
+    {/if}
 
     <section id="account" class="panel scroll-mt-4">
       <h2 class="panel-title">Account and devices <span class="font-normal text-muted">{list.length || ''}</span></h2>

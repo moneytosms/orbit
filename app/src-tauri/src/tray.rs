@@ -3,7 +3,6 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager};
 
-pub const CAPTURE_EVENT: &str = "orbit://capture";
 pub const SYNC_EVENT: &str = "orbit://sync";
 const TRAY_ID: &str = "orbit";
 static UPDATE_STATE: std::sync::Mutex<(Option<String>, Option<u32>)> =
@@ -17,14 +16,13 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-/// Shows the window and asks the UI to open quick capture.
+/// Opens the independent capture window.
 pub fn capture(app: &AppHandle) {
-    show_main(app);
-    let _ = app.emit(CAPTURE_EVENT, ());
+    crate::global_capture::show(app);
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    let menu = menu(app, None, None)?;
+    let menu = menu(app, None, None, &crate::global_capture::shortcut())?;
     let mut tray = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("Orbit")
         .menu(&menu)
@@ -73,12 +71,20 @@ pub fn clear_upgrade_required(app: &AppHandle) {
     refresh(app);
 }
 
+pub fn refresh_capture_label(app: &AppHandle, shortcut: &str) {
+    refresh_with_shortcut(app, shortcut);
+}
+
 fn refresh(app: &AppHandle) {
+    refresh_with_shortcut(app, &crate::global_capture::shortcut());
+}
+
+fn refresh_with_shortcut(app: &AppHandle, shortcut: &str) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
     let state = UPDATE_STATE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Ok(menu) = menu(app, state.0.as_deref(), state.1) {
+    if let Ok(menu) = menu(app, state.0.as_deref(), state.1, shortcut) {
         let _ = tray.set_menu(Some(menu));
     }
 }
@@ -87,9 +93,21 @@ fn menu(
     app: &AppHandle,
     update: Option<&str>,
     upgrade: Option<u32>,
+    shortcut: &str,
 ) -> tauri::Result<Menu<tauri::Wry>> {
     let open = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
-    let add = MenuItem::with_id(app, "quick_add", "Quick add", true, None::<&str>)?;
+    let display = shortcut
+        .replace("ALT", "Alt")
+        .replace("CTRL", "Ctrl")
+        .replace("SHIFT", "Shift")
+        .replace("SUPER", "Super");
+    let add = MenuItem::with_id(
+        app,
+        "quick_add",
+        format!("Quick add  {display}"),
+        true,
+        None::<&str>,
+    )?;
     let sync = MenuItem::with_id(app, "sync", "Sync now", true, None::<&str>)?;
     let restart = update
         .map(|version| {

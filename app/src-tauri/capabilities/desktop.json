@@ -1,7 +1,8 @@
 {
   "identifier": "desktop-remote",
   "windows": [
-    "main"
+    "main",
+    "capture"
   ],
   "platforms": [
     "linux"
@@ -26,6 +27,10 @@
     "allow-set-auto-updates",
     "allow-notify-upgrade-required",
     "allow-clear-upgrade-required",
-    "allow-shell-version"
+    "allow-shell-version",
+    "allow-capture-task",
+    "allow-get-capture-shortcut",
+    "allow-set-capture-shortcut",
+    "allow-hide-capture"
   ]
 }

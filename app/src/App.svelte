@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getCurrentWindow } from '@tauri-apps/api/window'
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
   import Banner from './lib/Banner.svelte'
@@ -43,6 +44,10 @@
   import { refreshNotifier, startNotifier } from './lib/notify'
   import { inbox_id } from '../wasm/orbit_wasm'
   import UpdateNotice from './lib/UpdateNotice.svelte'
+  import CaptureOverlay from './lib/CaptureOverlay.svelte'
+  import { inTauri, isAndroidTauri } from './lib/platform'
+
+  const captureOverlay = inTauri() && !isAndroidTauri() && getCurrentWindow().label === 'capture'
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
   let pending = $state(0)
@@ -153,7 +158,7 @@
   }
 
   // Offline with a Device: straight in. Otherwise ask the server whether this is the first run.
-  ;(async () => {
+  if (!captureOverlay) void (async () => {
     if (await hasDevice()) return enter()
     gate = await needsSetup().then(
       (setup) => (setup ? 'setup' : 'login'),
@@ -164,12 +169,16 @@
 
 <svelte:window
   onhashchange={() => {
+    if (captureOverlay) return
     screen = readScreen()
     linkedTask = readTaskLink()
     refresh()
   }}
 />
 
+{#if captureOverlay}
+  <CaptureOverlay />
+{:else}
 {#if gate === 'setup' || gate === 'login'}
   <Auth mode={gate} {pending} done={enter} />
 {:else if gate === 'app'}
@@ -274,4 +283,5 @@
       onclick={() => { clearTimeout(hide); toast = null }}
     >×</button>
   </p>
+{/if}
 {/if}

@@ -1,0 +1,110 @@
+<script lang="ts">
+  import { onMount, tick } from 'svelte'
+  import { invoke } from '@tauri-apps/api/core'
+  import { listen } from '@tauri-apps/api/event'
+  import { parse_quick_add } from '../../wasm/orbit_wasm'
+  import type { Parsed } from './sync'
+
+  let draft = $state('')
+  let input: HTMLInputElement
+  let message = $state('')
+  let saving = $state(false)
+  const localNow = () => {
+    const now = new Date()
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+  }
+  const parsed = $derived(
+    JSON.parse(
+      parse_quick_add(
+        draft,
+        localNow(),
+        JSON.stringify({ areas: [], goals: [], pages: [], labels: [] }),
+      ),
+    ) as Parsed,
+  )
+
+  async function hide() {
+    await invoke('hide_capture').catch(() => {})
+  }
+
+  async function save(keepOpen: boolean) {
+    if (saving || !draft.trim()) return
+    saving = true
+    message = ''
+    try {
+      await invoke('capture_task', { text: draft })
+      draft = ''
+      if (keepOpen) {
+        await tick()
+        input.focus()
+      } else {
+        await hide()
+      }
+    } catch (error) {
+      message = String(error)
+    } finally {
+      saving = false
+    }
+  }
+
+  onMount(() => {
+    const off = listen('orbit://show-capture', () => {
+      draft = ''
+      message = ''
+      requestAnimationFrame(() => input.focus())
+    })
+    requestAnimationFrame(() => input.focus())
+    return () => void off.then((unlisten) => unlisten())
+  })
+
+  function keydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      void hide()
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      void save(event.ctrlKey || event.metaKey)
+    }
+  }
+</script>
+
+<svelte:window
+  onblur={() => {
+    setTimeout(() => {
+      if (!document.hasFocus()) void hide()
+    }, 120)
+  }}
+/>
+
+<main class="capture-shell">
+  <div class="capture-input">
+    <span class="capture-mark" aria-hidden="true">＋</span>
+    <input bind:this={input} bind:value={draft} onkeydown={keydown} placeholder="Add a task" aria-label="Task title" />
+    <button onclick={() => void save(false)} disabled={!draft.trim() || saving}>Add</button>
+  </div>
+  {#if parsed.tokens.length}
+    <ul class="capture-chips" aria-label="Parsed quick-add tokens">
+      {#each parsed.tokens as token (token.start)}
+        <li class:unknown={!token.known}>{token.text}</li>
+      {/each}
+    </ul>
+  {/if}
+  {#if message}<p role="alert" class="capture-message">{message}</p>{/if}
+  <p class="capture-hint">Enter to add · Ctrl+Enter to add another · Esc to close</p>
+</main>
+
+<style>
+  :global(html), :global(body), :global(#app) { margin: 0; min-height: 100%; background: transparent; }
+  .capture-shell { box-sizing: border-box; margin: 16px; padding: 12px 16px 8px; border: 1px solid var(--line, #d7dce2); border-radius: 16px; background: var(--surface, #fff); color: var(--text, #222); box-shadow: 0 12px 40px #0003; }
+  .capture-input { display: flex; align-items: center; gap: 10px; }
+  .capture-mark { color: var(--accent, #4569c8); font-size: 22px; }
+  input { flex: 1; min-width: 0; height: 38px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 16px; }
+  button { border: 0; border-radius: 8px; padding: 8px 14px; background: var(--accent, #4569c8); color: white; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .capture-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 32px; padding: 0; list-style: none; }
+  .capture-chips li { border: 1px solid var(--line, #d7dce2); border-radius: 999px; padding: 2px 9px; color: var(--muted, #68717d); font-size: 12px; }
+  .capture-chips li.unknown { color: var(--warn, #a36517); }
+  .capture-hint { margin: 8px 0 0 32px; color: var(--muted, #68717d); font-size: 12px; }
+  .capture-message { margin: 6px 0 0 32px; color: var(--warn, #a12a2a); font-size: 12px; }
+</style>

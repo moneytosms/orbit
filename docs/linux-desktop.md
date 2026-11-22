@@ -7,23 +7,35 @@
 - The window keeps its own IndexedDB replica, like the web app.
 - The Rust side owns the tray (libayatana-appindicator), single-instance, autostart, and a small background replica (`orbit-client`, SQLite at `$XDG_DATA_HOME/orbit/replica.db`) that syncs every 60 s and shows reminders as desktop notifications. The web notification path is off inside the app so nothing fires twice.
 - After you sign in, the app creates its own Device (`Orbit desktop (reminders)`, visible and revocable in Settings) and stores its token in the Secret Service keyring. If no keyring is running, it falls back to `$XDG_DATA_HOME/orbit/token` with mode 0600.
-- Closing the window hides it to the tray. Tray menu: Open, Quick add, Sync now, Quit. Left click opens the window.
+- Closing the main window hides it to the tray. Tray menu: Open, Quick add (with its shortcut), Sync now, Quit. Left click opens the main window.
 
 ## Flags
 
 | Flag | Effect |
 | --- | --- |
 | `--hidden` | Start without showing the window (used by autostart). |
-| `--capture` | Show the window and open quick capture. If Orbit is already running, the running instance does it. |
+| `--capture` | Open the independent quick-capture overlay. If Orbit is already running, the running instance does it. |
 | `--server <url>` | Save the server address and open it (see Server address). |
+
+## Global shortcut
+
+On X11, Orbit registers **Alt+T** by default. Change it under Settings → Quick capture; the binding is stored on this device. The plugin's Linux backend is X11-only, so on Wayland Orbit reports the limitation in Settings and shows a Hyprland binding for the selected shortcut. The overlay saves captures directly to the local replica, so it works offline and syncs later. Press Enter to add, Ctrl+Enter to add another, or Escape to close. `orbit-app --capture` and the tray's Quick add action open the same overlay.
 
 ## Hyprland
 
-In `~/.config/hypr/bindings.lua`:
+If global shortcut registration is unavailable on your Hyprland session, add this alternative in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + A", "Orbit quick capture", "orbit-app --capture")
+hl.window_rule({
+  match = { initial_title = "^Quick capture$" },
+  float = true,
+  center = true,
+})
+
+o.bind("ALT + T", "Orbit quick capture", "orbit-app --capture")
 ```
+
+The float/center rule is needed because Hyprland may tile the overlay despite its requested size. Use the binding shown in Settings if you changed Alt+T.
 
 Start it hidden at login with the same file or your autostart list:
 

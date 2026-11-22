@@ -13,7 +13,6 @@ const AUTO_UPDATES: &str = "auto-updates";
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 static LAST_REQUIRED_PROTOCOL: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 
-
 /// The installed desktop shell version, which can differ from the server-loaded UI.
 #[tauri::command]
 pub fn shell_version(window: tauri::WebviewWindow) -> Result<String, String> {
@@ -168,7 +167,7 @@ pub fn launch(app: &AppHandle) {
 /// Once the bundled launcher page has loaded, send the window to the saved server or the server page.
 /// A navigation issued before the page loads is dropped, so this is the second try at the same thing.
 pub fn on_page_load(webview: &Webview, url: &Url, event: PageLoadEvent) {
-    if event != PageLoadEvent::Finished || !is_launcher(url) {
+    if webview.label() != "main" || event != PageLoadEvent::Finished || !is_launcher(url) {
         return;
     }
     let webview = webview.clone();

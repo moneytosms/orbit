@@ -3,6 +3,8 @@ mod android;
 #[cfg(desktop)]
 mod desktop;
 #[cfg(desktop)]
+mod global_capture;
+#[cfg(desktop)]
 mod reminders;
 mod replica;
 #[cfg(desktop)]
@@ -11,7 +13,7 @@ mod token;
 mod tray;
 
 #[cfg(desktop)]
-use tauri::WindowEvent;
+use tauri::{Manager, WindowEvent};
 
 #[cfg(desktop)]
 fn has_flag(args: &[String], flag: &str) -> bool {
@@ -63,7 +65,7 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     if !flagged {
         desktop::launch(&handle);
     }
-    if !has_flag(&args, "--hidden") {
+    if !has_flag(&args, "--hidden") && !has_flag(&args, "--capture") {
         tray::show_main(&handle);
     }
     // The first `--capture` launch also needs the page to be listening, so give it a moment.
@@ -79,6 +81,15 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 #[cfg(desktop)]
 fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        global_capture::on_shortcut(app);
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             desktop::apply_flag(app, &args);
             if has_flag(&args, "--capture") {
@@ -102,12 +113,19 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             desktop::set_auto_updates,
             desktop::notify_upgrade_required,
             desktop::clear_upgrade_required,
+            global_capture::capture_task,
+            global_capture::get_capture_shortcut,
+            global_capture::set_capture_shortcut,
+            global_capture::hide_capture,
             desktop::shell_version
         ])
         .on_page_load(|webview, payload| {
             desktop::on_page_load(webview, payload.url(), payload.event());
         })
-        .setup(|app| setup_desktop(app))
+        .setup(|app| {
+            global_capture::initialize(app.handle());
+            setup_desktop(app)
+        })
         .on_window_event(|window, event| {
             // Closing hides to tray; Quit in the tray menu exits.
             if let WindowEvent::CloseRequested { api, .. } = event
@@ -115,6 +133,26 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            if let WindowEvent::Focused(false) = event
+                && window.label() == "capture"
+            {
+                let app = window.app_handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if app
+                        .get_webview_window("capture")
+                        .is_some_and(|window| window.is_focused().is_ok_and(|focused| !focused))
+                    {
+                        global_capture::hide(&app);
+                    }
+                });
+            }
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "capture"
+            {
+                api.prevent_close();
+                global_capture::hide(window.app_handle());
             }
         })
 }
