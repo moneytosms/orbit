@@ -589,6 +589,19 @@ test('a Page edit predicts the new body and bumps the rev; a stale base_rev keep
   })
 })
 
+test('a Page keeps block Markdown intact in local reload and sync commands', async () => {
+  const area = (await tree()).find((t) => t.area.name === 'qa-goal-area')!.area.id
+  const id = await createPage(area, 'Block notes')
+  const body = '\n| A   | B   |\n| --- | --- |\n| one | two |\n\n- [ ] Draft\n\n::: section sec_sync\n## Plan\n\nWrite it\n:::'
+  await editPageBody(id, body, 0)
+  expect((await getPage(id))?.body).toBe(body)
+  await sync()
+  expect(requests.at(-1)!.commands).toContainEqual(expect.objectContaining({
+    type: 'page.edit_body',
+    args: expect.objectContaining({ id, body }),
+  }))
+})
+
 test('delete hides a Task and its subtasks, Trash lists it and restore brings it back', async () => {
   await sync()
   const parent = await createTask('Trash me')

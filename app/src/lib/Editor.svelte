@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte'
+  import { onDestroy, onMount, untrack } from 'svelte'
   import { StarterKit } from '@tiptap/starter-kit'
+  import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
+  import TaskList from '@tiptap/extension-task-list'
+  import TaskItem from '@tiptap/extension-task-item'
+  import Paragraph from '@tiptap/extension-paragraph'
   import { Markdown } from '@tiptap/markdown'
   import { createEditor, EditorContent } from 'svelte-tiptap'
   import type { SuggestionProps } from '@tiptap/suggestion'
   import { mount, unmount } from 'svelte'
   import MentionList from './MentionList.svelte'
   import { BlobRef, OrbitLink, type LinkItem } from './Mention'
+  import { BlockCommands, runBlockCommand } from './BlockCommands'
+  import { Section } from './Section'
   import { addFile, blobUrl } from './blobs'
   import { createPage, linkTarget, restoreItem, searchLinks } from './sync'
 
@@ -16,6 +22,8 @@
     label,
     owner = null,
     editable = true,
+    chrome = 'boxed',
+    pageId = '',
   }: {
     value: string
     onchange: (markdown: string) => void
@@ -23,10 +31,13 @@
     /** Where "Create Page" puts a new Page; none (Inbox Tasks) hides it. */
     owner?: string | null
     editable?: boolean
+    chrome?: 'boxed' | 'page'
+    pageId?: string
   } = $props()
 
   // The editor owns the text once mounted: `value` is only the starting markdown.
   let saved = untrack(() => value)
+  let mounted = $state(false)
   let timer: ReturnType<typeof setTimeout> | undefined
 
   /** The suggestion popup: a MentionList mounted next to the caret. */
@@ -37,8 +48,9 @@
     const place = (p: SuggestionProps<LinkItem, LinkItem>) => {
       const r = p.clientRect?.()
       if (el && r) {
-        el.style.left = `${r.left}px`
-        el.style.top = `${r.bottom + 4}px`
+        const box = el.getBoundingClientRect()
+        el.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.width - 8))}px`
+        el.style.top = `${r.bottom + box.height + 8 < innerHeight ? r.bottom + 4 : Math.max(8, r.top - box.height - 4)}px`
       }
     }
     return {
@@ -95,8 +107,15 @@
   const editor = createEditor({
     editable: untrack(() => editable),
     extensions: [
-      StarterKit,
-      Markdown,
+      StarterKit.configure({ paragraph: false }),
+      Paragraph.extend({ draggable: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TaskList,
+      TaskItem.configure({ nested: false }),
+      Markdown.configure({ markedOptions: { gfm: true } }),
       BlobRef.configure({ url: blobUrl }),
       OrbitLink.configure({
         items: async (char, query) => {
@@ -117,6 +136,11 @@
         open: (href) => (location.hash = href),
         render: popup,
       }),
+      BlockCommands.configure({
+        render: popup,
+        command: (id) => runBlockCommand($editor, id, { owner: untrack(() => owner), attach, pageId: untrack(() => pageId) }),
+      }),
+      Section.configure({ pageId: untrack(() => pageId) }),
     ],
     content: saved,
     contentType: 'markdown',
@@ -149,6 +173,20 @@
     onBlur: flush,
   })
 
+  onMount(() => {
+    mounted = true
+    if (chrome === 'page' && editable) $editor.commands.focus('end')
+  })
+
+  $effect(() => {
+    if (!mounted || chrome !== 'page' || !editable) return
+    const markdown = $editor.getMarkdown()
+    if (markdown !== saved) {
+      saved = markdown
+      onchange(markdown)
+    }
+  })
+
   /** Reports the markdown if it differs from what was last reported. */
   function flush() {
     clearTimeout(timer)
@@ -164,7 +202,7 @@
   })
 </script>
 
-<div class="editor rounded-lg border border-line bg-surface px-3 py-2 focus-within:border-accent-line">
+<div class="editor {chrome === 'page' ? 'page-editor min-h-[60vh]' : 'rounded-lg border border-line bg-surface px-3 py-2 focus-within:border-accent-line'}">
   <EditorContent editor={$editor} />
   {#if problem}<p role="alert" class="mt-1 text-sm text-red-600">{problem}</p>{/if}
 </div>
@@ -176,6 +214,11 @@
     font-size: 15px;
     line-height: var(--lh, 1.55);
   }
+  .editor.page-editor :global(.editor-body) { cursor: text; }
+  .editor.page-editor :global(.editor-body) { min-height: 60vh; }
+  .editor :global(.orbit-section) { position: relative; }
+  .editor :global(.orbit-section-toggle) { position: absolute; left: -1.5rem; top: .1rem; color: var(--color-muted); }
+  .editor :global(.orbit-section-content[hidden]) { display: none; }
   .editor :global(.editor-body > * + *) {
     margin-top: 0.5rem;
   }
@@ -195,6 +238,10 @@
     list-style: disc;
     padding-left: 1.4rem;
   }
+  .editor :global(ul[data-type='taskList']) { list-style: none; padding-left: 0; }
+  .editor :global(ul[data-type='taskList'] li) { display: flex; align-items: baseline; gap: .45rem; }
+  .editor :global(table) { width: 100%; border-collapse: collapse; }
+  .editor :global(th), .editor :global(td) { border: 1px solid var(--color-line); padding: .35rem .5rem; text-align: left; }
   .editor :global(ol) {
     list-style: decimal;
     padding-left: 1.4rem;
