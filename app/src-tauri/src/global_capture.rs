@@ -107,7 +107,7 @@ pub fn set_capture_shortcut(window: tauri::WebviewWindow, shortcut: String) -> R
         }
         *SHORTCUT.lock().unwrap_or_else(|e| e.into_inner()) = shortcut.to_string();
         set_error(Some(wayland_message(shortcut)));
-        refresh_tray(&app);
+        refresh_tray(app);
         return Ok(());
     }
     let was_registered = REGISTERED.load(Ordering::Relaxed);
@@ -132,7 +132,7 @@ pub fn set_capture_shortcut(window: tauri::WebviewWindow, shortcut: String) -> R
     REGISTERED.store(true, Ordering::Relaxed);
     *SHORTCUT.lock().unwrap_or_else(|e| e.into_inner()) = shortcut.to_string();
     set_error(None);
-    refresh_tray(&app);
+    refresh_tray(app);
     Ok(())
 }
 
