@@ -2,7 +2,7 @@ use axum::{
     Router,
     body::{Body, to_bytes},
     extract::ConnectInfo,
-    http::{HeaderMap, Request, StatusCode, header},
+    http::{Request, StatusCode, header},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -1792,7 +1792,7 @@ async fn startup_migrates_stored_placements_once_and_keeps_the_legacy_rows() {
 
     // Simulate expired graph tombstones disappearing from row storage. The durable migration
     // marker must still prevent rebuilding those deterministic IDs from surviving Placements.
-    let mut db = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
     for id in nodes
         .iter()
         .map(|n| n["id"].as_str().unwrap())
