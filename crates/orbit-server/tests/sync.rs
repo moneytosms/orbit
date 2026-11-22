@@ -465,6 +465,204 @@ async fn completing_a_parent_completes_open_descendants_and_ships_them_in_deltas
 }
 
 #[tokio::test]
+async fn undo_reverses_only_exact_cascade_records_through_completed_and_reparented_tasks() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let base = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let (root, completed_mid, deep, leaf, independent, moved, recurring) = (
+        TASK,
+        SUB,
+        SUBSUB,
+        "01900000-0000-7000-8000-00000000000d",
+        "01900000-0000-7000-8000-00000000000e",
+        "01900000-0000-7000-8000-00000000000f",
+        "01900000-0000-7000-8000-000000000010",
+    );
+    let setup = vec![
+        cmd(
+            &c(0xd1),
+            "task.create",
+            json!({ "id": root, "title": "root" }),
+            base + 1000,
+        ),
+        cmd(
+            &c(0xd2),
+            "task.create",
+            json!({ "id": completed_mid, "title": "mid", "parent_id": root }),
+            base + 1001,
+        ),
+        cmd(
+            &c(0xd5),
+            "task.create",
+            json!({ "id": independent, "title": "independent", "parent_id": root }),
+            base + 1004,
+        ),
+        cmd(
+            &c(0xd6),
+            "task.create",
+            json!({ "id": moved, "title": "moved", "parent_id": root }),
+            base + 1005,
+        ),
+        cmd(
+            &c(0xd7),
+            "task.create",
+            json!({ "id": recurring, "title": "recurring", "parent_id": root }),
+            base + 1006,
+        ),
+        cmd(
+            &c(0xd8),
+            "task.update",
+            json!({ "id": recurring, "due": { "date": "2026-11-22" }, "recurrence": { "rule": "day", "from_completion": false } }),
+            base + 1100,
+        ),
+    ];
+    let (_, setup_res) = sync(&app, json!({ "v": 1, "commands": setup })).await;
+    let completed_mid_done = cmd(
+        &c(0xd9),
+        "task.complete",
+        json!({ "id": completed_mid }),
+        base + 4000,
+    );
+    let (_, mid_res) = sync(
+        &app,
+        json!({ "v": 1, "token": setup_res["token"], "commands": [completed_mid_done] }),
+    )
+    .await;
+    let nested = [
+        cmd(
+            &c(0xe1),
+            "task.create",
+            json!({ "id": deep, "title": "deep", "parent_id": completed_mid }),
+            base + 4100,
+        ),
+        cmd(
+            &c(0xe2),
+            "task.create",
+            json!({ "id": leaf, "title": "leaf", "parent_id": deep }),
+            base + 4101,
+        ),
+    ];
+    let (_, nested_res) = sync(
+        &app,
+        json!({ "v": 1, "token": mid_res["token"], "commands": nested }),
+    )
+    .await;
+    let mut sibling_done = cmd(
+        &c(0xda),
+        "task.complete",
+        json!({ "id": independent }),
+        base + 5000,
+    );
+    sibling_done["hlc"]["counter"] = json!(1);
+    let mut root_done = cmd(
+        &c(0xdb),
+        "task.complete",
+        json!({ "id": root, "today": "2026-11-22" }),
+        base + 5000,
+    );
+    root_done["hlc"]["counter"] = json!(2);
+    let (_, done_res) = sync(&app, json!({ "v": 1, "token": nested_res["token"], "commands": [sibling_done, root_done.clone()] })).await;
+    let root_completion = done_res["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["kind"] == "completion" && r["item_id"] == root)
+        .unwrap()
+        .clone();
+    assert_eq!(root_completion["source_id"], root_done["uuid"]);
+    assert_eq!(
+        done_res["delta"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["kind"] == "completion" && r["item_id"] == deep)
+            .unwrap()["source_id"],
+        root_done["uuid"]
+    );
+    let token = done_res["token"].clone();
+
+    let move_task = cmd(
+        &c(0xdc),
+        "item.move",
+        json!({ "id": moved, "parent_id": INBOX, "order": "z" }),
+        base + 6000,
+    );
+    let same_due_edit = cmd(
+        &c(0xde),
+        "task.update",
+        json!({ "id": recurring, "due": { "date": "2026-11-23" } }),
+        base + 6000,
+    );
+    let undo = cmd(
+        &c(0xdd),
+        "task.uncomplete",
+        json!({
+            "id": root,
+            "completion_id": root_completion["id"],
+            "completed_at": base + 5000,
+            "completion_hlc": root_completion["completion_hlc"],
+            "expected_due": null,
+            "restore_due": null,
+        }),
+        base + 7000,
+    );
+    let (_, undone) = sync(
+        &app,
+        json!({ "v": 1, "token": token, "commands": [same_due_edit, move_task, undo] }),
+    )
+    .await;
+    let undo_rows = undone["delta"].as_array().unwrap();
+    let (_, snapshot) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    let rows = snapshot["delta"].as_array().unwrap();
+    let task = |id: &str| {
+        rows.iter().find(|r| r["id"] == id).unwrap_or_else(|| {
+            panic!(
+                "missing task {id}; delta={rows:?}; statuses={}",
+                undone["statuses"]
+            )
+        })
+    };
+    assert_eq!(task(root)["completed_at"], Value::Null);
+    assert_eq!(task(completed_mid)["completed_at"], json!(base + 4000));
+    assert_eq!(task(independent)["completed_at"], json!(base + 5000));
+    assert_eq!(task(deep)["completed_at"], Value::Null);
+    assert_eq!(task(leaf)["completed_at"], Value::Null);
+    assert_eq!(task(moved)["completed_at"], Value::Null);
+    assert_eq!(task(moved)["parent_id"], INBOX);
+    assert_eq!(task(recurring)["due"]["date"], "2026-11-23");
+    let expected_purges = [deep, leaf, moved, recurring].map(|id| {
+        let id: orbit_core::Uuid = id.parse().unwrap();
+        let source: orbit_core::Uuid = root_done["uuid"].as_str().unwrap().parse().unwrap();
+        orbit_core::completion_id(id, source).to_string()
+    });
+    for id in expected_purges {
+        assert!(
+            undo_rows
+                .iter()
+                .any(|r| r["kind"] == "purged" && r["id"] == id),
+            "missing completion tombstone {id}; got {:?}",
+            undo_rows
+                .iter()
+                .map(|r| (r["kind"].clone(), r["id"].clone()))
+                .collect::<Vec<_>>()
+        );
+    }
+    for id in [completed_mid, independent] {
+        let id: orbit_core::Uuid = id.parse().unwrap();
+        let source: orbit_core::Uuid = root_done["uuid"].as_str().unwrap().parse().unwrap();
+        let completion_id = orbit_core::completion_id(id, source).to_string();
+        assert!(
+            !undo_rows
+                .iter()
+                .any(|r| r["kind"] == "purged" && r["id"] == completion_id)
+        );
+    }
+}
+
+#[tokio::test]
 async fn completing_a_recurring_task_advances_its_due_and_logs_each_time() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path()).await;

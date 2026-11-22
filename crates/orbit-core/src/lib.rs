@@ -219,6 +219,24 @@ pub struct Completion {
     /// Stardust it earned when logged; old records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub points: Option<u32>,
+    /// Command shared by the parent completion cascade; absent on legacy records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_hlc: Option<Hlc>,
+    /// Recurrence snapshot needed to reverse this exact completion.
+    #[serde(
+        default,
+        deserialize_with = "some",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expected_due: Option<Option<Due>>,
+    #[serde(
+        default,
+        deserialize_with = "some",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub restore_due: Option<Option<Due>>,
 }
 
 /// Left behind when a trashed row is purged, so clients drop their copy.
@@ -623,6 +641,30 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         today: Option<String>,
     },
+    /// Reverses one completion. Optional details keep older `task.uncomplete` commands readable.
+    #[serde(rename = "task.uncomplete")]
+    TaskUncomplete {
+        id: Uuid,
+        #[serde(default)]
+        completion_id: Option<Uuid>,
+        #[serde(default)]
+        completed_at: Option<u64>,
+        /// HLC of the completion being undone, used to preserve newer same-value due edits.
+        #[serde(default)]
+        completion_hlc: Option<Hlc>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        expected_due: Option<Option<Due>>,
+        #[serde(
+            default,
+            deserialize_with = "some",
+            skip_serializing_if = "Option::is_none"
+        )]
+        restore_due: Option<Option<Due>>,
+    },
     #[serde(rename = "label.create")]
     LabelCreate {
         id: Uuid,
@@ -969,6 +1011,7 @@ impl Op {
             | Op::ItemUnarchive { id }
             | Op::TaskUpdate { id, .. }
             | Op::TaskComplete { id, .. }
+            | Op::TaskUncomplete { id, .. }
             | Op::ProjectUpdate { id, .. }
             | Op::GoalCreate { id, .. }
             | Op::GoalUpdate { id, .. }
@@ -1237,7 +1280,7 @@ impl Op {
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
-            Op::TaskComplete { .. } => vec!["completed_at"],
+            Op::TaskComplete { .. } | Op::TaskUncomplete { .. } => vec!["completed_at"],
             Op::RoutineUpdate {
                 name,
                 schedule,
@@ -1709,6 +1752,29 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         | Op::ItemUnarchive { .. } => trash::apply_flag(existing, cmd),
         Op::TaskComplete { .. } => match existing {
             Some(Row::Task(t)) => Ok(Row::Task(complete_effects(t, cmd).0)),
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::TaskUncomplete {
+            completion_id,
+            completed_at,
+            expected_due,
+            restore_due,
+            ..
+        } => match existing {
+            Some(Row::Task(t)) => {
+                if completion_id.is_some() && t.completed_at != *completed_at {
+                    return Ok(Row::Task(t));
+                }
+                let due = match (expected_due, restore_due) {
+                    (Some(expected), Some(restore)) if t.due == *expected => restore.clone(),
+                    _ => t.due.clone(),
+                };
+                Ok(Row::Task(Task {
+                    completed_at: None,
+                    due,
+                    ..t
+                }))
+            }
             _ => Err(ErrorCode::NotFound),
         },
         Op::ProjectUpdate {
@@ -2201,8 +2267,28 @@ pub fn apply_lww(
     let (mut merged, old) = (json(&new), json(&old));
     let mut fields = cmd.op.fields();
     // Completing a recurring Task moves its due on rather than setting `completed_at`.
-    if matches!(cmd.op, Op::TaskComplete { .. }) && old["due"] != merged["due"] {
-        fields.push("due");
+    if old["due"] != merged["due"] {
+        match &cmd.op {
+            Op::TaskComplete { .. } => fields.push("due"),
+            Op::TaskUncomplete {
+                completion_hlc: Some(completion),
+                ..
+            } if clocks.get("due").is_some_and(|clock| clock > completion) => {
+                merged["due"] = old["due"].clone();
+            }
+            Op::TaskUncomplete { .. } => fields.push("due"),
+            _ => {}
+        }
+    }
+    if let Op::TaskUncomplete {
+        completion_hlc: Some(completion),
+        ..
+    } = &cmd.op
+        && clocks
+            .get("completed_at")
+            .is_some_and(|clock| clock > completion)
+    {
+        merged["completed_at"] = old["completed_at"].clone();
     }
     for field in fields {
         // An Area has no `parent_id`: a move only changes its order.
@@ -2223,11 +2309,15 @@ pub fn apply_lww(
 /// any other gets `completed_at`. Completing a finished Task again changes and logs nothing.
 pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
     let at = cmd.hlc.wall;
-    let log = |t: &Task| Completion {
+    let log = |t: &Task, expected_due, restore_due| Completion {
         id: completion_id(t.id, cmd.uuid),
         item_id: t.id,
         at,
         points: Some(stardust::task_points(t.priority)),
+        source_id: Some(cmd.uuid),
+        completion_hlc: Some(cmd.hlc.clone()),
+        expected_due,
+        restore_due,
     };
     if let Some(rec) = &t.recurrence {
         let today = match &cmd.op {
@@ -2240,13 +2330,13 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
             time: None,
         });
         let due = Some(recur::next(rec, &from, &today));
-        let c = log(&t);
+        let c = log(&t, Some(due.clone()), Some(t.due.clone()));
         return (Task { due, ..t }, Some(c));
     }
     if t.completed_at.is_some() {
         return (t, None);
     }
-    let c = log(&t);
+    let c = log(&t, None, None);
     (
         Task {
             completed_at: Some(at),
@@ -2264,6 +2354,10 @@ pub fn completion_for(old: &Row, cmd: &Command) -> Option<Completion> {
         item_id,
         at,
         points: Some(points),
+        source_id: Some(cmd.uuid),
+        completion_hlc: Some(cmd.hlc.clone()),
+        expected_due: None,
+        restore_due: None,
     };
     match (&cmd.op, old) {
         (Op::TaskComplete { .. }, Row::Task(t)) => complete_effects(t.clone(), cmd).1,
@@ -2546,6 +2640,92 @@ mod tests {
             5000,
         );
         assert_ne!(complete_effects(t, &other).1.unwrap().id, log.id);
+    }
+
+    #[test]
+    fn targeted_task_uncomplete_restores_only_the_matching_completion() {
+        let original = recurring("week", false, "2026-11-19");
+        let completion = complete_on(Some("2026-11-19"), 5000);
+        let Row::Task(done) = apply(Some(original.clone()), &completion).unwrap() else {
+            panic!()
+        };
+        let completion_id = completion_id(done.id, completion.uuid);
+        let undo = cmd(
+            "01900000-0000-7000-8000-0000000000c3",
+            "task.uncomplete",
+            serde_json::json!({
+                "id": done.id,
+                "completion_id": completion_id,
+                "completed_at": done.completed_at,
+                "expected_due": done.due.clone(),
+                "restore_due": task(&original).due.clone(),
+            }),
+            6000,
+        );
+        let Row::Task(restored) = apply(Some(Row::Task(done.clone())), &undo).unwrap() else {
+            panic!()
+        };
+        assert_eq!(restored.due, task(&original).due.clone());
+        let Row::Task(twice) = apply(Some(Row::Task(restored)), &undo).unwrap() else {
+            panic!()
+        };
+        assert_eq!(twice.due, task(&original).due.clone());
+
+        let newer = cmd(
+            "01900000-0000-7000-8000-0000000000c4",
+            "task.update",
+            serde_json::json!({ "id": done.id, "due": { "date": "2026-12-01" } }),
+            7000,
+        );
+        let changed = apply(Some(Row::Task(done)), &newer).unwrap();
+        let Row::Task(kept) = apply(Some(changed), &undo).unwrap() else {
+            panic!()
+        };
+        assert_eq!(kept.due.unwrap().date, "2026-12-01");
+    }
+
+    #[test]
+    fn stale_uncomplete_keeps_a_newer_same_value_due_write() {
+        let mut clocks = Clocks::new();
+        let Row::Task(original) = recurring("week", false, "2026-11-19") else {
+            panic!()
+        };
+        let completion = complete_on(Some("2026-11-19"), 5000);
+        let Row::Task(completed) =
+            apply_lww(Some(Row::Task(original.clone())), &mut clocks, &completion).unwrap()
+        else {
+            panic!()
+        };
+        let same_due = cmd(
+            "01900000-0000-7000-8000-0000000000c5",
+            "task.update",
+            serde_json::json!({ "id": completed.id, "due": completed.due.clone() }),
+            6000,
+        );
+        let Row::Task(newer) =
+            apply_lww(Some(Row::Task(completed)), &mut clocks, &same_due).unwrap()
+        else {
+            panic!()
+        };
+        let undo = cmd(
+            "01900000-0000-7000-8000-0000000000c6",
+            "task.uncomplete",
+            serde_json::json!({
+                "id": newer.id,
+                "completion_id": completion_id(newer.id, completion.uuid),
+                "completed_at": newer.completed_at,
+                "completion_hlc": completion.hlc.clone(),
+                "expected_due": newer.due.clone(),
+                "restore_due": original.due.clone(),
+            }),
+            7000,
+        );
+        let Row::Task(kept) =
+            apply_lww(Some(Row::Task(newer.clone())), &mut clocks, &undo).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(kept.due, newer.due);
     }
 
     #[test]

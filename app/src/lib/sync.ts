@@ -290,7 +290,16 @@ export type RoutineStats = {
   ended: boolean
   paused: boolean
 }
-type Completion = { kind: 'completion'; id: string; item_id: string; at: number }
+type Completion = {
+  kind: 'completion'
+  id: string
+  item_id: string
+  at: number
+  source_id?: string
+  completion_hlc?: Hlc
+  expected_due?: Due | null
+  restore_due?: Due | null
+}
 /** A Badge earned once (or once per repeat key); never revoked. */
 export type Award = { kind: 'award'; id: string; badge: string; key: string; earned_at: number; points: number }
 export type Row =
@@ -319,6 +328,7 @@ type Command = { uuid: string; type: string; args: Record<string, unknown>; hlc:
 const SETTINGS = '00000000-0000-7000-8000-000000000002'
 const newId = () => new_id(Date.now(), crypto.getRandomValues(new Uint8Array(10)))
 const byHlc = (a: Command, b: Command) => a.hlc.wall - b.hlc.wall || a.hlc.counter - b.hlc.counter
+const compareHlc = (a: Hlc, b: Hlc) => a.wall - b.wall || a.counter - b.counter || a.device.localeCompare(b.device)
 const byOrder = (a: Ordered, b: Ordered) => (a.order < b.order ? -1 : a.order > b.order ? 1 : a.id < b.id ? -1 : 1)
 let changed = () => {}
 let rejected = (_code: string) => {}
@@ -406,7 +416,48 @@ const localToday = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 /** Completes a Task; a recurring one moves to its next due instead, counted from this device's local date. */
-export const completeTask = (id: string) => enqueue('task.complete', { id, today: localToday() })
+export type CompletionUndo = {
+  id: string
+  completion_id: string
+  completed_at: number | null
+  completion_hlc: Hlc
+  expected_due: Due | null
+  restore_due: Due | null
+}
+const completionListeners = new Set<(undo: CompletionUndo) => void>()
+export const onTaskCompleted = (listener: (undo: CompletionUndo) => void) => {
+  completionListeners.add(listener)
+  return () => completionListeners.delete(listener)
+}
+export async function completeTask(id: string) {
+  const before = await getTask(id)
+  if (before?.completed_at != null && !before.recurrence) return
+  const source = await enqueueCommand('task.complete', { id, today: localToday() })
+  const after = await getTask(id)
+  if (!before || !after) return
+  const undo: CompletionUndo = {
+    id,
+    completion_id: completion_id(id, source.uuid),
+    completed_at: after.completed_at,
+    completion_hlc: source.hlc,
+    expected_due: after.due,
+    restore_due: before.due,
+  }
+  for (const listener of completionListeners) listener(undo)
+  return undo
+}
+export async function uncompleteTask(undo: CompletionUndo) {
+  const args: Record<string, unknown> = JSON.parse(JSON.stringify(undo))
+  const queued = await tx(['outbox'], (s) => req<Command[]>(s('outbox').getAll()))
+  const dueChanged = queued.some((cmd) =>
+    cmd.type === 'task.update' &&
+    cmd.args.id === undo.id &&
+    'due' in cmd.args &&
+    compareHlc(cmd.hlc, undo.completion_hlc) > 0,
+  )
+  if (dueChanged) delete args.restore_due
+  await enqueue('task.uncomplete', args)
+}
 export const updateProject = (
   id: string,
   patch: { goal_id?: string | null; name?: string; color?: string; icon?: string; cover?: string },
@@ -734,44 +785,94 @@ export async function quickAdd(p: Parsed, fallbackParentId: string, forceParent 
 const COMPLETES = ['task.complete', 'goal.complete', 'milestone.update']
 
 /** Applies a command to its row via core; throws the error code if core rejects it. */
-async function predict(rows: IDBObjectStore, cmd: Command) {
+async function predict(rows: IDBObjectStore, cmd: Command, queued: Command[] = []) {
   const key = cmd.type.startsWith('reminder.') ? cmd.args.task_id : cmd.args.id
-  const existing = await req(rows.get((key as string) ?? SETTINGS))
+  const snapshotRequest = cmd.type === 'task.uncomplete' ? rows.getAll() : undefined
+  const [existing, snapshot] = await Promise.all([
+    req(rows.get((key as string) ?? SETTINGS)),
+    snapshotRequest ? req<Row[]>(snapshotRequest) : Promise.resolve([] as Row[]),
+  ])
   const from = existing ? JSON.stringify(existing) : undefined
-  rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
   // A completion also logs a record, as the server does.
   if (COMPLETES.includes(cmd.type)) {
     const log = completion_for(from, JSON.stringify(cmd))
     if (log) rows.put(JSON.parse(log))
   }
+  if (cmd.type === 'task.uncomplete') {
+    rows.delete(cmd.args.completion_id as string)
+    const root = snapshot.find((r): r is Completion => r.kind === 'completion' && r.id === cmd.args.completion_id)
+    for (const completion of snapshot.filter(
+      (r): r is Completion => r.kind === 'completion' && !!root?.source_id && r.source_id === root.source_id && r.id !== root.id,
+    )) {
+      const task = snapshot.find((r): r is Task => r.kind === 'task' && r.id === completion.item_id)
+      if (!task) continue
+      const dueChanged = !!completion.completion_hlc && queued.some((write) =>
+        write.type === 'task.update' &&
+        write.args.id === completion.item_id &&
+        'due' in write.args &&
+        compareHlc(write.hlc, completion.completion_hlc!) > 0,
+      )
+      const undo = {
+        ...cmd,
+        args: {
+          id: completion.item_id,
+          completion_id: completion.id,
+          completed_at: 'expected_due' in completion ? null : completion.at,
+          completion_hlc: completion.completion_hlc,
+          expected_due: completion.expected_due,
+          restore_due: dueChanged ? undefined : completion.restore_due,
+        },
+      }
+      const predicted = JSON.parse(apply(JSON.stringify(task), JSON.stringify(undo))) as Task
+      rows.put(predicted)
+      rows.delete(completion.id)
+    }
+  }
+  rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
 }
 
 /** Like the server: completing a Task completes its open descendants at the same moment. */
-async function cascade(rows: IDBObjectStore, id: string) {
+async function cascade(rows: IDBObjectStore, cmd: Command) {
   const all = (await req<Row[]>(rows.getAll())).filter((r): r is Task => r.kind === 'task')
+  const id = cmd.args.id as string
   const at = all.find((t) => t.id === id)?.completed_at
   if (at == null) return
   let parents = [id]
+  const seen = new Set<string>()
   while (parents.length) {
-    const kids = all.filter((t) => t.completed_at === null && parents.includes(t.parent_id))
-    for (const t of kids) rows.put({ ...t, completed_at: at })
-    parents = kids.map((t) => t.id)
+    const children = all.filter((t) => parents.includes(t.parent_id) && !seen.has(t.id))
+    children.forEach((t) => seen.add(t.id))
+    const kids = children.filter((t) => t.completed_at === null)
+    for (const t of kids) {
+      const done = { ...cmd, args: { ...cmd.args, id: t.id } }
+      const log = completion_for(JSON.stringify(t), JSON.stringify(done))
+      if (log) rows.put(JSON.parse(log))
+      rows.put(JSON.parse(apply(JSON.stringify(t), JSON.stringify(done))))
+    }
+    parents = children.map((t) => t.id)
   }
 }
 
-async function enqueue(type: string, args: Command['args']) {
-  await tx(['rows', 'outbox', 'meta'], async (s) => {
+async function enqueue(type: string, args: Command['args']): Promise<void> {
+  await enqueueCommand(type, args)
+}
+
+async function enqueueCommand(type: string, args: Command['args']): Promise<{ uuid: string; hlc: Hlc }> {
+  const result = await tx(['rows', 'outbox', 'meta'], async (s) => {
     const hlc: Hlc = JSON.parse(next_hlc(JSON.stringify(await clock(s('meta'))), Date.now()))
     const cmd = { uuid: newId(), type, args, hlc }
-    await predict(s('rows'), cmd)
-    if (type === 'task.complete') await cascade(s('rows'), args.id as string)
+    const queued = await req<Command[]>(s('outbox').getAll())
+    await predict(s('rows'), cmd, queued)
+    if (type === 'task.complete') await cascade(s('rows'), cmd)
     s('meta').put(hlc, 'hlc')
     s('outbox').put(cmd)
+    return { uuid: cmd.uuid, hlc }
   })
   await emitRows([(type.startsWith('reminder.') ? args.task_id : args.id) as string | undefined])
   changed()
   clearTimeout(debounce)
   debounce = setTimeout(sync, 2000)
+  return result
 }
 let debounce: ReturnType<typeof setTimeout>
 
@@ -864,8 +965,9 @@ async function flush() {
       }
       // Re-predict anything queued meanwhile on top of the server's rows. Plain `apply`: an
       // older queued edit can show over a newer server value until it is sent.
-      for (const cmd of (await req<Command[]>(s('outbox').getAll())).sort(byHlc)) {
-        await predict(s('rows'), cmd).catch(() => {})
+      const queued = (await req<Command[]>(s('outbox').getAll())).sort(byHlc)
+      for (const cmd of queued) {
+        await predict(s('rows'), cmd, queued).catch(() => {})
       }
     })
     codes.forEach(rejected)

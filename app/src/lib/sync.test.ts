@@ -1,13 +1,14 @@
 import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
-import { initSync, parse_quick_add } from '../../wasm/orbit_wasm'
+import { completion_id, initSync, parse_quick_add } from '../../wasm/orbit_wasm'
 import { login } from './auth'
 import { req, tx } from './db'
 import { currentUpdates, loadUpdates } from './updates'
 import { addFile } from './blobs'
 import {
   completeTask,
+  uncompleteTask,
   createArea,
   createGoal,
   createLabel,
@@ -169,6 +170,99 @@ test('completing a Task hides it at once and queues task.complete', async () => 
   expect(await inboxTasks()).toEqual([])
   await sync()
   expect(requests[0].commands).toMatchObject([{ type: 'task.complete', args: { id: milk.id } }])
+})
+
+test('task.uncomplete restores recurrence due and removes the targeted completion from the outbox prediction', async () => {
+  const id = await createTask('Recurring task')
+  await updateTask(id, {
+    due: { date: '2026-11-19', time: '09:00' },
+    recurrence: { rule: 'week', from_completion: false },
+  })
+  const originalDue = (await getTask(id))!.due
+  await sync()
+
+  const undo = await completeTask(id)
+  expect((await getTask(id))!.due).not.toEqual(originalDue)
+  expect(undo).toBeDefined()
+  await uncompleteTask(undo!)
+  expect((await getTask(id))!.due).toEqual(originalDue)
+  const rows = await tx(['rows'], (s) => req<any[]>(s('rows').getAll()))
+  expect(rows.filter((r) => r.kind === 'completion' && r.item_id === id)).toEqual([])
+
+  await sync()
+  expect(requests.at(-1)!.commands.map((c) => c.type)).toEqual(['task.complete', 'task.uncomplete'])
+  await tx(['rows'], (s) => req(s('rows').delete(id)))
+})
+
+test('task.uncomplete preserves a newer same-value recurrence due edit', async () => {
+  const id = await createTask('Newer due edit')
+  await updateTask(id, {
+    due: { date: '2026-11-19' },
+    recurrence: { rule: 'week', from_completion: false },
+  })
+  await sync()
+  const undo = await completeTask(id)
+  const due = (await getTask(id))!.due
+  await updateTask(id, { due })
+  await uncompleteTask(undo!)
+  expect((await getTask(id))!.due).toEqual(due)
+  await sync()
+  await tx(['rows'], (s) => req(s('rows').delete(id)))
+})
+
+test('undo follows exact completion records through completed intermediates and preserves reparented rows', async () => {
+  const root = await createTask('Cascade root')
+  const mid = await createTask('Already done', root)
+  const deep = await createTask('Deep', mid)
+  const leaf = await createTask('Leaf', deep)
+  const moved = await createTask('Moved', root)
+  const recurring = await createTask('Recurring', root)
+  await updateTask(recurring, {
+    due: { date: '2026-11-22' },
+    recurrence: { rule: 'day', from_completion: false },
+  })
+  const midRow = (await getTask(mid))!
+  const independentSource = '01900000-0000-7000-8000-00000000cafe'
+  const independentAt = 5000
+  await tx(['rows'], async (s) => {
+    await req(s('rows').put({ ...midRow, completed_at: independentAt }))
+    await req(s('rows').put({
+      kind: 'completion',
+      id: completion_id(mid, independentSource),
+      item_id: mid,
+      at: independentAt,
+      source_id: independentSource,
+      completion_hlc: { wall: independentAt, counter: 1, device: '01900000-0000-7000-8000-0000000000d1' },
+    }))
+  })
+
+  const undo = await completeTask(root)
+  expect(undo).toBeDefined()
+  expect((await getTask(deep))!.completed_at).toBe(undo!.completed_at)
+  expect((await getTask(leaf))!.completed_at).toBe(undo!.completed_at)
+  const recurrenceDue = (await getTask(recurring))!.due
+  expect(recurrenceDue).not.toEqual({ date: '2026-11-22', time: null })
+  await moveItem(moved, INBOX, 'z')
+  await updateTask(recurring, { due: recurrenceDue })
+  await uncompleteTask(undo!)
+
+  const result = {
+    mid: (await getTask(mid))!.completed_at,
+    deep: (await getTask(deep))!.completed_at,
+    leaf: (await getTask(leaf))!.completed_at,
+    moved: await getTask(moved),
+    due: (await getTask(recurring))!.due,
+  }
+  const rows = await tx(['rows'], (s) => req<any[]>(s('rows').getAll()))
+  const independentKept = rows.some((r) => r.kind === 'completion' && r.source_id === independentSource)
+  for (const id of [root, mid, deep, leaf, moved, recurring]) await tx(['rows'], (s) => req(s('rows').delete(id)))
+  expect(result.mid).toBe(independentAt)
+  expect(result.deep).toBeNull()
+  expect(result.leaf).toBeNull()
+  expect(result.moved!.completed_at).toBeNull()
+  expect(result.moved!.parent_id).toBe(INBOX)
+  expect(result.due).toEqual(recurrenceDue)
+  expect(independentKept).toBe(true)
 })
 
 test("another Device's create and complete arrive in the delta", async () => {

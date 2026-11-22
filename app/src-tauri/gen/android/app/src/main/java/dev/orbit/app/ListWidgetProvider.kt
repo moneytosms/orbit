@@ -319,6 +319,7 @@ class CompleteWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
         if (ListWidget.pendingDeadline(app, taskId) != deadline) return Result.success() // undone
         ListWidget.clearPending(app, taskId)
         val r = JSONObject(Core.complete(Core.dir(app), taskId, LocalDate.now().toString()))
+        if (r.optBoolean("completed")) r.optJSONObject("undo")?.let { Notifier.showUndo(app, taskId, it) }
         Log.i(TAG, "widget complete ${r.toString().take(120)}")
         Sync.now(app)
         WidgetRefresh.all(app)

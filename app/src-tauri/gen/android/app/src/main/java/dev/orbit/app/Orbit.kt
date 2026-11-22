@@ -35,6 +35,7 @@ object Core {
     @JvmStatic external fun goals(dir: String, today: String, area: String): String
     @JvmStatic external fun list(dir: String, kind: String, id: String, today: String): String
     @JvmStatic external fun complete(dir: String, taskId: String, today: String): String
+    @JvmStatic external fun uncomplete(dir: String, receipt: String): String
     @JvmStatic external fun checkin(dir: String, routineId: String, date: String, state: String): String
     @JvmStatic external fun checkin_clear(dir: String, routineId: String, date: String): String
     @JvmStatic external fun reminder_snooze(dir: String, taskId: String, untilLocal: String): String

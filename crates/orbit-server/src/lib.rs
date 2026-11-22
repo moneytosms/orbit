@@ -513,52 +513,87 @@ fn run_command(
         _ => (cmd.clone(), None),
     };
     let cmd = &adjusted;
-    let status = match if archived {
-        Some(ErrorCode::Archived)
+    let stale_undo = match &cmd.op {
+        Op::TaskUncomplete {
+            id,
+            completion_id: Some(completion_id),
+            completion_hlc,
+            ..
+        } => !matches!(load_row(&tx, &completion_id.to_string())?, Some(Row::Completion(c))
+        if c.item_id == *id
+            && completion_hlc.as_ref().is_none_or(|h| {
+                c.completion_hlc.as_ref().is_none_or(|stored| stored == h)
+            })),
+        _ => false,
+    };
+    let status = if stale_undo {
+        Status::Ok
     } else {
-        check_tree(&tx, existing.as_ref(), cmd)?
-    } {
-        Some(code) => Status::Error { code },
-        None => match apply_lww(existing.clone(), &mut clocks, cmd) {
-            Ok(mut row) => {
-                if born_trashed.is_some() {
-                    row.set_trashed(born_trashed);
-                }
-                write(&tx, &row, &clocks)?;
-                if let (Some(Row::Page(old)), Op::PageEditBody { body, base_rev, .. }) =
-                    (&existing, &cmd.op)
-                    && orbit_core::page::is_conflict(old, *base_rev)
-                {
-                    save_conflict(&tx, old, body, cmd)?;
-                }
-                if let Some(old) = &existing
-                    && matches!(
-                        &cmd.op,
-                        Op::GoalComplete { .. } | Op::MilestoneUpdate { .. }
-                    )
-                {
-                    log_completion(&tx, old, cmd)?;
-                }
-                if matches!(
-                    &cmd.op,
-                    Op::TaskCreate { .. } | Op::TaskUpdate { .. } | Op::TaskComplete { .. }
-                ) {
-                    touch_project(&tx, &row, cmd.hlc.wall)?;
-                }
-                if let Op::TaskComplete { id, .. } = &cmd.op {
-                    if let Some(old) = &existing {
+        match if archived {
+            Some(ErrorCode::Archived)
+        } else {
+            check_tree(&tx, existing.as_ref(), cmd)?
+        } {
+            Some(code) => Status::Error { code },
+            None => match apply_lww(existing.clone(), &mut clocks, cmd) {
+                Ok(mut row) => {
+                    if born_trashed.is_some() {
+                        row.set_trashed(born_trashed);
+                    }
+                    write(&tx, &row, &clocks)?;
+                    if let (Some(Row::Page(old)), Op::PageEditBody { body, base_rev, .. }) =
+                        (&existing, &cmd.op)
+                        && orbit_core::page::is_conflict(old, *base_rev)
+                    {
+                        save_conflict(&tx, old, body, cmd)?;
+                    }
+                    if let Some(old) = &existing
+                        && matches!(
+                            &cmd.op,
+                            Op::GoalComplete { .. } | Op::MilestoneUpdate { .. }
+                        )
+                    {
                         log_completion(&tx, old, cmd)?;
                     }
-                    // A recurring Task only moves on; its subtasks stay as they are.
-                    if matches!(&row, Row::Task(t) if t.completed_at.is_some()) {
-                        complete_descendants(&tx, *id, cmd)?;
+                    if matches!(
+                        &cmd.op,
+                        Op::TaskCreate { .. }
+                            | Op::TaskUpdate { .. }
+                            | Op::TaskComplete { .. }
+                            | Op::TaskUncomplete { .. }
+                    ) {
+                        touch_project(&tx, &row, cmd.hlc.wall)?;
                     }
+                    if let Op::TaskComplete { id, .. } = &cmd.op {
+                        if let Some(old) = &existing {
+                            log_completion(&tx, old, cmd)?;
+                        }
+                        // A recurring Task only moves on; its subtasks stay as they are.
+                        if matches!(&row, Row::Task(t) if t.completed_at.is_some()) {
+                            complete_descendants(&tx, *id, cmd)?;
+                        }
+                    }
+                    if let Op::TaskUncomplete {
+                        id,
+                        completion_id: Some(completion_id),
+                        ..
+                    } = &cmd.op
+                    {
+                        let completion = match load_row(&tx, &completion_id.to_string())? {
+                            Some(Row::Completion(c)) if c.item_id == *id => Some(c),
+                            _ => None,
+                        };
+                        purge_completion(&tx, *completion_id, cmd.hlc.wall)?;
+                        if let Some(completion) = completion {
+                            uncomplete_descendants(&tx, &completion, cmd)?;
+                        }
+                    }
+                    award_badges(&tx, cmd, now)?;
+                    Status::Ok
                 }
-                award_badges(&tx, cmd, now)?;
-                Status::Ok
-            }
-            Err(code) => Status::Error { code },
-        },
+                Err(code) => Status::Error { code },
+            },
+        }
     };
     let stored = serde_json::to_string(&status).map_err(json_err)?;
     tx.execute(
@@ -567,6 +602,70 @@ fn run_command(
     )?;
     tx.commit()?;
     Ok(status)
+}
+
+/// Removes one exact completion from every replica by replacing it with the standard tombstone.
+fn purge_completion(conn: &Connection, id: orbit_core::Uuid, wall: u64) -> rusqlite::Result<()> {
+    if matches!(load_row(conn, &id.to_string())?, Some(Row::Completion(_))) {
+        write(
+            conn,
+            &Row::Purged(orbit_core::Purged {
+                id,
+                purged_at: wall,
+            }),
+            &Clocks::new(),
+        )?;
+    }
+    Ok(())
+}
+
+/// Reverses only records created by the same completion command, preserving newer writes.
+fn uncomplete_descendants(
+    conn: &Connection,
+    root: &orbit_core::Completion,
+    cmd: &Command,
+) -> rusqlite::Result<()> {
+    let Some(source_id) = root.source_id else {
+        return Ok(());
+    };
+    let completions: Vec<orbit_core::Completion> = all_rows(conn)?
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Completion(c) if c.source_id == Some(source_id) && c.id != root.id => Some(c),
+            _ => None,
+        })
+        .collect();
+    for completion in completions {
+        purge_completion(conn, completion.id, cmd.hlc.wall)?;
+        let Some((data, clocks)) = load(conn, &completion.item_id.to_string())? else {
+            continue;
+        };
+        let old: Row = serde_json::from_str(&data).map_err(json_err)?;
+        let mut clocks: Clocks = serde_json::from_str(&clocks).map_err(json_err)?;
+        if !matches!(&old, Row::Task(_)) {
+            continue;
+        }
+        let expected_completed_at = if completion.expected_due.is_some() {
+            None
+        } else {
+            Some(completion.at)
+        };
+        let undo = Command {
+            op: Op::TaskUncomplete {
+                id: completion.item_id,
+                completion_id: Some(completion.id),
+                completed_at: expected_completed_at,
+                completion_hlc: completion.completion_hlc.clone(),
+                expected_due: completion.expected_due.clone(),
+                restore_due: completion.restore_due.clone(),
+            },
+            ..cmd.clone()
+        };
+        if let Ok(row) = apply_lww(Some(old), &mut clocks, &undo) {
+            write(conn, &row, &clocks)?;
+        }
+    }
+    Ok(())
 }
 
 /// Bump `touched_at` on the nearest Project above `row`, keeping its clocks.

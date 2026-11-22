@@ -25,6 +25,7 @@
     getSettings,
     levelUp,
     onRejected,
+    onTaskCompleted,
     onSignedOut,
     start,
     tasksIn,
@@ -32,9 +33,11 @@
     stardust,
     updateProject,
     updateSettings,
+    uncompleteTask,
     views,
     VIEW_UPCOMING,
   } from './lib/sync'
+  import type { CompletionUndo } from './lib/sync'
   import type { View as ViewRow } from './lib/sync'
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { refreshNotifier, startNotifier } from './lib/notify'
@@ -49,14 +52,32 @@
   let allViews = $state<ViewRow[]>([])
   let screen: Screen = $state(readScreen())
   let linkedTask = $state(readTaskLink())
-  let toast = $state('')
+  let toast = $state<{ text: string; undo?: CompletionUndo; sparkle?: boolean } | null>(null)
   let version = $state(0)
-  let hide: ReturnType<typeof setTimeout>
+  let hide: ReturnType<typeof setTimeout> | undefined
+  let latestCompletion: CompletionUndo['completion_hlc'] | undefined
+
+  function showToast(next: NonNullable<typeof toast>, duration = 5000) {
+    toast = next
+    clearTimeout(hide)
+    hide = setTimeout(() => (toast = null), duration)
+  }
 
   onRejected((code) => {
-    toast = `A change was rejected (${code.replaceAll('_', ' ')}) and has been undone.`
-    clearTimeout(hide)
-    hide = setTimeout(() => (toast = ''), 5000)
+    showToast({ text: `A change was rejected (${code.replaceAll('_', ' ')}) and has been undone.` })
+  })
+  onTaskCompleted((undo) => {
+    if (latestCompletion) {
+      const old = latestCompletion
+      const next = undo.completion_hlc
+      const order = old.wall - next.wall || old.counter - next.counter || old.device.localeCompare(next.device)
+      if (order > 0) return
+    }
+    latestCompletion = undo.completion_hlc
+    if (matchMedia?.('(pointer: coarse)').matches && 'vibrate' in navigator) {
+      try { navigator.vibrate(8) } catch { /* unsupported by this browser */ }
+    }
+    showToast({ text: 'Task completed', undo, sparkle: true })
   })
   onAppearanceChange((p) => updateSettings(p))
   onSignedOut((n) => {
@@ -95,13 +116,10 @@
       const shelf = await badgeShelf()
       const earned = shelf.badges.reduce((n, b) => n + b.count, 0) + shelf.patches
       if (levelUp(sd.level.n)) {
-        toast = `Level up! You reached ${sd.level.name}.`
-        clearTimeout(hide)
-        hide = setTimeout(() => (toast = ''), 5000)
+        const text = `Level up! You reached ${sd.level.name}.`
+        showToast({ text: toast?.undo ? `${text} · Task completed` : text, undo: toast?.undo, sparkle: toast?.sparkle })
       } else if (awardUp(earned)) {
-        toast = 'New Badge earned.'
-        clearTimeout(hide)
-        hide = setTimeout(() => (toast = ''), 5000)
+        showToast({ text: toast?.undo ? 'New Badge earned · Task completed' : 'New Badge earned.', undo: toast?.undo, sparkle: toast?.sparkle })
       }
     }
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
@@ -235,8 +253,25 @@
 {#if toast}
   <p
     role="status"
-    class="fixed bottom-24 left-1/2 z-50 max-w-[calc(90vw/var(--zoom,1))] -translate-x-1/2 rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
+    class="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(90vw/var(--zoom,1))] -translate-x-1/2 items-center rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
   >
-    {toast}
+    {#if toast.sparkle}<span aria-hidden="true" class="completion-spark">✦</span>{/if}
+    <span>{toast.text}</span>
+    {#if toast.undo}
+      <button
+        class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
+        onclick={async () => {
+          const undo = toast?.undo
+          if (!undo) return
+          await uncompleteTask(undo)
+          showToast({ text: 'Task restored' }, 2500)
+        }}
+      >Undo</button>
+    {/if}
+    <button
+      class="ml-2 rounded px-1 text-bg/70 hover:text-bg"
+      aria-label="Dismiss notification"
+      onclick={() => { clearTimeout(hide); toast = null }}
+    >×</button>
   </p>
 {/if}

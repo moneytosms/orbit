@@ -2,7 +2,7 @@
 //! Every write takes `now` so callers (and tests) own the clock.
 use orbit_core::{
     Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task,
-    UpgradeRequired, Uuid, VersionInfo, apply, new_id, parse,
+    UpgradeRequired, Uuid, VersionInfo, apply, completion_for, new_id, parse,
 };
 use rusqlite::{Connection, OptionalExtension};
 
@@ -236,12 +236,31 @@ impl Client {
     /// Stamps, predicts and queues one command, atomically. Fails without queueing if core rejects it.
     pub fn enqueue(&mut self, op: Op, now_ms: u64) -> Result<Command> {
         let tx = self.db.transaction()?;
+        let mut op = op;
+        if let Op::TaskUncomplete {
+            id,
+            completion_hlc: Some(completion),
+            restore_due: Some(_),
+            ..
+        } = &op
+            && newer_due_update(&tx, *id, completion)?
+            && let Op::TaskUncomplete { restore_due, .. } = &mut op
+        {
+            *restore_due = None;
+        }
         let cmd = Command {
             uuid: new_id(now_ms, &random()?),
             op,
             hlc: clock(&tx, now_ms)?.next(now_ms),
         };
         predict(&tx, &cmd)?;
+        if let Op::TaskUncomplete {
+            completion_id: Some(id),
+            ..
+        } = &cmd.op
+        {
+            tx.execute("DELETE FROM rows WHERE id = ?", [id.to_string()])?;
+        }
         set_meta(&tx, "hlc", &serde_json::to_string(&cmd.hlc)?)?;
         tx.execute(
             "INSERT INTO outbox (uuid, command) VALUES (?1, ?2)",
@@ -442,6 +461,21 @@ impl Client {
     }
 }
 
+/// A queued same-value due edit is still newer than the completion being undone.
+fn newer_due_update(db: &Connection, id: Uuid, completion: &Hlc) -> Result<bool> {
+    let mut stmt = db.prepare("SELECT command FROM outbox")?;
+    let commands = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    for command in commands {
+        let cmd: Command = serde_json::from_str(&command?)?;
+        if &cmd.hlc > completion
+            && matches!(&cmd.op, Op::TaskUpdate { id: target, due: Some(_), .. } if *target == id)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// True if `e` is a 401: the Device was revoked or never logged in. Log in again to send the outbox.
 pub fn is_signed_out(e: &(dyn std::error::Error + 'static)) -> bool {
     e.downcast_ref::<reqwest::Error>()
@@ -463,9 +497,141 @@ fn clock(db: &Connection, now_ms: u64) -> Result<Hlc> {
 
 fn predict(db: &Connection, cmd: &Command) -> Result<()> {
     let existing = row(db, cmd.op.target())?;
+    let root_completion = match &cmd.op {
+        Op::TaskUncomplete {
+            completion_id: Some(id),
+            ..
+        } => match row(db, *id)? {
+            Some(Row::Completion(c)) => Some(c),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some(old) = &existing
+        && let Some(completion) = completion_for(old, cmd)
+    {
+        put(db, &Row::Completion(completion))?;
+    }
     let new =
         apply(existing, cmd).map_err(|code| format!("rejected: {}", serde_json::json!(code)))?;
-    put(db, &new)
+    put(db, &new)?;
+    match (&cmd.op, &new) {
+        (Op::TaskComplete { id, .. }, Row::Task(task)) if task.completed_at.is_some() => {
+            complete_descendants(db, *id, cmd)?;
+        }
+        (
+            Op::TaskUncomplete {
+                completion_id: Some(id),
+                ..
+            },
+            _,
+        ) => {
+            db.execute("DELETE FROM rows WHERE id = ?", [id.to_string()])?;
+            if let Some(root) = root_completion {
+                uncomplete_descendants(db, &root, cmd)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn all_rows(db: &Connection) -> Result<Vec<Row>> {
+    let mut stmt = db.prepare("SELECT data FROM rows")?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
+}
+
+fn complete_descendants(db: &Connection, root: Uuid, cmd: &Command) -> Result<()> {
+    let rows = all_rows(db)?;
+    let tasks: Vec<Task> = rows
+        .into_iter()
+        .filter_map(|r| match r {
+            Row::Task(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    let mut pending = vec![root];
+    let mut seen = std::collections::HashSet::new();
+    while let Some(parent) = pending.pop() {
+        for task in tasks
+            .iter()
+            .filter(|t| t.parent_id == parent && seen.insert(t.id))
+        {
+            pending.push(task.id);
+            if task.completed_at.is_some() {
+                continue;
+            }
+            let done = Command {
+                op: Op::TaskComplete {
+                    id: task.id,
+                    today: match &cmd.op {
+                        Op::TaskComplete { today, .. } => today.clone(),
+                        _ => None,
+                    },
+                },
+                ..cmd.clone()
+            };
+            if let Some(completion) = completion_for(&Row::Task(task.clone()), &done) {
+                put(db, &Row::Completion(completion))?;
+            }
+            let row = apply(Some(Row::Task(task.clone())), &done)
+                .map_err(|code| format!("rejected: {}", serde_json::json!(code)))?;
+            put(db, &row)?;
+        }
+    }
+    Ok(())
+}
+
+fn uncomplete_descendants(
+    db: &Connection,
+    root: &orbit_core::Completion,
+    cmd: &Command,
+) -> Result<()> {
+    let Some(source_id) = root.source_id else {
+        return Ok(());
+    };
+    let completions: Vec<orbit_core::Completion> = all_rows(db)?
+        .into_iter()
+        .filter_map(|r| match r {
+            Row::Completion(c) if c.source_id == Some(source_id) && c.id != root.id => Some(c),
+            _ => None,
+        })
+        .collect();
+    for completion in completions {
+        let Some(existing) = row(db, completion.item_id)? else {
+            continue;
+        };
+        if !matches!(&existing, Row::Task(_)) {
+            continue;
+        }
+        let preserve_due = match completion.completion_hlc.as_ref() {
+            Some(hlc) => newer_due_update(db, completion.item_id, hlc)?,
+            None => false,
+        };
+        let op = Op::TaskUncomplete {
+            id: completion.item_id,
+            completion_id: Some(completion.id),
+            completed_at: if completion.expected_due.is_some() {
+                None
+            } else {
+                Some(completion.at)
+            },
+            completion_hlc: completion.completion_hlc.clone(),
+            expected_due: completion.expected_due.clone(),
+            restore_due: if preserve_due {
+                None
+            } else {
+                completion.restore_due.clone()
+            },
+        };
+        let undo = Command { op, ..cmd.clone() };
+        if let Ok(row) = apply(Some(existing), &undo) {
+            put(db, &row)?;
+        }
+        db.execute("DELETE FROM rows WHERE id = ?", [completion.id.to_string()])?;
+    }
+    Ok(())
 }
 
 fn outbox(db: &Connection, limit: usize) -> Result<Vec<Command>> {

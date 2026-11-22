@@ -404,6 +404,10 @@ mod tests {
             item_id: uid(item),
             at,
             points,
+            source_id: None,
+            completion_hlc: None,
+            expected_due: None,
+            restore_due: None,
         })
     }
 
@@ -517,6 +521,23 @@ mod tests {
             comp(21, 10, NOON + DAY, None),
         ];
         assert_eq!(total_of(&rows), 80);
+    }
+
+    #[test]
+    fn removing_an_undone_recurring_task_completion_reverses_its_stardust() {
+        let mut t = task(2, 4, false);
+        t.recurrence = Some(crate::recur::Recurrence {
+            rule: "week".into(),
+            from_completion: false,
+        });
+        let completion = comp(3, 2, NOON, Some(100));
+        let rows = vec![Row::Task(t), completion.clone()];
+        assert_eq!(total(&rows, 0, "04:00"), task_points(4) as u64);
+        let rows = rows
+            .into_iter()
+            .filter(|r| r.id() != completion.id())
+            .collect::<Vec<_>>();
+        assert_eq!(total(&rows, 0, "04:00"), 0);
     }
 
     #[test]

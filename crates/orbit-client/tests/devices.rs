@@ -1,9 +1,168 @@
 mod common;
 use axum::{Json, http::StatusCode, routing::post};
 use common::{PASSWORD, device, replica, server};
-use orbit_core::{ErrorCode, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, UpgradeRequired};
+use orbit_core::{
+    Due, ErrorCode, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, UpgradeRequired, Uuid, completion_id,
+};
 
 const HOUR: u64 = 3_600_000;
+
+#[test]
+fn native_undo_does_not_restore_due_after_a_newer_same_value_edit() {
+    let mut c = replica("http://127.0.0.1:1");
+    let id = c.create_task("Recurring task", 1000).unwrap();
+    let prior_due = Due {
+        date: "2026-11-22".into(),
+        time: None,
+    };
+    c.update_task(id, serde_json::json!({ "due": prior_due }), 1100)
+        .unwrap();
+    let complete = c
+        .enqueue(Op::TaskComplete { id, today: None }, 1200)
+        .unwrap();
+    let completed = c.task(id).unwrap().unwrap();
+    let expected_due = completed.due.clone();
+    let next_due = Due {
+        date: "2026-11-23".into(),
+        time: None,
+    };
+    c.update_task(id, serde_json::json!({ "due": next_due }), 1300)
+        .unwrap();
+    let undo = c
+        .enqueue(
+            Op::TaskUncomplete {
+                id,
+                completion_id: Some(completion_id(id, complete.uuid)),
+                completed_at: completed.completed_at,
+                completion_hlc: Some(complete.hlc),
+                expected_due: Some(expected_due),
+                restore_due: Some(Some(prior_due)),
+            },
+            1400,
+        )
+        .unwrap();
+
+    assert!(matches!(
+        undo.op,
+        Op::TaskUncomplete {
+            restore_due: None,
+            ..
+        }
+    ));
+    assert_eq!(c.task(id).unwrap().unwrap().due.unwrap().date, "2026-11-23");
+}
+
+#[test]
+fn native_prediction_reverses_only_exact_cascade_completions() {
+    let mut c = replica("http://127.0.0.1:1");
+    let root = c.create_task("Root", 1000).unwrap();
+    let parse = |s: &str| s.parse::<Uuid>().unwrap();
+    let (mid, deep, leaf, independent, moved, recurring) = (
+        parse("01900000-0000-7000-8000-000000000101"),
+        parse("01900000-0000-7000-8000-000000000102"),
+        parse("01900000-0000-7000-8000-000000000103"),
+        parse("01900000-0000-7000-8000-000000000104"),
+        parse("01900000-0000-7000-8000-000000000105"),
+        parse("01900000-0000-7000-8000-000000000106"),
+    );
+    for (id, title, parent_id, now_ms) in [
+        (mid, "Mid", root, 1100),
+        (independent, "Independent", root, 1400),
+        (moved, "Moved", root, 1500),
+        (recurring, "Recurring", root, 1600),
+    ] {
+        c.enqueue(
+            Op::TaskCreate {
+                id,
+                title: title.into(),
+                parent_id: Some(parent_id),
+                order: "a".into(),
+            },
+            now_ms,
+        )
+        .unwrap();
+    }
+    c.update_task(
+        recurring,
+        serde_json::json!({
+            "due": { "date": "2026-11-22" },
+            "recurrence": { "rule": "day", "from_completion": false }
+        }),
+        1700,
+    )
+    .unwrap();
+    c.complete_task(mid, 1800).unwrap();
+    for (id, title, parent_id, now_ms) in [(deep, "Deep", mid, 1850), (leaf, "Leaf", deep, 1860)] {
+        c.enqueue(
+            Op::TaskCreate {
+                id,
+                title: title.into(),
+                parent_id: Some(parent_id),
+                order: "a".into(),
+            },
+            now_ms,
+        )
+        .unwrap();
+    }
+    c.complete_task(independent, 2000).unwrap();
+    let root_done = c
+        .enqueue(
+            Op::TaskComplete {
+                id: root,
+                today: Some("2026-11-22".into()),
+            },
+            2000,
+        )
+        .unwrap();
+    assert_eq!(c.task(deep).unwrap().unwrap().completed_at, Some(2000));
+    assert_eq!(c.task(leaf).unwrap().unwrap().completed_at, Some(2000));
+    assert_eq!(
+        c.task(recurring).unwrap().unwrap().due.unwrap().date,
+        "2026-11-23"
+    );
+    c.enqueue(
+        Op::ItemMove {
+            id: moved,
+            parent_id: None,
+            order: "z".into(),
+        },
+        3000,
+    )
+    .unwrap();
+    c.update_task(
+        recurring,
+        serde_json::json!({ "due": { "date": "2026-11-23" } }),
+        3000,
+    )
+    .unwrap();
+    let root_task = c.task(root).unwrap().unwrap();
+    c.enqueue(
+        Op::TaskUncomplete {
+            id: root,
+            completion_id: Some(completion_id(root, root_done.uuid)),
+            completed_at: root_task.completed_at,
+            completion_hlc: Some(root_done.hlc),
+            expected_due: Some(root_task.due.clone()),
+            restore_due: Some(None),
+        },
+        4000,
+    )
+    .unwrap();
+
+    assert_eq!(c.task(root).unwrap().unwrap().completed_at, None);
+    assert_eq!(c.task(mid).unwrap().unwrap().completed_at, Some(1800));
+    assert_eq!(
+        c.task(independent).unwrap().unwrap().completed_at,
+        Some(2000)
+    );
+    assert_eq!(c.task(deep).unwrap().unwrap().completed_at, None);
+    assert_eq!(c.task(leaf).unwrap().unwrap().completed_at, None);
+    assert_eq!(c.task(moved).unwrap().unwrap().completed_at, None);
+    assert_eq!(
+        c.task(recurring).unwrap().unwrap().due.unwrap().date,
+        "2026-11-23"
+    );
+}
 
 #[tokio::test]
 async fn offline_edits_to_different_fields_both_survive() {

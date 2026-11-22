@@ -424,13 +424,42 @@ fn queue(dir: &str, op: Op) -> Result<Value> {
 /// Completes a Task; `today` is the completer's local `YYYY-MM-DD`, which `every!` counts from.
 pub fn complete(dir: &str, task_id: &str, today: &str) -> Result<Value> {
     let id: Uuid = task_id.parse()?;
-    queue(
-        dir,
-        Op::TaskComplete {
-            id,
-            today: Some(today.into()),
-        },
-    )
+    with(dir, "", |c| {
+        let before = c
+            .task(id)?
+            .ok_or_else(|| std::io::Error::other("task not found"))?;
+        if before.completed_at.is_some() && before.recurrence.is_none() {
+            return Ok(json!({ "completed": false }));
+        }
+        let cmd = c.enqueue(
+            Op::TaskComplete {
+                id,
+                today: Some(today.into()),
+            },
+            now_ms(),
+        )?;
+        let after = c
+            .task(id)?
+            .ok_or_else(|| std::io::Error::other("task not found"))?;
+        Ok(json!({
+            "completed": true,
+            "undo": {
+                "id": id,
+                "completion_id": orbit_core::completion_id(id, cmd.uuid),
+                "completed_at": after.completed_at,
+                "completion_hlc": cmd.hlc,
+                "expected_due": after.due,
+                "restore_due": before.due,
+            }
+        }))
+    })
+}
+
+/// Queues the exact undo receipt returned by `complete`.
+pub fn uncomplete(dir: &str, receipt: &str) -> Result<Value> {
+    let args: Value = serde_json::from_str(receipt)?;
+    let op: Op = serde_json::from_value(json!({ "type": "task.uncomplete", "args": args }))?;
+    queue(dir, op)
 }
 
 /// Ticks a Routine's day as `state` (`done` or `skipped`).
@@ -626,6 +655,17 @@ pub mod jni_api {
             s(&mut env, &today),
         );
         ret(&mut env, super::complete(&d, &i, &t))
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_dev_orbit_app_Core_uncomplete<'l>(
+        mut env: JNIEnv<'l>,
+        _: JClass<'l>,
+        dir: JString<'l>,
+        receipt: JString<'l>,
+    ) -> jstring {
+        let (d, r) = (s(&mut env, &dir), s(&mut env, &receipt));
+        ret(&mut env, super::uncomplete(&d, &r))
     }
 
     #[unsafe(no_mangle)]
