@@ -91,7 +91,9 @@
 
 <script lang="ts">
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
+  import Check from '@lucide/svelte/icons/check'
   import {
+    completeTask,
     labels as listLabels,
     dayFrom,
     moveItem,
@@ -288,6 +290,17 @@
             data-task-row={r.kind === 'task' ? r.id : undefined}
             class="rounded-[9px] border border-line bg-surface p-2 shadow-1 data-[cursor=true]:bg-hover data-[cursor=true]:ring-2 data-[cursor=true]:ring-accent"
           >
+            {#if r.kind === 'task'}
+              <button
+                type="button"
+                aria-label="Complete {rowTitle(r)}"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => completeTask(r.id)}
+                class="grid size-[1.125rem] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
+              >
+                <Check size={12} strokeWidth={3} />
+              </button>
+            {/if}
             <button
               type="button"
               data-open
