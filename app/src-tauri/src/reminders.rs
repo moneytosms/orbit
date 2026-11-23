@@ -46,8 +46,19 @@ async fn tick(
     app: &AppHandle,
     client: &mut Client,
     fired: &mut HashSet<String>,
+    device: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Err(e) = client.sync(now_ms()).await {
+    let trace = std::env::var_os("ORBIT_SYNC_TRACE")
+        .is_some_and(|value| value == std::ffi::OsStr::new("1"));
+    let started_at = trace.then(now_ms);
+    let sync = client.sync(now_ms()).await;
+    if let Some(started_at) = started_at {
+        eprintln!(
+            "native_sync_trace device={device} started_at={started_at} completed_at={}",
+            now_ms()
+        );
+    }
+    if let Err(e) = sync {
         if orbit_client::is_signed_out(e.as_ref()) {
             token::clear();
         }
@@ -99,7 +110,7 @@ pub fn start(app: AppHandle) {
                         open = open_client(&t).map(|c| (c, t.token.clone()));
                     }
                     if let Some((client, _)) = open.as_mut()
-                        && let Err(e) = tick(&app, client, &mut fired).await
+                        && let Err(e) = tick(&app, client, &mut fired, &t.device).await
                     {
                         eprintln!("orbit reminders: {e}");
                     }

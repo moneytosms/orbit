@@ -106,7 +106,11 @@ object Sync {
 class SyncWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
     override fun doWork(): Result {
         val auth = Store.load(applicationContext) ?: return Result.success() // signed out: captures wait
+        val trace = BuildConfig.DEBUG && applicationContext
+            .getSharedPreferences("orbit", Context.MODE_PRIVATE).getBoolean("sync_trace", false)
+        val startedAt = if (trace) System.currentTimeMillis() else 0
         val r = JSONObject(Core.sync(Core.dir(applicationContext), auth.server, auth.device, auth.token))
+        if (trace) Log.i(TAG, "native_sync_trace device=${auth.device} started_at=$startedAt completed_at=${System.currentTimeMillis()}")
         Log.i(TAG, "sync ${r.toString().replace(auth.token, "***")}")
         if (r.optBoolean("signed_out")) { Store.clearToken(applicationContext); return Result.success() }
         if (r.has("error")) return Result.retry()
