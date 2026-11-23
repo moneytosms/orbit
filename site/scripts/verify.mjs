@@ -58,6 +58,7 @@ for (const item of guideItems) {
   }
   if (!isGuidePath(item.id)) failures.push(`Guide manifest: ${item.id} is not matched by configured guide patterns`);
   const source = readFileSync(file, "utf8");
+  failures.push(...markdownSourceFailures(item.id, source));
   const h1 = [...stripMarkdownCode(source).matchAll(/^\s{0,3}#\s+(.+?)\s*#*\s*$/gm)].map((match) => match[1].trim());
   if (h1.length > 1 || (h1.length === 0 && !item.title)) failures.push(`Guide manifest: ${item.id} needs exactly one H1 or a manifest title`);
   const title = (item.title ?? h1[0] ?? "").replace(/[`*_]/g, "").trim().toLowerCase();
@@ -113,6 +114,52 @@ function stripMarkdownCode(source) {
     } else kept.push(fence ? "" : line);
   }
   return kept.join("\n").replace(/(`+)(.*?)\1/g, " ");
+}
+
+// Markdown source rules: fenced code needs a language, no placeholder text, no empty
+// sections, sane heading levels, ADRs carry Status and Date. Fenced content is skipped.
+function markdownSourceFailures(id, source) {
+  const problems = [];
+  let fence = null;
+  let pending = null;
+  let previous = null;
+  let seenH2 = false;
+  const lines = source.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    const at = `${id}:${index + 1}`;
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      pending = null;
+      if (marker && marker[1][0] === fence.char && marker[1].length >= fence.length && marker[2].trim() === "") fence = null;
+      return;
+    }
+    if (marker) {
+      pending = null;
+      fence = { char: marker[1][0], length: marker[1].length };
+      if (marker[2].trim() === "") problems.push(`${at}: fenced code block has no language`);
+      return;
+    }
+    if (/\bTODO\b|\bcoming soon\b|\blorem\b/i.test(line)) problems.push(`${at}: placeholder text (TODO, coming soon or lorem)`);
+    if (!line.trim()) return;
+    const heading = line.match(/^ {0,3}(#{1,6})(?=\s|$)\s*(.*)$/);
+    if (!heading) {
+      pending = null;
+      return;
+    }
+    const level = heading[1].length;
+    if (pending && level <= pending.level) problems.push(`${at}: empty section “${pending.text}”`);
+    pending = { level, text: heading[2].trim() };
+    if (previous !== null && level > previous + 1) problems.push(`${at}: heading jumps from H${previous} to H${level}`);
+    if (level >= 3 && !seenH2) problems.push(`${at}: H${level} appears before the first H2`);
+    if (level === 2) seenH2 = true;
+    previous = level;
+  });
+  if (pending) problems.push(`${id}:${lines.length}: empty section “${pending.text}” at end of file`);
+  if (/^docs\/adr\/[^/]+\.md$/.test(id) && id !== "docs/adr/README.md") {
+    if (!/^Status:/m.test(source)) problems.push(`${id}: ADR has no Status: line`);
+    if (!/^Date:/m.test(source)) problems.push(`${id}: ADR has no Date: line`);
+  }
+  return problems;
 }
 
 function markdownHeadings(source) {
