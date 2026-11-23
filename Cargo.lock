@@ -3319,6 +3319,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
+ "zbus 5.19.0",
 ]
 
 [[package]]
