@@ -253,6 +253,32 @@ export type Placement = {
   phase_id: string | null
   links: string[]
 }
+export type GraphNodeKind = 'task' | 'project' | 'goal' | 'milestone' | 'decision' | 'note' | 'text' | 'heading'
+export type GraphEdgeKind = 'then' | 'blocks' | 'depends_on' | 'decides'
+export type GraphNode = {
+  kind: 'graph_node'
+  id: string
+  roadmap_id: string
+  node_kind: GraphNodeKind
+  ref_id: string | null
+  title: string
+  x: number
+  y: number
+  band_id: string | null
+  taken_edge_id: string | null
+  decided_at: number | null
+  trashed_at: number | null
+}
+export type GraphEdge = {
+  kind: 'graph_edge'
+  id: string
+  roadmap_id: string
+  source_id: string
+  target_id: string
+  edge_kind: GraphEdgeKind
+  label: string
+  trashed_at: number | null
+}
 export type PhaseSummary = {
   id: string
   name: string
@@ -323,6 +349,8 @@ export type Row =
   | Roadmap
   | Phase
   | Placement
+  | GraphNode
+  | GraphEdge
   | Award
 type Ordered = { id: string; order: string }
 type Hlc = { wall: number; counter: number; device: string }
@@ -907,16 +935,22 @@ export function sync(): Promise<void> {
 }
 
 async function flush() {
+  let graphSupported = false
   for (;;) {
     // Files go up before the commands that cite them.
     await uploadPending((code) => rejected(code))
     const [outbox, token] = await tx(['outbox', 'meta'], (s) =>
       Promise.all([req<Command[]>(s('outbox').getAll()), req<number | undefined>(s('meta').get('token'))]),
     )
-    const commands = outbox.sort(byHlc).slice(0, 100)
+    const graphCursor = await tx(['meta'], (s) => req<string | undefined>(s('meta').get('graph_cursor')))
+    const commands = outbox.sort(byHlc).filter((cmd) => graphSupported || !isGraphCommand(cmd)).slice(0, 100)
     const res = await fetch('/sync', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-orbit-graph': 'v1',
+        ...(graphCursor ? { 'x-orbit-graph-cursor': graphCursor } : {}),
+      },
       body: JSON.stringify({ v: 1, token, commands }),
     })
     if (res.status === 426) {
@@ -936,6 +970,10 @@ async function flush() {
       return signedOut(await tx(['outbox'], (s) => req(s('outbox').count())))
     }
     if (!res.ok) throw new Error(`sync: HTTP ${res.status}`)
+    const responseGraphCursor = res.headers.get('x-orbit-graph-cursor')?.startsWith('v1:')
+      ? res.headers.get('x-orbit-graph-cursor')!
+      : undefined
+    graphSupported = !!responseGraphCursor
     await clearUpgrade()
     type Status = { status: 'ok' } | { status: 'error'; code: string }
     const body: {
@@ -963,7 +1001,10 @@ async function flush() {
         }
         s('outbox').delete(cmd.uuid)
       }
-      if (body.full) {
+      if (body.full && graphCursor && !responseGraphCursor) {
+        const all = await req<Row[]>(s('rows').getAll())
+        for (const row of all) if (row.kind !== 'graph_node' && row.kind !== 'graph_edge') s('rows').delete(row.id)
+      } else if (body.full) {
         prior = (await req<IDBValidKey[]>(s('rows').getAllKeys())) as string[]
         s('rows').clear()
       }
@@ -972,6 +1013,8 @@ async function flush() {
         else s('rows').put(row)
       }
       s('meta').put(body.token, 'token')
+      if (responseGraphCursor) s('meta').put(responseGraphCursor, 'graph_cursor')
+      else s('meta').delete('graph_cursor')
       if (body.clock) {
         const mine = JSON.stringify(await clock(s('meta')))
         s('meta').put(JSON.parse(observe_hlc(mine, JSON.stringify(body.clock), Date.now())), 'hlc')
@@ -993,9 +1036,12 @@ async function flush() {
     )
     changed()
     // A partly answered batch would be resent as-is: stop rather than loop.
-    if (commands.length < 100 || answered < commands.length) return
+    const remainingGraph = graphSupported && queued.some(isGraphCommand)
+    if ((commands.length < 100 && !remainingGraph) || answered < commands.length) return
   }
 }
+
+const isGraphCommand = (cmd: Command) => cmd.type.startsWith('roadmap.node.') || cmd.type.startsWith('roadmap.edge.')
 
 /** Syncs on open, on focus, 2 s after writes and every 60 s while visible. */
 export function start(onChange: () => void) {
@@ -1201,6 +1247,64 @@ export async function placeable(): Promise<{ id: string; kind: string; title: st
         : [],
   )
 }
+
+/** Graph rows for a roadmap, with referenced Orbit rows available for their live titles. */
+export async function roadmapGraph(id: string): Promise<{ nodes: GraphNode[]; edges: GraphEdge[]; bands: Phase[]; choices: { id: string; kind: GraphNodeKind; title: string }[] }> {
+  const rows = await visibleRows()
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const nodes = rows.filter((row): row is GraphNode => row.kind === 'graph_node' && row.roadmap_id === id)
+  const edges = rows.filter((row): row is GraphEdge => row.kind === 'graph_edge' && row.roadmap_id === id)
+  const bands = rows.filter((row): row is Phase => row.kind === 'phase' && row.roadmap_id === id)
+  const choices = rows.flatMap((row): { id: string; kind: GraphNodeKind; title: string }[] => {
+    if (row.kind === 'task' && row.completed_at === null) return [{ id: row.id, kind: 'task', title: row.title }]
+    if (row.kind === 'project' || row.kind === 'goal') return [{ id: row.id, kind: row.kind, title: row.name }]
+    if (row.kind === 'milestone') return [{ id: row.id, kind: 'milestone', title: row.title }]
+    return []
+  })
+  return {
+    nodes: nodes.map((node) => {
+      const ref = node.ref_id ? byId.get(node.ref_id) : undefined
+      return { ...node, title: node.title || (ref ? titleOf(ref as Any) : '') }
+    }),
+    edges,
+    bands,
+    choices,
+  }
+}
+export const createGraphNode = async (
+  roadmapId: string,
+  kind: GraphNodeKind,
+  x: number,
+  y: number,
+  title = '',
+  refId: string | null = null,
+) => {
+  const id = newId()
+  await enqueue('roadmap.node.create', { id, roadmap_id: roadmapId, kind, ref_id: refId, title, x, y, band_id: null })
+  return id
+}
+export const moveGraphNode = (id: string, x: number, y: number) => enqueue('roadmap.node.move', { id, x, y })
+export const updateGraphNode = (id: string, patch: { title?: string; band_id?: string | null }) =>
+  enqueue('roadmap.node.update', { id, ...patch })
+export const decideGraphNode = (id: string, edgeId: string | null) =>
+  enqueue('roadmap.node.decide', { id, edge_id: edgeId, decided_at: edgeId ? Date.now() : null })
+export const createGraphEdge = async (
+  roadmapId: string,
+  sourceId: string,
+  targetId: string,
+  kind: GraphEdgeKind = 'then',
+  label = '',
+) => {
+  const id = newId()
+  await enqueue('roadmap.edge.create', { id, roadmap_id: roadmapId, source_id: sourceId, target_id: targetId, kind, label })
+  return id
+}
+export const updateGraphEdge = (
+  id: string,
+  patch: { kind?: GraphEdgeKind; label?: string; source_id?: string; target_id?: string },
+) =>
+  enqueue('roadmap.edge.update', { id, ...patch })
+export const deleteGraphEdge = (id: string) => enqueue('roadmap.edge.delete', { id })
 
 type Any = { kind: string; id: string; parent_id?: string; trashed_at?: number | null; archived_at?: number | null }
 const titleOf = (r: Any) => {

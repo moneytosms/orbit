@@ -1017,6 +1017,10 @@ pub enum Op {
         kind: Option<roadmap::EdgeKind>,
         #[serde(default)]
         label: Option<String>,
+        #[serde(default)]
+        source_id: Option<Uuid>,
+        #[serde(default)]
+        target_id: Option<Uuid>,
     },
     #[serde(rename = "roadmap.edge.delete")]
     RoadmapEdgeDelete { id: Uuid },
@@ -1455,13 +1459,22 @@ impl Op {
             .collect(),
             Op::RoadmapNodeMove { .. } => vec!["x", "y"],
             Op::RoadmapNodeDecide { .. } => vec!["taken_edge_id", "decided_at"],
-            Op::RoadmapEdgeUpdate { kind, label, .. } => {
-                [("kind", kind.is_some()), ("label", label.is_some())]
-                    .into_iter()
-                    .filter(|(_, present)| *present)
-                    .map(|(f, _)| f)
-                    .collect()
-            }
+            Op::RoadmapEdgeUpdate {
+                kind,
+                label,
+                source_id,
+                target_id,
+                ..
+            } => [
+                ("kind", kind.is_some()),
+                ("label", label.is_some()),
+                ("source_id", source_id.is_some()),
+                ("target_id", target_id.is_some()),
+            ]
+            .into_iter()
+            .filter(|(_, present)| *present)
+            .map(|(f, _)| f)
+            .collect(),
             Op::RoadmapEdgeDelete { .. } => vec!["trashed_at"],
             Op::AreaUpdate {
                 name,

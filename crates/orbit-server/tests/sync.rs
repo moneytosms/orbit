@@ -1656,6 +1656,63 @@ async fn graph_nodes_edges_sync_across_devices_with_per_field_clocks() {
 }
 
 #[tokio::test]
+async fn graph_edge_reroute_keeps_identity_and_a_valid_decision() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let t0 = tree(&app, now).await;
+    let (roadmap, decision, first, second, edge) = (c(0xc1), c(0xc2), c(0xc3), c(0xc4), c(0xc5));
+    let (_, created, cursor) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xc6), "roadmap.create", json!({ "id": roadmap, "parent_id": PROJECT, "name": "Plan" }), now + 1),
+            cmd(&c(0xc7), "roadmap.node.create", json!({ "id": decision, "roadmap_id": roadmap, "kind": "decision", "title": "Choose", "x": 0, "y": 0 }), now + 2),
+            cmd(&c(0xc8), "roadmap.node.create", json!({ "id": first, "roadmap_id": roadmap, "kind": "note", "title": "First", "x": 300, "y": 0 }), now + 3),
+            cmd(&c(0xc9), "roadmap.node.create", json!({ "id": second, "roadmap_id": roadmap, "kind": "note", "title": "Second", "x": 600, "y": 0 }), now + 4),
+            cmd(&c(0xca), "roadmap.edge.create", json!({ "id": edge, "roadmap_id": roadmap, "source_id": decision, "target_id": first, "kind": "decides", "label": "yes" }), now + 5),
+        ]}),
+        None,
+    )
+    .await;
+    assert_eq!(created["statuses"][c(0xca)], json!({ "status": "ok" }));
+    let (_, chosen, chosen_cursor) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": created["token"], "commands": [
+            cmd(&c(0xcb), "roadmap.node.decide", json!({ "id": decision, "edge_id": edge, "decided_at": now + 6 }), now + 6),
+        ]}),
+        cursor.as_deref(),
+    )
+    .await;
+    assert_eq!(chosen["statuses"][c(0xcb)], json!({ "status": "ok" }));
+    let (_, rerouted, _) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": chosen["token"], "commands": [
+            cmd(&c(0xcc), "roadmap.edge.update", json!({ "id": edge, "target_id": second }), now + 7),
+        ]}),
+        chosen_cursor.as_deref(),
+    )
+    .await;
+    assert_eq!(rerouted["statuses"][c(0xcc)], json!({ "status": "ok" }));
+    let (_, snapshot, _) =
+        sync_graph(&app, json!({ "v": 1, "token": 0, "commands": [] }), None).await;
+    assert_eq!(row(&snapshot, &edge)["target_id"], second);
+    assert_eq!(row(&snapshot, &decision)["taken_edge_id"], edge);
+    assert_eq!(row(&snapshot, &decision)["decided_at"], now + 6);
+    let (_, rejected, _) = sync_graph(
+        &app,
+        json!({ "v": 1, "token": rerouted["token"], "commands": [
+            cmd(&c(0xcd), "roadmap.edge.update", json!({ "id": edge, "target_id": decision }), now + 8),
+        ]}),
+        None,
+    )
+    .await;
+    assert_eq!(
+        rejected["statuses"][c(0xcd)],
+        json!({ "status": "error", "code": "bad_field" })
+    );
+}
+
+#[tokio::test]
 async fn graph_capability_gets_full_first_pull_then_incremental_graph_delta() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path()).await;

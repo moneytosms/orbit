@@ -8,7 +8,7 @@
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import Backlinks from '$lib/Backlinks.svelte'
   import EntityMenu from '$lib/EntityMenu.svelte'
-  import RoadmapCanvas from '$lib/RoadmapCanvas.svelte'
+import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
   import {
     createPhase,
@@ -194,9 +194,7 @@
   {/snippet}
 
   {#if mode === 'canvas'}
-    <div class="hidden desk:block">
-      <RoadmapCanvas {id} {phases} {unplaced} onplace={place} onchange={load} />
-    </div>
+    <RoadmapGraphCanvas {id} onchange={load} />
   {/if}
 
   {#if mode === 'timeline'}
@@ -205,7 +203,7 @@
     </div>
   {/if}
 
-  <div class={mode === 'list' ? '' : 'desk:hidden'}>
+  <div class={mode === 'list' ? '' : 'hidden'}>
     <div class="flex flex-col gap-4">
       {#each phases as p (p.id)}
         <section class="flex flex-col gap-1.5 rounded-lg border border-line p-3" aria-label={p.name}>
@@ -280,10 +278,12 @@
     </section>
   {/if}
 
-  <form onsubmit={addPhase} class="mt-4 flex gap-2">
-    <Input bind:value={newPhase} placeholder="New phase" aria-label="New phase" class="min-w-0 flex-1" />
-    <Button type="submit" variant="primary">Add phase</Button>
-  </form>
+  {#if mode !== 'canvas'}
+    <form onsubmit={addPhase} class="mt-4 flex gap-2">
+      <Input bind:value={newPhase} placeholder="New phase" aria-label="New phase" class="min-w-0 flex-1" />
+      <Button type="submit" variant="primary">Add phase</Button>
+    </form>
+  {/if}
   <div class="mt-3 flex gap-2">
     <Button variant="ghost" onclick={() => (importing = true)}>Import Mermaid…</Button>
   </div>

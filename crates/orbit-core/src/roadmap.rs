@@ -536,11 +536,24 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
                 trashed_at: None,
             }))
         }
-        Op::RoadmapEdgeUpdate { kind, label, .. } => {
+        Op::RoadmapEdgeUpdate {
+            kind,
+            label,
+            source_id,
+            target_id,
+            ..
+        } => {
             let Some(Row::GraphEdge(old)) = existing else {
                 return Err(ErrorCode::NotFound);
             };
+            let source_id = source_id.unwrap_or(old.source_id);
+            let target_id = target_id.unwrap_or(old.target_id);
+            if source_id == target_id {
+                return Err(ErrorCode::BadField);
+            }
             Ok(Row::GraphEdge(GraphEdge {
+                source_id,
+                target_id,
                 kind: kind.unwrap_or(old.kind),
                 label: label
                     .as_ref()

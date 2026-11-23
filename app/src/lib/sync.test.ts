@@ -82,6 +82,9 @@ import {
   gateChoices,
   updateArea,
   updateProject,
+  createGraphNode,
+  createGraphEdge,
+  roadmapGraph,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -91,6 +94,8 @@ type Body = { v: number; token?: number; commands: { uuid: string; type: string;
 let online: boolean
 let requests: Body[]
 let delta: object[]
+let graphSupport = false
+let graphHeaders: Headers[]
 let token = 0
 let gate: Promise<void> | undefined
 let httpStatus = 200
@@ -115,6 +120,7 @@ vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     return new Response('', { status: 201 })
   }
   order.push('POST /sync')
+  graphHeaders.push(new Headers(init.headers))
   const body: Body = JSON.parse(init.body as string)
   requests.push(body)
   await gate
@@ -134,7 +140,9 @@ vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
   const res = { statuses, delta, token: ++token, full }
   delta = []
   full = false
-  return new Response(JSON.stringify(res))
+  return new Response(JSON.stringify(res), {
+    headers: graphSupport ? { 'x-orbit-graph-cursor': `v1:${res.token}` } : {},
+  })
 })
 
 beforeAll(() => {
@@ -144,6 +152,8 @@ beforeAll(() => {
 beforeEach(() => {
   online = true
   requests = []
+  graphHeaders = []
+  graphSupport = false
   delta = []
   httpStatus = 200
   rejectWith = undefined
@@ -165,6 +175,48 @@ test('a Task created offline shows at once and is sent once back online', async 
   await sync()
   expect(requests[1]).toMatchObject({ v: 1, token: issued, commands: [] })
   expect((await inboxTasks()).map((t) => t.title)).toEqual(['Buy milk'])
+})
+
+test('graph sync negotiates safely and keeps graph commands for an old server', async () => {
+  const roadmap = '00000000-0000-7000-8000-0000000000f1'
+  await createTask('Still syncs with a legacy server')
+  const choice = await createGraphNode(roadmap, 'decision', 80, 120, 'Choose')
+  const outcome = await createGraphNode(roadmap, 'task', 360, 120, 'Continue', '00000000-0000-7000-8000-0000000000f3')
+  await createGraphEdge(roadmap, choice, outcome, 'decides', 'yes')
+  await sync()
+  expect(graphHeaders[0].get('x-orbit-graph')).toBe('v1')
+  expect(requests.flatMap((request) => request.commands).some((command) => command.type.startsWith('roadmap.node.'))).toBe(false)
+  expect(requests.flatMap((request) => request.commands).some((command) => command.type === 'task.create')).toBe(true)
+  expect((await roadmapGraph(roadmap)).nodes.map((node) => node.title)).toContain('Choose')
+  expect((await roadmapGraph(roadmap)).edges.map((edge) => edge.label)).toContain('yes')
+  const queued = await tx(['outbox'], (s) => req<{ type: string }[]>(s('outbox').getAll()))
+  expect(queued.some((command) => command.type === 'roadmap.node.create')).toBe(true)
+  await tx(['outbox', 'rows'], async (s) => {
+    for (const command of await req<{ uuid: string; type: string }[]>(s('outbox').getAll())) {
+      if (command.type.startsWith('roadmap.node.') || command.type.startsWith('roadmap.edge.')) s('outbox').delete(command.uuid)
+    }
+    for (const row of await req<{ id: string; kind: string; roadmap_id?: string }[]>(s('rows').getAll())) {
+      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap) s('rows').delete(row.id)
+    }
+    for (const row of await req<{ id: string; kind: string; title?: string }[]>(s('rows').getAll())) {
+      if (row.kind === 'task' && row.title === 'Still syncs with a legacy server') s('rows').delete(row.id)
+    }
+  })
+})
+
+test('graph commands flush only after the server returns a graph cursor', async () => {
+  const roadmap = '00000000-0000-7000-8000-0000000000f2'
+  await createGraphNode(roadmap, 'decision', 80, 120, 'Choose')
+  graphSupport = true
+  await sync()
+  expect(graphHeaders[0].get('x-orbit-graph')).toBe('v1')
+  expect(requests.flatMap((request) => request.commands).some((command) => command.type === 'roadmap.node.create')).toBe(true)
+  expect(graphHeaders.some((headers) => headers.get('x-orbit-graph-cursor')?.startsWith('v1:'))).toBe(true)
+  await tx(['rows'], async (s) => {
+    for (const row of await req<{ id: string; kind: string; roadmap_id?: string }[]>(s('rows').getAll())) {
+      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap) s('rows').delete(row.id)
+    }
+  })
 })
 
 test('completing a Task hides it at once and queues task.complete', async () => {
