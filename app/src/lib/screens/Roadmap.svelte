@@ -9,19 +9,22 @@
   import Backlinks from '$lib/Backlinks.svelte'
   import EntityMenu from '$lib/EntityMenu.svelte'
 import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
+  import RoadmapLenses from '$lib/RoadmapLenses.svelte'
   import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
+  import { hiddenNodeIds } from '$lib/roadmapGraph'
   import {
     createPhase,
     createRoadmap,
     getRoadmap,
     importMermaid,
     localDay,
-    placeable,
-    placeItem,
+    roadmapGraph,
     roadmaps,
     roadmapSummary,
-    setPhaseDone,
+    type GraphEdge,
+    type GraphNode,
     type MermaidPlan,
+    type Phase,
     type PhaseSummary,
     type Roadmap,
     type tree,
@@ -32,7 +35,9 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   let list = $state<Roadmap[]>([])
   let roadmap = $state<Roadmap | undefined>()
   let phases = $state<PhaseSummary[]>([])
-  let choices = $state<{ id: string; kind: string; title: string }[]>([])
+  let nodes = $state<GraphNode[]>([])
+  let edges = $state<GraphEdge[]>([])
+  let bands = $state<Phase[]>([])
   let mode = $state<'canvas' | 'list' | 'board' | 'timeline'>('canvas')
   let today = $state('')
   let building = $state(false)
@@ -41,15 +46,16 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   let newName = $state('')
   let newPhase = $state('')
   let parentId = $state('')
-  let dragging = $state<string | null>(null)
-  let over = $state<string | null>(null)
 
   async function load() {
     if (id) {
       roadmap = await getRoadmap(id)
       today = await localDay()
       phases = roadmap ? await roadmapSummary(id, today) : []
-      choices = roadmap ? await placeable() : []
+      const graph = roadmap ? await roadmapGraph(id) : null
+      nodes = graph?.nodes ?? []
+      edges = graph?.edges ?? []
+      bands = graph?.bands ?? []
     } else {
       list = await roadmaps()
       if (!parentId) parentId = areas[0]?.area.id ?? ''
@@ -62,10 +68,11 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
     load()
   })
 
-  const placed = $derived(new Set(phases.flatMap((p) => p.items.map((i) => i.id))))
-  const unplaced = $derived(choices.filter((c) => !placed.has(c.id)))
-  const pct = (p: number) => `${Math.round(p * 100)}%`
-  const span = (p: PhaseSummary) => [p.start, p.end].filter(Boolean).join(' – ')
+  const unscheduled = $derived.by(() => {
+    const hidden = hiddenNodeIds(nodes, edges)
+    const dated = new Set(bands.filter((b) => b.start && b.end).map((b) => b.id))
+    return nodes.filter((n) => !hidden.has(n.id) && !(n.band_id && dated.has(n.band_id)))
+  })
 
   async function addRoadmap(e: SubmitEvent) {
     e.preventDefault()
@@ -94,28 +101,7 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
     onchange()
     await load()
   }
-  async function place(itemId: string, phaseId: string | null) {
-    if (!id) return
-    await placeItem(id, itemId, phaseId)
-    await load()
-  }
-  async function toggle(p: PhaseSummary) {
-    await setPhaseDone(p.id, !p.completed)
-    await load()
-  }
-  function drop(e: DragEvent, phaseId: string | null) {
-    e.preventDefault()
-    const item = dragging
-    dragging = over = null
-    if (item) place(item, phaseId)
-  }
 </script>
-
-{#snippet bar(p: number)}
-  <div class="h-1.5 w-full overflow-hidden rounded-full bg-sunk" role="progressbar" aria-valuenow={Math.round(p * 100)}>
-    <div class="h-full bg-accent" style="width: {pct(p)}"></div>
-  </div>
-{/snippet}
 
 {#if !id}
   <h1 class="page-title">Roadmaps</h1>
@@ -168,36 +154,6 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
     >
   </div>
 
-  {#snippet phaseHead(p: PhaseSummary)}
-    <div class="flex items-center gap-2">
-      <h2 class="flex-1 truncate font-semibold">
-        {p.name}
-        {#if p.current}<span class="ml-1 rounded-sm bg-accent-line px-1.5 text-[0.7188rem] font-normal">Current</span
-          >{/if}
-        {#if p.locked}<span class="ml-1 rounded-sm bg-sunk px-1.5 text-[0.7188rem] font-normal">Locked</span>{/if}
-      </h2>
-      <span class="text-[0.7812rem] text-muted">{pct(p.progress)}</span>
-      <Button variant="ghost" size="sm" onclick={() => toggle(p)}>{p.completed ? 'Reopen' : 'Complete'}</Button>
-    </div>
-    {#if span(p)}<p class="text-[0.7812rem] text-muted">{span(p)}</p>{/if}
-    {#if p.gate_title}<p class="text-[0.7812rem] text-muted">After {p.gate_title}</p>{/if}
-    {@render bar(p.progress)}
-  {/snippet}
-
-  {#snippet move(itemId: string, phaseId: string | null)}
-    <select
-      aria-label="Move to phase"
-      value={phaseId ?? ''}
-      onchange={(e) => place(itemId, e.currentTarget.value || null)}
-      class="h-6 max-w-28 rounded-md border border-line bg-surface px-1 text-[0.75rem]"
-    >
-      <option value="">Unplaced</option>
-      {#each phases as q (q.id)}
-        <option value={q.id}>{q.name}</option>
-      {/each}
-    </select>
-  {/snippet}
-
   {#if mode === 'canvas'}
     <RoadmapGraphCanvas {id} onchange={load} />
   {/if}
@@ -205,82 +161,23 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   {#if mode === 'timeline'}
     <div class="hidden desk:block">
       <RoadmapTimeline {phases} {today} />
-    </div>
-  {/if}
-
-  <div class={mode === 'list' ? '' : 'hidden'}>
-    <div class="flex flex-col gap-4">
-      {#each phases as p (p.id)}
-        <section class="flex flex-col gap-1.5 rounded-lg border border-line p-3" aria-label={p.name}>
-          {@render phaseHead(p)}
+      {#if unscheduled.length}
+        <section class="mt-4" aria-label="Unscheduled">
+          <h2 class="pb-1 text-[0.7812rem] font-semibold text-muted">Unscheduled</h2>
           <ul class="flex flex-col gap-1">
-            {#each p.items as i (i.id)}
-              <li class="flex flex-col gap-1">
-                <div class="flex items-center gap-2 text-[0.8438rem]">
-                  <span class="task-title-1 flex-1" title={i.title}>{i.title}</span>
-                  <span class="text-[0.7188rem] text-muted">{i.kind}</span>
-                  {@render move(i.id, p.id)}
-                </div>
-                {@render bar(i.progress)}
+            {#each unscheduled as n (n.id)}
+              <li class="flex items-center gap-2 text-[0.8438rem]">
+                <span class="task-title-1 flex-1" title={n.title}>{n.title}</span>
               </li>
             {/each}
           </ul>
         </section>
-      {/each}
-    </div>
-  </div>
-
-  {#if mode === 'board'}
-    <div class="hidden gap-3 overflow-x-auto pb-2 desk:flex">
-      {#each [...phases, null] as p (p?.id ?? 'unplaced')}
-        <section
-          aria-label={p?.name ?? 'Unplaced'}
-          ondragover={(e) => {
-            e.preventDefault()
-            over = p?.id ?? ''
-          }}
-          ondragleave={() => (over = null)}
-          ondrop={(e) => drop(e, p?.id ?? null)}
-          class="flex w-64 shrink-0 flex-col gap-2 rounded-lg border p-2.5 {over === (p?.id ?? '')
-            ? 'border-accent'
-            : 'border-line'}"
-        >
-          {#if p}
-            {@render phaseHead(p)}
-          {:else}
-            <h2 class="font-semibold text-muted">Unplaced</h2>
-          {/if}
-          {#each p?.items ?? unplaced as i (i.id)}
-            <div
-              role="listitem"
-              draggable="true"
-              ondragstart={() => (dragging = i.id)}
-              ondragend={() => (dragging = over = null)}
-              class="flex cursor-grab flex-col gap-1 rounded-md border border-line bg-surface p-2 text-[0.8438rem] shadow-1"
-            >
-              <span class="task-title-2" title={i.title}>{i.title}</span>
-              <span class="text-[0.7188rem] text-muted">{i.kind}</span>
-              {#if p}{@render bar((i as PhaseSummary['items'][number]).progress)}{/if}
-            </div>
-          {/each}
-        </section>
-      {/each}
+      {/if}
     </div>
   {/if}
 
-  {#if unplaced.length && mode !== 'board'}
-    <section class="mt-4 {mode === 'canvas' ? 'desk:hidden' : ''}">
-      <h2 class="pb-1 text-[0.7812rem] font-semibold text-muted">Add to a phase</h2>
-      <ul class="flex flex-col gap-1">
-        {#each unplaced as c (c.id)}
-          <li class="flex items-center gap-2 text-[0.8438rem]">
-            <span class="task-title-1 flex-1" title={c.title}>{c.title}</span>
-            <span class="text-[0.7188rem] text-muted">{c.kind}</span>
-            {@render move(c.id, null)}
-          </li>
-        {/each}
-      </ul>
-    </section>
+  {#if mode === 'list' || mode === 'board'}
+    <RoadmapLenses {mode} {nodes} {edges} {bands} summary={phases} onchange={load} />
   {/if}
 
   {#if mode !== 'canvas'}

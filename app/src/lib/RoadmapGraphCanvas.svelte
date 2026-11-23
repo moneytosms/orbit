@@ -11,6 +11,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2'
   import X from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
+  import { hiddenNodeIds } from '$lib/roadmapGraph'
   import {
     createGraphEdge,
     createGraphNode,
@@ -55,19 +56,7 @@
 
   const nodeById = $derived(new Map(nodes.map((n) => [n.id, n])))
   const taskChoices = $derived(choices.filter((c) => c.kind === 'task' && !nodes.some((n) => n.ref_id === c.id)))
-  const hiddenNodes = $derived.by(() => {
-    const hidden = new Set<string>()
-    for (const decision of nodes.filter((n) => n.node_kind === 'decision' && n.decided_at && n.taken_edge_id)) {
-      const walk = (id: string, visited: Set<string>) => {
-        if (visited.has(id) || id === decision.id) return
-        visited.add(id)
-        hidden.add(id)
-        for (const edge of edges) if (edge.source_id === id) walk(edge.target_id, visited)
-      }
-      for (const edge of edges) if (edge.source_id === decision.id && edge.id !== decision.taken_edge_id) walk(edge.target_id, new Set())
-    }
-    return hidden
-  })
+  const hiddenNodes = $derived(hiddenNodeIds(nodes, edges))
   const renderedNodes = $derived(nodes.filter((n) => !hiddenNodes.has(n.id)))
   const visibleEdges = $derived(edges.filter((e) => {
     const source = nodeById.get(e.source_id)
