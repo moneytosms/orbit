@@ -10,6 +10,9 @@ reqwest = { version = "0.13.5", features = ["json"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde_json = "1.0.154"
 
+[target.'cfg(target_os = "android")'.dependencies]
+webpki-root-certs = "1.0.12"
+
 [dev-dependencies]
 axum = "0.8.9"
 orbit-server = { path = "../orbit-server" }

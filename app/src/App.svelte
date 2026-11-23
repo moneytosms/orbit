@@ -48,6 +48,8 @@
   import { inTauri, isAndroidTauri } from './lib/platform'
 
   const captureOverlay = inTauri() && !isAndroidTauri() && getCurrentWindow().label === 'capture'
+  // The shells load the bundled UI only to hop to the saved server; showing its login there flashed (#89).
+  const launcher = inTauri() && (location.protocol === 'tauri:' || location.hostname === 'tauri.localhost')
 
   let gate: 'loading' | 'setup' | 'login' | 'app' = $state('loading')
   let pending = $state(0)
@@ -158,7 +160,7 @@
   }
 
   // Offline with a Device: straight in. Otherwise ask the server whether this is the first run.
-  if (!captureOverlay) void (async () => {
+  if (!captureOverlay && !launcher) void (async () => {
     if (await hasDevice()) return enter()
     gate = await needsSetup().then(
       (setup) => (setup ? 'setup' : 'login'),

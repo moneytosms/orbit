@@ -25,6 +25,22 @@ pub struct Rejection {
     pub code: ErrorCode,
 }
 
+#[cfg(not(target_os = "android"))]
+fn http() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::new())
+}
+
+/// Android: reqwest's default platform verifier aborts unless initialized over JNI with the
+/// Android Context and its Kotlin AAR bundled (#89), so trust the bundled Mozilla roots instead.
+#[cfg(target_os = "android")]
+fn http() -> Result<reqwest::Client> {
+    let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter();
+    let certs = roots
+        .map(|c| reqwest::Certificate::from_der(c))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(reqwest::Client::builder().tls_certs_only(certs).build()?)
+}
+
 impl Client {
     pub fn open(db: Connection, url: &str) -> Result<Client> {
         // Outbox rowid order is enqueue order, which is this Device's HLC order.
@@ -36,7 +52,7 @@ impl Client {
         Ok(Client {
             db,
             url: url.trim_end_matches('/').into(),
-            http: reqwest::Client::new(),
+            http: http()?,
         })
     }
 
