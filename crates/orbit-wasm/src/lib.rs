@@ -363,3 +363,20 @@ pub fn parse_mermaid(text: &str) -> Result<String, JsError> {
     };
     Ok(serde_json::to_string(&v)?)
 }
+
+/// Parses a versioned Orbit roadmap graph source into JSON.
+#[wasm_bindgen]
+pub fn parse_roadmap_code(text: &str) -> Result<String, JsError> {
+    let value = match orbit_core::roadmap_code::parse(text) {
+        Ok(graph) => serde_json::json!({ "ok": graph }),
+        Err(error) => serde_json::json!({ "error": error }),
+    };
+    Ok(serde_json::to_string(&value)?)
+}
+
+/// Canonically exports an Orbit roadmap graph JSON value as `%%orbit:v1` source.
+#[wasm_bindgen]
+pub fn export_roadmap_code(graph_json: &str) -> Result<String, JsError> {
+    let graph: orbit_core::roadmap_code::RoadmapCode = serde_json::from_str(graph_json)?;
+    orbit_core::roadmap_code::export(&graph).map_err(|error| JsError::new(&error))
+}

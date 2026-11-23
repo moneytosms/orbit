@@ -10,6 +10,7 @@ pub mod parse;
 pub mod recur;
 pub mod reminder;
 pub mod roadmap;
+pub mod roadmap_code;
 pub mod routine;
 pub mod search;
 pub mod stardust;
