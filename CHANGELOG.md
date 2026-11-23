@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.3.0 - 2026-11-23
+
+### Bug fixes
+
+- Align task composer headers
+- Normalize captured task titles and wrap legacy titles
+- Simplify the new Area control
+- Simplify CLI listing arguments
+- Remove duplicate entity action rows
+- Report desktop shell version in About
+- Pass borrowed tray handle directly
+- Clear graph migration test lints
+- Forward --capture before generating Tauri context
+- Hide view menu for builtins and add board complete control
+- Check only tracked markdown in site verify
+- Stop Android sync abort, capture-window IPC and login flash
+
+### Documentation
+
+- Add a Cloudflare Tunnel deployment path
+- Structure the Orbit guide
+- Dedupe install, deploy and CLI guides
+
+### Features
+
+- Make sidebar Areas collapsible
+- Make CLI references and output usable
+- Add scoped entity create menus
+- Add the server version and upgrade contract
+- Surface Web and PWA updates
+- Add entity actions menus
+- Handle desktop runtime updates
+- Require Android shell updates
+- Verify CLI and staged release updates
+- Undo task completion across replicas
+- Add compatible roadmap graph rows
+- Add page editor commands and foldable sections
+- Add offline desktop capture overlay
+- Sync routine icons and improve Home widgets
+- Sync a name and profile picture
+- Edit roadmaps on a graph canvas
+- Take band membership from graph nodes in phase progress
+- Finish task sections with server-side reparent
+- Add env-gated sync trace and latency harness
+- Add Orbit roadmap code import and export
+- Render roadmap list and board lenses from the graph
+- Lint guide markdown and add site checks to just check
+
 ## 0.2.0 - 2026-11-21
 
 ### Bug fixes

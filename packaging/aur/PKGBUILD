@@ -1,5 +1,5 @@
 pkgname=orbit-bin
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Personal task and notes app (Todoist-style) that syncs to a self-hosted Orbit server"
 arch=('x86_64')
