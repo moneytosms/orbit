@@ -81,6 +81,14 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 #[cfg(desktop)]
 fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            desktop::apply_flag(app, &args);
+            if has_flag(&args, "--capture") {
+                tray::capture(app);
+            } else if !has_flag(&args, "--hidden") {
+                tray::show_main(app);
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -90,14 +98,6 @@ fn builder() -> tauri::Builder<tauri::Wry> {
                 })
                 .build(),
         )
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            desktop::apply_flag(app, &args);
-            if has_flag(&args, "--capture") {
-                tray::capture(app);
-            } else if !has_flag(&args, "--hidden") {
-                tray::show_main(app);
-            }
-        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
@@ -162,9 +162,72 @@ fn builder() -> tauri::Builder<tauri::Wry> {
     android::builder()
 }
 
+#[cfg(target_os = "linux")]
+fn single_instance_path(destination: &str) -> String {
+    format!("/{}", destination.replace('.', "/").replace('-', "_"))
+}
+
+#[cfg(target_os = "linux")]
+fn forward_capture(identifier: &str) -> bool {
+    use std::time::Duration;
+
+    let args = std::env::args_os()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    if args.len() != 2 || args[1] != "--capture" {
+        return false;
+    }
+
+    let destination = format!("{identifier}.SingleInstance");
+    let path = single_instance_path(&destination);
+    let Ok(builder) = zbus::blocking::connection::Builder::session() else {
+        return false;
+    };
+    let Ok(connection) = builder.method_timeout(Duration::from_millis(250)).build() else {
+        return false;
+    };
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+
+    connection
+        .call_method(
+            Some(destination.as_str()),
+            path.as_str(),
+            Some("org.SingleInstance.DBus"),
+            "ExecuteCallback",
+            &(args, cwd.as_str()),
+        )
+        .is_ok()
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::single_instance_path;
+
+    #[test]
+    fn single_instance_path_maps_identifier_to_object_path() {
+        assert_eq!(
+            single_instance_path("dev.orbit.app.SingleInstance"),
+            "/dev/orbit/app/SingleInstance"
+        );
+        assert_eq!(
+            single_instance_path("dev.my-orbit.app.SingleInstance"),
+            "/dev/my_orbit/app/SingleInstance"
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    if forward_capture(env!("ORBIT_APP_IDENTIFIER")) {
+        return;
+    }
+
+    let context = tauri::generate_context!();
     builder()
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
