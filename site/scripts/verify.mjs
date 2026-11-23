@@ -1,6 +1,7 @@
 // Check the built GitHub Pages site for broken local links, images and anchors.
 // Usage: node scripts/verify.mjs [dist-dir] [base-path]
 // Defaults to site/dist and the base from site.config.mjs.
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,12 @@ const failures = [];
 const warnings = [];
 let markdownLinks = 0;
 let repositoryLinks = 0;
+
+// Only git-tracked Markdown counts, so untracked local notes never fail the check.
+const trackedMarkdown = execFileSync("git", ["-C", repo, "ls-files", "-z", "--", "*.md"], { encoding: "utf8" })
+  .split("\0")
+  .filter(Boolean)
+  .map((path) => join(repo, path));
 
 function walk(dir) {
   if (!existsSync(dir)) return [];
@@ -36,7 +43,7 @@ const checkedTitles = [];
 for (const [id, count] of [...new Set(guideIds)].map((id) => [id, guideIds.filter((candidate) => candidate === id).length])) {
   if (count !== 1) failures.push(`Guide manifest: ${id} appears ${count} times`);
 }
-const sourceMarkdown = [...walk(repo).filter((path) => extname(path).toLowerCase() === ".md")]
+const sourceMarkdown = trackedMarkdown
   .filter((path) => !relative(repo, path).split(sep).some((part) => [".git", "node_modules", "dist", ".astro"].includes(part)));
 const guideMarkdown = sourceMarkdown.filter((path) => isGuidePath(relative(repo, path).split(sep).join("/")));
 for (const file of sourceMarkdown) {
@@ -319,7 +326,7 @@ for (const [route, html] of pages) {
   }
 }
 
-const markdownFiles = walk(repo).filter((path) => {
+const markdownFiles = trackedMarkdown.filter((path) => {
   const rel = relative(repo, path).split(sep);
   return extname(path).toLowerCase() === ".md" && !rel.some((part) => [".git", ".claude", "node_modules", ".venv", "dist", ".astro"].includes(part));
 });
