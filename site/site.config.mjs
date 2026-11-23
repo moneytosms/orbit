@@ -19,7 +19,7 @@ export default {
   footnote: "Orbit is AGPL-3.0. Android is smoke-tested on an emulator and one real phone (Android 16); wider device testing is still pending.",
   // Markdown rendered in place under /guide (repo-relative globs, "!" excludes).
   // No copies: a doc fixed in the repo is fixed on the site at the next build.
-  guide: ["docs/*.md", "docs/adr/*.md", "docs/agents/*.md", "README.md"],
-  guideInternal: [],
+  guide: ["docs/*.md", "docs/adr/*.md", "README.md"],
+  guideInternal: ["docs/agents/*.md"],
   guideRoot: "README.md",
 };

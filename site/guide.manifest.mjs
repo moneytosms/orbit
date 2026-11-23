@@ -6,6 +6,7 @@ export default [
     order: 1,
     items: [
       { id: "README.md", slug: "what-is-orbit", title: "What Orbit is", summary: "Tasks, goals and routines you host yourself." },
+      { id: "docs/first-ten-minutes.md", title: "Your first ten minutes", summary: "Go from nothing to a running server with one task synced to your laptop." },
       { id: "docs/install.md", title: "Install", summary: "Set up Orbit on the web, Linux or Android." },
     ],
   },
@@ -35,6 +36,8 @@ export default [
     order: 4,
     items: [
       { id: "docs/scope.md", title: "Scope", summary: "Orbit's current product scope and deferred work." },
+      { id: "docs/sync-latency.md", title: "Sync latency baseline", summary: "Measured sync delay between Orbit clients, and how to re-run the harness." },
+      { id: "docs/adr/README.md", title: "Decisions", summary: "Index of the architecture decision records that explain Orbit's choices." },
       { id: "docs/adr/0001-stack.md", title: "ADR 0001: Server-authoritative sync", summary: "Why Orbit uses a Rust core and server-authoritative sync." },
     ],
   },
@@ -44,9 +47,6 @@ export default [
     order: 5,
     items: [
       { id: "docs/releasing.md", title: "Releasing Orbit", summary: "Release steps for maintainers." },
-      { id: "docs/agents/domain.md", title: "Domain documentation", summary: "Where Orbit's domain terms and decisions live." },
-      { id: "docs/agents/issue-tracker.md", title: "Issue tracker conventions", summary: "How maintainers use GitHub Issues." },
-      { id: "docs/agents/triage-labels.md", title: "Triage labels", summary: "The labels used to route Orbit issues." },
     ],
   },
 ];

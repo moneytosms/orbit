@@ -7,6 +7,10 @@ check: wasm
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
+    npm --prefix site ci
+    npm --prefix site run check
+    npm --prefix site run build
+    npm --prefix site run verify
 
 # Format the given app files (paths relative to app/), e.g. `just fmt src/lib/sync.ts`; plus cargo fmt
 fmt *files:

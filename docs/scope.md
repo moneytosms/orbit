@@ -13,7 +13,7 @@ Sources: planning chat decisions, the v1 map, `docs/adr/0001-stack.md`, and a cr
 
 ## Hierarchy
 
-```
+```text
 Area (Home, College, Career, ...)      ← top level
 ├── Project                             ← optional
 │   └── Task
