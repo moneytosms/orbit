@@ -463,7 +463,9 @@
                 </a>
                 <Button variant="ghost" size="sm" aria-label="Unhide {v.name}" onclick={() => unhide(v.id)}>Show</Button
                 >
-                <EntityMenu id={v.id} name={v.name} kind="view" fallbackHref="#/home" {onchange} />
+                {#if !v.builtin}
+                  <EntityMenu id={v.id} name={v.name} kind="view" fallbackHref="#/home" {onchange} />
+                {/if}
               </li>
             {/each}
           </ul>
