@@ -101,6 +101,7 @@
     setLabels,
     setPriority,
     updateProject,
+    updateSection,
     updateTask,
   } from '$lib/sync'
 
@@ -114,6 +115,7 @@
     titleOf = (key: string) => key,
     extra = [],
     scopeId = '',
+    sectionsEditable = false,
     onchange,
     onopen,
   }: {
@@ -127,6 +129,8 @@
     extra?: { key: string; title: string }[]
     /** Where a card dropped in the "no group" Section column goes. */
     scopeId?: string
+    /** Section columns in an Area or Project task board can be renamed inline. */
+    sectionsEditable?: boolean
     onchange: () => void
     onopen: (row: BoardRow) => void
   } = $props()
@@ -194,7 +198,7 @@
       const none = g.key === ''
       out.push(col(g.key, none ? 'None' : titleOf(g.key), g.rows, groupBy === 'section' || groupBy === 'goal' || !none))
     }
-    return out.sort((a, b) => Number(a.key === '') - Number(b.key === ''))
+    return groupBy === 'section' ? out : out.sort((a, b) => Number(a.key === '') - Number(b.key === ''))
   })
 
   let cols = $state<Column[]>([])
@@ -243,8 +247,27 @@
 <div class="flex gap-3 overflow-x-auto pb-3" role="group" aria-label="Board">
   {#each cols as c (c.key)}
     <section aria-label="{c.title} column" class="flex w-[260px] shrink-0 flex-col rounded-xl bg-hover/50 p-2">
-      <h3 class="mb-2 px-1 text-[0.7812rem] font-semibold text-muted">
-        {c.title} <span class="font-normal">{c.rows.length}</span>
+      <h3 class="mb-2 flex items-center gap-1 px-1 text-[0.7812rem] font-semibold text-muted">
+        {#if sectionsEditable && c.key}
+          <input
+            value={c.title}
+            aria-label="Rename section {c.title}"
+            onblur={(e) =>
+              e.currentTarget.value.trim() &&
+              updateSection(c.key, { name: e.currentTarget.value.trim() }).then(onchange)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              if (e.key === 'Escape') {
+                e.currentTarget.value = c.title
+                e.currentTarget.blur()
+              }
+            }}
+            class="min-w-0 flex-1 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
+        {:else}
+          <span class="min-w-0 flex-1">{c.title}</span>
+        {/if}
+        <span class="font-normal">{c.rows.length}</span>
       </h3>
       <ul
         class="flex min-h-[3rem] flex-1 flex-col gap-2"

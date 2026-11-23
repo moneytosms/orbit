@@ -4,7 +4,7 @@
   import { DropdownMenu } from 'bits-ui'
   import { Button } from '$lib/components/ui/button'
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
-  import { createGoal, createPage, createProject, type tree } from '$lib/sync'
+  import { createGoal, createPage, createProject, createSection, type tree } from '$lib/sync'
 
   let {
     ownerId,
@@ -23,14 +23,14 @@
   } = $props()
 
   let open = $state(false)
-  let prompt = $state<'project' | 'goal' | null>(null)
+  let prompt = $state<'project' | 'goal' | 'section' | null>(null)
   let name = $state('')
   let input: HTMLInputElement | null = $state(null)
   let wrapper: HTMLDivElement | null = $state(null)
   let promptStyle = $state('')
   let building = $state(false)
 
-  function choosePrompt(kind: 'project' | 'goal') {
+  function choosePrompt(kind: 'project' | 'goal' | 'section') {
     prompt = kind
     name = ''
     const trigger = wrapper?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')
@@ -49,7 +49,8 @@
     const value = name.trim()
     if (!value || !prompt) return
     if (prompt === 'project') await createProject(ownerId, value)
-    else await createGoal(ownerId, value)
+    else if (prompt === 'goal') await createGoal(ownerId, value)
+    else await createSection(ownerId, value)
     name = ''
     prompt = null
     open = false
@@ -112,6 +113,10 @@
           >
           <DropdownMenu.Item
             class="flex h-9 cursor-default items-center rounded-md px-2 text-sm outline-none data-[highlighted]:bg-hover"
+            onSelect={() => choosePrompt('section')}>New section</DropdownMenu.Item
+          >
+          <DropdownMenu.Item
+            class="flex h-9 cursor-default items-center rounded-md px-2 text-sm outline-none data-[highlighted]:bg-hover"
             onSelect={() => (building = true)}>New roadmap</DropdownMenu.Item
           >
           <DropdownMenu.Item
@@ -132,8 +137,8 @@
       <input
         bind:this={input}
         bind:value={name}
-        aria-label={prompt === 'project' ? 'Project name' : 'Goal name'}
-        placeholder={prompt === 'project' ? 'Project name' : 'Goal name'}
+        aria-label={prompt === 'project' ? 'Project name' : prompt === 'goal' ? 'Goal name' : 'Section name'}
+        placeholder={prompt === 'project' ? 'Project name' : prompt === 'goal' ? 'Goal name' : 'Section name'}
         class="h-[2.125rem] w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none transition-colors placeholder:text-muted focus-visible:border-accent-line focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]"
       />
       <Button type="submit" size="sm" variant="primary">Create</Button>

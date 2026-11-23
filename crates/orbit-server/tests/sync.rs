@@ -11,6 +11,7 @@ use tower::ServiceExt;
 
 const INBOX: &str = "00000000-0000-7000-8000-000000000001";
 const DEVICE: &str = "01900000-0000-7000-8000-0000000000d1";
+const OTHER_DEVICE: &str = "01900000-0000-7000-8000-0000000000d2";
 
 /// A server on `dir` with its user set up, and a Device token for it.
 async fn app(dir: &std::path::Path) -> (Router, String) {
@@ -116,8 +117,12 @@ async fn no_token_returns_a_full_snapshot_with_inbox() {
 const TASK: &str = "01900000-0000-7000-8000-00000000000a";
 
 fn cmd(uuid: &str, r#type: &str, args: Value, wall: u64) -> Value {
+    cmd_on(uuid, r#type, args, wall, DEVICE)
+}
+
+fn cmd_on(uuid: &str, r#type: &str, args: Value, wall: u64, device: &str) -> Value {
     json!({ "uuid": uuid, "type": r#type, "args": args,
-            "hlc": { "wall": wall, "counter": 0, "device": DEVICE } })
+            "hlc": { "wall": wall, "counter": 0, "device": device } })
 }
 
 #[tokio::test]
@@ -1088,6 +1093,90 @@ async fn delete_sets_trashed_at_and_restore_clears_it() {
     .await;
     assert_eq!(res["statuses"][c(0xe6)], json!({ "status": "ok" }));
     assert_eq!(row(&res, TASK)["trashed_at"], Value::Null);
+}
+
+#[tokio::test]
+async fn deleting_a_section_reparents_unseen_children_and_preserves_newer_moves() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    let stale = tree(&app, now).await;
+    let unseen = c(0xf2);
+    let completed = c(0xf3);
+    let trashed = c(0xf4);
+    let moved = c(0xf5);
+
+    // A replica with `stale` has not seen these Section children.
+    let (_, created) = sync(
+        &app,
+        json!({ "v": 1, "token": stale, "commands": [
+            cmd(&c(0xf1), "task.create", json!({ "id": unseen, "title": "Unseen", "parent_id": SUB, "order": "a" }), now + 1),
+            cmd(&c(0xf6), "task.update", json!({ "id": unseen, "description": "Keep details", "priority": 2, "due": { "date": "2026-11-25" } }), now + 2),
+            cmd(&c(0xf7), "task.create", json!({ "id": completed, "title": "Completed", "parent_id": SUB, "order": "b" }), now + 3),
+            cmd(&c(0xf8), "task.complete", json!({ "id": completed }), now + 4),
+            cmd(&c(0xf9), "task.create", json!({ "id": trashed, "title": "Trashed", "parent_id": SUB, "order": "c" }), now + 5),
+            cmd(&c(0xfa), "item.delete", json!({ "id": trashed }), now + 6),
+            cmd(&c(0xfb), "task.create", json!({ "id": moved, "title": "Moved elsewhere", "parent_id": SUB, "order": "d" }), now + 7),
+            cmd(&c(0xfc), "item.move", json!({ "id": moved, "parent_id": PROJECT, "order": "z" }), now + 40),
+        ]}),
+    )
+    .await;
+    for id in [
+        c(0xf1),
+        c(0xf6),
+        c(0xf7),
+        c(0xf8),
+        c(0xf9),
+        c(0xfa),
+        c(0xfb),
+        c(0xfc),
+    ] {
+        assert_eq!(created["statuses"][id], json!({ "status": "ok" }));
+    }
+
+    let deletion = cmd_on(
+        &c(0xfd),
+        "item.delete",
+        json!({ "id": SUB }),
+        now + 20,
+        OTHER_DEVICE,
+    );
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": stale, "commands": [deletion.clone()] }),
+    )
+    .await;
+    assert_eq!(res["statuses"][c(0xfd)], json!({ "status": "ok" }));
+    assert_eq!(row(&res, SUB)["trashed_at"], now + 20);
+
+    let task = row(&res, &unseen);
+    assert_eq!(task["parent_id"], PROJECT);
+    assert_eq!(task["title"], "Unseen");
+    assert_eq!(task["description"], "Keep details");
+    assert_eq!(task["priority"], 2);
+    assert_eq!(task["due"]["date"], "2026-11-25");
+
+    let done = row(&res, &completed);
+    assert_eq!(done["parent_id"], PROJECT);
+    assert_eq!(done["completed_at"], now + 4);
+    let deleted_task = row(&res, &trashed);
+    assert_eq!(deleted_task["parent_id"], PROJECT);
+    assert_eq!(deleted_task["trashed_at"], now + 6);
+
+    let moved_row = row(&res, &moved);
+    assert_eq!(moved_row["parent_id"], PROJECT);
+    assert_eq!(moved_row["order"], "z");
+    assert!(task["order"].as_str().unwrap() > "z");
+
+    // A retry of the same command returns its saved status without applying duplicate moves.
+    let token = res["token"].clone();
+    let (_, retried) = sync(
+        &app,
+        json!({ "v": 1, "token": token, "commands": [deletion] }),
+    )
+    .await;
+    assert_eq!(retried["statuses"][c(0xfd)], json!({ "status": "ok" }));
+    assert_eq!(retried["delta"], json!([]));
 }
 
 #[tokio::test]

@@ -466,6 +466,13 @@ pub enum Op {
         #[serde(default)]
         order: String,
     },
+    /// Updates the name or order of a Section.
+    #[serde(rename = "section.update")]
+    SectionUpdate {
+        id: Uuid,
+        name: Option<String>,
+        order: Option<String>,
+    },
     /// No `parent_id` means the Inbox.
     #[serde(rename = "task.create")]
     TaskCreate {
@@ -1083,6 +1090,7 @@ impl Op {
             Op::AreaCreate { id, .. }
             | Op::ProjectCreate { id, .. }
             | Op::SectionCreate { id, .. }
+            | Op::SectionUpdate { id, .. }
             | Op::TaskCreate { id, .. }
             | Op::ItemMove { id, .. }
             | Op::ItemDelete { id }
@@ -1271,6 +1279,13 @@ impl Op {
             .filter(|(_, present)| *present)
             .map(|(f, _)| f)
             .collect(),
+            Op::SectionUpdate { name, order, .. } => {
+                [("name", name.is_some()), ("order", order.is_some())]
+                    .into_iter()
+                    .filter(|(_, present)| *present)
+                    .map(|(f, _)| f)
+                    .collect()
+            }
             Op::GoalUpdate {
                 name,
                 done_condition,
@@ -1829,6 +1844,27 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 None => Err(ErrorCode::NotFound),
             }
         }
+        Op::SectionUpdate { name, order, .. } => match existing {
+            Some(Row::Section(section)) => {
+                if let Some(value) = name {
+                    let value = value.trim();
+                    if value.is_empty() {
+                        return Err(ErrorCode::TitleRequired);
+                    }
+                    Ok(Row::Section(Section {
+                        name: value.into(),
+                        order: order.clone().unwrap_or(section.order),
+                        ..section
+                    }))
+                } else {
+                    Ok(Row::Section(Section {
+                        order: order.clone().unwrap_or(section.order),
+                        ..section
+                    }))
+                }
+            }
+            _ => Err(ErrorCode::NotFound),
+        },
         Op::TaskUpdate {
             title,
             description,
@@ -2455,6 +2491,75 @@ pub fn apply_lww(
         }
     }
     Ok(serde_json::from_value(merged).expect("a row round-trips through JSON"))
+}
+
+/// The direct Task moves caused by deleting a Section. The caller applies these to each replica
+/// using its normal prediction or LWW path, so the same delete command drives the effect everywhere.
+pub fn section_delete_effects(rows: &[Row], section_id: Uuid, cmd: &Command) -> Vec<Command> {
+    let Some(Row::Section(section)) = rows.iter().find(|row| row.id() == section_id) else {
+        return Vec::new();
+    };
+    if section.trashed_at.is_none()
+        || !matches!(&cmd.op, Op::ItemDelete { id } if *id == section_id)
+    {
+        return Vec::new();
+    }
+
+    let mut tasks: Vec<_> = rows
+        .iter()
+        .filter_map(|row| match row {
+            Row::Task(task) if task.parent_id == section_id => Some(task),
+            _ => None,
+        })
+        .collect();
+    tasks.sort_by(|a, b| a.order.cmp(&b.order).then(a.id.cmp(&b.id)));
+    let mut last = rows
+        .iter()
+        .filter(|row| row.parent_id() == Some(section.parent_id))
+        .filter_map(row_order)
+        .max()
+        .map(str::to_owned);
+
+    tasks
+        .into_iter()
+        .map(|task| {
+            let order = order::between(last.as_deref(), None);
+            last = Some(order.clone());
+            Command {
+                op: Op::ItemMove {
+                    id: task.id,
+                    parent_id: Some(section.parent_id),
+                    order,
+                },
+                ..cmd.clone()
+            }
+        })
+        .collect()
+}
+
+fn row_order(row: &Row) -> Option<&str> {
+    match row {
+        Row::Area(row) => Some(&row.order),
+        Row::Project(row) => Some(&row.order),
+        Row::Section(row) => Some(&row.order),
+        Row::Task(row) => Some(&row.order),
+        Row::Goal(row) => Some(&row.order),
+        Row::Milestone(row) => Some(&row.order),
+        Row::Page(row) => Some(&row.order),
+        Row::Routine(row) => Some(&row.order),
+        Row::Roadmap(row) => Some(&row.order),
+        Row::Phase(row) => Some(&row.order),
+        Row::Label(_)
+        | Row::Settings(_)
+        | Row::Completion(_)
+        | Row::Purged(_)
+        | Row::View(_)
+        | Row::Checkin(_)
+        | Row::Award(_)
+        | Row::Placement(_)
+        | Row::GraphNode(_)
+        | Row::GraphEdge(_) => None,
+    }
 }
 
 /// The completion side effect, shared by server and client prediction: the Task as it
@@ -3131,6 +3236,89 @@ mod tests {
             reminders: vec![],
             blobs: vec![],
         })
+    }
+
+    #[test]
+    fn section_update_renames_and_reorders_without_changing_its_parent() {
+        let parent = uid(1);
+        let id = uid(3);
+        let update = Command {
+            uuid: uid(92),
+            op: Op::SectionUpdate {
+                id,
+                name: Some("  Renamed  ".into()),
+                order: Some("b".into()),
+            },
+            hlc: Hlc {
+                wall: 12,
+                counter: 0,
+                device: uid(99),
+            },
+        };
+        let Row::Section(updated) = apply(Some(section(3, parent)), &update).unwrap() else {
+            panic!("section remains a Section")
+        };
+        assert_eq!(
+            (
+                updated.parent_id,
+                updated.name.as_str(),
+                updated.order.as_str()
+            ),
+            (parent, "Renamed", "b")
+        );
+    }
+
+    #[test]
+    fn deleting_a_section_reparents_its_tasks() {
+        let (area_id, section_id) = (uid(1), uid(3));
+        let Row::Task(trashed) = task_row(5, section_id) else {
+            unreachable!()
+        };
+        let rows = vec![
+            area(1),
+            Row::Section(Section {
+                trashed_at: Some(10),
+                ..match section(3, area_id) {
+                    Row::Section(s) => s,
+                    _ => unreachable!(),
+                }
+            }),
+            task_row(4, section_id),
+            Row::Task(Task {
+                trashed_at: Some(7),
+                ..trashed
+            }),
+            // Already moved out of the Section: it is no longer a child, so it is left alone.
+            task_row(6, uid(2)),
+        ];
+        let delete = Command {
+            uuid: uid(90),
+            op: Op::ItemDelete { id: section_id },
+            hlc: Hlc {
+                wall: 10,
+                counter: 0,
+                device: uid(99),
+            },
+        };
+
+        let effects = section_delete_effects(&rows, section_id, &delete);
+        let targets: Vec<Uuid> = effects.iter().map(|e| e.op.target()).collect();
+        assert_eq!(targets, vec![uid(4), uid(5)]);
+
+        for effect in &effects {
+            let old = rows.iter().find(|r| r.id() == effect.op.target()).unwrap();
+            let Row::Task(new) = apply(Some(old.clone()), effect).unwrap() else {
+                panic!("a Task stays a Task")
+            };
+            let Row::Task(old) = old else {
+                panic!("the effect targets a Task")
+            };
+            assert_eq!(new.parent_id, area_id);
+            assert_eq!(
+                (new.title.as_str(), new.trashed_at, new.priority),
+                (old.title.as_str(), old.trashed_at, old.priority)
+            );
+        }
     }
 
     #[test]

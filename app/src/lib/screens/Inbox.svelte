@@ -1,15 +1,18 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import Check from '@lucide/svelte/icons/check'
   import Inbox from '@lucide/svelte/icons/inbox'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
   import Flag from '@lucide/svelte/icons/flag'
   import { Button } from '$lib/components/ui/button'
+  import EntityMenu from '$lib/EntityMenu.svelte'
   import Board, { cellText, type BoardRow, type CellCtx } from '$lib/Board.svelte'
   import Table from '$lib/Table.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import Composer from '$lib/Composer.svelte'
   import {
     completeTask,
+    createSection,
     createPage,
     labels,
     moveItem,
@@ -18,10 +21,12 @@
     pagesOf,
     sectionsOf,
     tasksIn,
+    updateSection,
     type Due,
     type Sort,
     type Page,
     type Task,
+    type Section,
   } from '$lib/sync'
   import { inbox_id } from '../../../wasm/orbit_wasm'
 
@@ -71,6 +76,32 @@
   }
   let boardGroups = $state<{ key: string; rows: BoardRow[] }[]>([])
   let sectionCols = $state<{ key: string; title: string }[]>([])
+  let sectionList = $state<Section[]>([])
+  let unsectionedItems = $state<Group[]>([])
+  let sectionItems = $state(new Map<string, Group[]>())
+  let sectionDraft = $state<string | null>(null)
+  let sectionInput = $state<HTMLInputElement | undefined>()
+
+  function groupsOf(entries: Entry[]): Group[] {
+    const out: Group[] = []
+    for (const r of entries) {
+      if (r.depth === 0) out.push({ id: r.task.id, task: r.task, subs: [] })
+      else out.at(-1)?.subs.push(r)
+    }
+    return out
+  }
+
+  $effect(() => {
+    void rows
+    const id = parentId
+    sectionsOf(id).then(async (secs) => {
+      const taskRows = await Promise.all(secs.map(async (section) => [section.id, await tasksIn(section.id)] as const))
+      if (id !== parentId) return
+      sectionList = secs
+      sectionItems = new Map(taskRows.map(([sectionId, entries]) => [sectionId, groupsOf(entries)]))
+      unsectionedItems = groupsOf(rows).filter((group) => group.task.parent_id === id)
+    })
+  })
   // The Board's columns: tasks directly under the list, then one column per Section.
   $effect(() => {
     void rows
@@ -159,18 +190,51 @@
     }
     return out
   })
-  let items = $derived(groups)
-
-  function consider(e: CustomEvent<DndEvent<Group>>) {
-    items = e.detail.items
+  function taskConsider(target: string, e: CustomEvent<DndEvent<Group>>) {
+    if (target) sectionItems = new Map(sectionItems).set(target, e.detail.items)
+    else unsectionedItems = e.detail.items
   }
-  // A drop takes the order between its new neighbours.
-  function finalize(e: CustomEvent<DndEvent<Group>>) {
-    items = e.detail.items
+  async function taskFinalize(target: string, e: CustomEvent<DndEvent<Group>>) {
+    if (target) sectionItems = new Map(sectionItems).set(target, e.detail.items)
+    else unsectionedItems = e.detail.items
     const { id, trigger } = e.detail.info
     if (trigger !== TRIGGERS.DROPPED_INTO_ZONE) return
-    const i = items.findIndex((g) => g.id === id)
-    moveItem(id, parentId, orderBetween(items[i - 1]?.task.order, items[i + 1]?.task.order))
+    const i = e.detail.items.findIndex((g) => g.id === id)
+    await moveItem(
+      id,
+      target || parentId,
+      orderBetween(e.detail.items[i - 1]?.task.order, e.detail.items[i + 1]?.task.order),
+    )
+    onchange()
+  }
+  function sectionConsider(e: CustomEvent<DndEvent<Section>>) {
+    sectionList = e.detail.items
+  }
+  async function sectionFinalize(e: CustomEvent<DndEvent<Section>>) {
+    sectionList = e.detail.items
+    const { id, trigger } = e.detail.info
+    if (trigger !== TRIGGERS.DROPPED_INTO_ZONE) return
+    const i = sectionList.findIndex((section) => section.id === id)
+    await moveItem(id, parentId, orderBetween(sectionList[i - 1]?.order, sectionList[i + 1]?.order))
+    onchange()
+  }
+  async function createSectionFromRow(e: SubmitEvent) {
+    e.preventDefault()
+    const name = sectionDraft?.trim() ?? ''
+    if (!name) return
+    sectionDraft = null
+    await createSection(parentId, name)
+    onchange()
+  }
+  async function startSectionCreate() {
+    sectionDraft = ''
+    await tick()
+    sectionInput?.focus()
+  }
+  async function renameSection(section: Section, name: string) {
+    const next = name.trim()
+    if (next && next !== section.name) await updateSection(section.id, { name: next })
+    onchange()
   }
 </script>
 
@@ -239,30 +303,108 @@
     fields={[]}
     extra={sectionCols}
     scopeId={parentId}
+    sectionsEditable={parentId !== inbox_id()}
     {onchange}
     onopen={openRow}
   />
 {:else if layout === 'table'}
   <Table rows={tableRows as BoardRow[]} fields={[]} {sorts} onsort={(s) => (sorts = s)} onopen={openRow} />
-{:else if groups.length}
+{:else}
+  {#if !groups.length && !sectionList.length}
+    <div class="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted">
+      <Inbox size={20} class="text-icon" />
+      <p>Nothing here. Type a task above and press Enter.</p>
+    </div>
+  {/if}
   <ul
-    use:dndzone={{ items, type: 'task', flipDurationMs: 150, delayTouchStart: 200, useCursorForDetection: true }}
-    onconsider={consider}
-    onfinalize={finalize}
+    use:dndzone={{
+      items: unsectionedItems,
+      type: 'task',
+      flipDurationMs: 150,
+      delayTouchStart: 200,
+      useCursorForDetection: true,
+    }}
+    onconsider={(e) => taskConsider('', e)}
+    onfinalize={(e) => taskFinalize('', e)}
   >
-    {#each items as g (g.id)}
+    {#each unsectionedItems as g (g.id)}
       <li>
         {@render line(g.task, 0)}
-        {#each g.subs as s (s.task.id)}
-          {@render line(s.task, s.depth)}
-        {/each}
+        {#each g.subs as s (s.task.id)}{@render line(s.task, s.depth)}{/each}
       </li>
     {/each}
   </ul>
-{:else}
-  <div class="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted">
-    <Inbox size={20} class="text-icon" />
-    <p>Nothing here. Type a task above and press Enter.</p>
+  <ul
+    class="mt-4"
+    use:dndzone={{
+      items: sectionList,
+      type: 'section',
+      flipDurationMs: 150,
+      delayTouchStart: 200,
+      useCursorForDetection: true,
+    }}
+    onconsider={sectionConsider}
+    onfinalize={sectionFinalize}
+  >
+    {#each sectionList as section (section.id)}
+      <li>
+        <section class="mt-2" aria-label="{section.name} section">
+          <div class="mb-1 flex items-center gap-1">
+            <input
+              value={section.name}
+              aria-label="Rename section {section.name}"
+              onblur={(e) => renameSection(section, e.currentTarget.value)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') {
+                  e.currentTarget.value = section.name
+                  e.currentTarget.blur()
+                }
+              }}
+              class="min-w-0 flex-1 bg-transparent px-2 py-1 text-sm font-semibold text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <EntityMenu id={section.id} name={section.name} kind="section" fallbackHref="#/inbox" {onchange} />
+          </div>
+          <ul
+            class="min-h-[3rem]"
+            use:dndzone={{
+              items: sectionItems.get(section.id) ?? [],
+              type: 'task',
+              flipDurationMs: 150,
+              delayTouchStart: 200,
+              useCursorForDetection: true,
+            }}
+            onconsider={(e) => taskConsider(section.id, e)}
+            onfinalize={(e) => taskFinalize(section.id, e)}
+          >
+            {#each sectionItems.get(section.id) ?? [] as g (g.id)}
+              <li>
+                {@render line(g.task, 0)}
+                {#each g.subs as s (s.task.id)}{@render line(s.task, s.depth)}{/each}
+              </li>
+            {/each}
+          </ul>
+        </section>
+      </li>
+    {/each}
+  </ul>
+  <div class="mt-3">
+    {#if sectionDraft !== null}
+      <form onsubmit={createSectionFromRow}>
+        <input
+          bind:this={sectionInput}
+          bind:value={sectionDraft}
+          aria-label="New section name"
+          placeholder="Section name"
+          onkeydown={(e) => e.key === 'Escape' && (sectionDraft = null)}
+          class="h-9 w-full rounded-md border border-line bg-surface px-2.5 text-sm outline-none focus-visible:border-accent-line"
+        />
+      </form>
+    {:else}
+      <button type="button" class="px-2 py-2 text-sm text-muted hover:text-text" onclick={startSectionCreate}>
+        + New section
+      </button>
+    {/if}
   </div>
 {/if}
 
