@@ -76,8 +76,8 @@ the internet:
 ssh -L 8080:127.0.0.1:8080 you@your-server
 ```
 
-Open <http://127.0.0.1:8080>, paste the setup code, and create the account. Use a long password, this
-one will face the internet. Then confirm setup is closed:
+Create the account as in [Create your account](deploy.md#create-your-account), using a long password,
+because this one will face the internet. Then confirm setup is closed:
 
 ```sh
 curl -sS http://127.0.0.1:8080/auth
@@ -256,81 +256,21 @@ What does lose data, and what to do about each:
 | `orbit-server restore <snapshot>`, which replaces the live database | Take a fresh snapshot immediately before restoring. |
 | Disk failure, provider reclamation, a full disk | Copies stored off the machine. The seven automatic snapshots sit on the same disk, so they are not a backup. |
 
-A snapshot is safe to take while the server runs:
-
-```sh
-cd "$HOME/orbit"
-docker compose exec -T orbit orbit-server backup /data/manual-backup
-ls -la "$HOME/orbit/data/manual-backup"
-```
-
-Copy it somewhere else, then automate both halves:
-
-```sh
-cat > "$HOME/orbit-backup.sh" <<'SH'
-#!/bin/sh
-set -eu
-DIR="$HOME/orbit"
-OFFBOX="$HOME/orbit-offbox"
-cd "$DIR"
-docker compose exec -T orbit orbit-server backup /data/manual-backup
-mkdir -p "$OFFBOX/manual" "$OFFBOX/auto"
-rsync -a --delete "$DIR/data/manual-backup/" "$OFFBOX/manual/"
-rsync -a "$DIR/data/backups/" "$OFFBOX/auto/"
-find "$OFFBOX/manual" -name 'orbit-*.db' | sort | head -n -10 | xargs -r rm -f
-SH
-chmod +x "$HOME/orbit-backup.sh"
-( crontab -l 2>/dev/null; echo "15 4 * * * $HOME/orbit-backup.sh >> $HOME/orbit-backup.log 2>&1" ) | crontab -
-```
-
-Then pull `~/orbit-offbox` to another machine with whichever tool you already use (rsync, rclone,
-restic). A restore is:
-
-```sh
-cd "$HOME/orbit"
-docker compose stop orbit
-docker compose run --rm orbit restore /data/backups/orbit-<timestamp-ms>.db
-docker compose up -d orbit
-```
-
-The full procedure, including what `reset-password` and `restore` change, is in
-[deploy.md](deploy.md#7-backups-updates-and-recovery).
+Backups, the off-machine copy script and restores are the same behind a tunnel: see
+[Backups, updates and recovery](deploy.md#7-backups-updates-and-recovery).
 
 ## Connect the clients
 
-Every client asks for the same thing, the bare origin `https://orbit.example.com`. The table in
-[Connect your clients](deploy.md#5-connect-your-clients) covers the UI steps; the commands are:
-
-```sh
-# CLI, on any Linux machine
-curl -fsSL https://raw.githubusercontent.com/moneytosms/orbit/main/scripts/install-cli.sh | sh
-orbit login https://orbit.example.com     # password from ORBIT_PASSWORD or stdin
-orbit status
-
-# Linux desktop, first launch or later
-orbit-app --server https://orbit.example.com
-
-# Android: install the APK, then enter https://orbit.example.com on the first page
-adb install -r Orbit-*-android.apk
-```
+Every client asks for the same thing, the bare origin `https://orbit.example.com`. Connect each one as in
+[Connect your clients](deploy.md#5-connect-your-clients) and [install.md](install.md).
 
 The Linux and Android apps load the UI from the server, so an unreachable hostname opens their retry
-page rather than a cached interface. On Android, set the app's battery use to unrestricted so widgets,
-background sync and reminders keep working, and remember the release APK refuses `http://` addresses
-entirely.
+page rather than a cached interface.
 
 ## Updating
 
-```sh
-cd "$HOME/orbit"
-"$HOME/orbit-backup.sh"
-docker compose pull
-docker compose up -d
-docker compose ps
-```
-
-`./data` never moves, so an update does not touch your data. To pin a version, replace `:latest` in
-`compose.yaml` with a release tag such as `:0.2.0`.
+Follow [Updating](deploy.md#updating) in the same `~/orbit` directory, after a backup. The tunnel itself
+needs no change on update.
 
 ## Troubleshooting
 
@@ -345,8 +285,8 @@ usual cause; re-run `sudo cloudflared service install <token>` with a fresh one.
 directory than you expect, usually because Compose ran from another directory. Compare
 `docker compose exec orbit ls -la /data` with `ls -la ~/orbit/data`.
 
-**`cleartext not permitted`, or the Android app cannot connect.** You entered `http://` or a raw IP. Use
-the HTTPS hostname.
+**Android cannot connect (`cleartext not permitted`).** Use the HTTPS hostname, as in
+[deploy.md troubleshooting](deploy.md#troubleshooting).
 
 **Certificate error in a browser.** The hostname is deeper than one level below the zone (see
 [Edge settings](#7-edge-settings-that-matter)), or the public hostname was added without a DNS record.

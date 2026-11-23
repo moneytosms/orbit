@@ -37,13 +37,7 @@ o.bind("ALT + T", "Orbit quick capture", "orbit-app --capture")
 
 The float/center rule is needed because Hyprland may tile the overlay despite its requested size. Use the binding shown in Settings if you changed Alt+T.
 
-Start it hidden at login with the same file or your autostart list:
-
-```lua
-orbit-app --hidden
-```
-
-Autostart through the app itself (`tauri-plugin-autostart`) also launches it with `--hidden`.
+Start it hidden at login as described in [Install, Start at login](install.md#start-at-login).
 
 ## Server address
 
@@ -55,6 +49,6 @@ To change the server later, run `orbit-app --server https://other.example.com`. 
 
 ## Updates
 
-The AppImage updates itself with `tauri-plugin-updater`. At start the app checks `https://github.com/moneytosms/orbit/releases/latest/download/latest.json`; a newer, signature-checked AppImage is downloaded and installed, and a notification says "Orbit updated, restart to apply". It never restarts on its own, and failures are only logged to stderr. The `.deb` is not updated this way.
+What users see when an update arrives is in [Install, Updates](install.md#updates). The AppImage uses `tauri-plugin-updater`; failures are only logged to stderr.
 
 Releases are signed with a minisign key kept outside the repo (`~/.config/orbit/updater.key`; the public key is in `tauri.conf.json`). CI reads it from the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets and publishes `latest.json` and the `.sig` with the AppImage.
