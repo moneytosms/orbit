@@ -35,6 +35,7 @@ export const login = (password: string, totp?: string) => signIn('/auth/login', 
 export const setup = (code: string, password: string) => signIn('/auth/setup', { code, password })
 /** Whether this browser ever logged in; a revoked one finds out on its next sync. */
 export const hasDevice = () => tx(['meta'], (s) => req(s('meta').get('device'))).then(Boolean)
+export const deviceId = () => tx(['meta'], (s) => req<string | undefined>(s('meta').get('device')))
 export const needsSetup = () => api<{ setup: boolean }>('GET', '/auth').then((r) => r.setup)
 
 export const devices = () => api<Device[]>('GET', '/devices')

@@ -111,6 +111,8 @@ export type Settings = {
   theme: string
   accent: string
   start_view: string
+  display_name?: string
+  avatar?: string
   timezone?: string
   day_start?: string
   next_deadline_days?: number | null
@@ -494,6 +496,15 @@ export async function getDaySettings(): Promise<{ timezone: string; day_start: s
   return { timezone: row?.timezone ?? '', day_start: row?.day_start || '00:00' }
 }
 export const updateSettings = (p: { theme?: string; accent?: string }) => enqueue('settings.update', p)
+/** The account-wide display name and avatar hash. */
+export async function getProfile(): Promise<{ display_name: string; avatar: string }> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return { display_name: row?.display_name ?? '', avatar: row?.avatar ?? '' }
+}
+export async function setProfile(patch: { display_name?: string; avatar?: string }): Promise<void> {
+  await enqueue('settings.update', patch)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('orbit-profile-change'))
+}
 export const setStartView = (v: string) => enqueue('settings.update', { start_view: v })
 
 export type NextSettings = { deadline_days: number; due_days: number; undated_p1: boolean }

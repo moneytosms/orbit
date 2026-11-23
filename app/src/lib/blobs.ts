@@ -10,6 +10,14 @@ type Entry = { hash: string; data: ArrayBuffer; type: string; size: number; used
 const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`
+const imageType = (data: ArrayBuffer) => {
+  const b = new Uint8Array(data, 0, Math.min(data.byteLength, 12))
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (String.fromCharCode(...b.slice(0, 4)) === 'RIFF' && String.fromCharCode(...b.slice(8, 12)) === 'WEBP')
+    return 'image/webp'
+  return ''
+}
 
 /** Stores `file` locally and returns the markdown that cites it. Throws a readable error when too big. */
 export async function addFile(file: File): Promise<{ hash: string; markdown: string }> {
@@ -83,7 +91,7 @@ export async function blobUrl(hash: string): Promise<string | undefined> {
   const res = await fetch(`/blobs/${hash}`, { credentials: 'include' }).catch(() => undefined)
   if (!res?.ok) return undefined
   const data = await res.arrayBuffer()
-  const type = res.headers.get('content-type') ?? ''
+  const type = imageType(data) || res.headers.get('content-type') || ''
   await tx(['blobs'], async (s) => {
     s('blobs').put({ hash, data, type, size: data.byteLength, used: Date.now(), uploaded: true } satisfies Entry)
   })

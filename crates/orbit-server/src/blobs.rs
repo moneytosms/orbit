@@ -155,7 +155,10 @@ pub(crate) fn gc(conn: &Connection, data: &Path, now: i64) -> rusqlite::Result<(
     let referenced: HashSet<String> = {
         let mut stmt = conn.prepare(
             "SELECT DISTINCT j.value FROM rows, json_each(rows.data, '$.blobs') j
-             WHERE json_extract(rows.data, '$.kind') != 'purged'",
+             WHERE json_extract(rows.data, '$.kind') != 'purged'
+             UNION SELECT json_extract(data, '$.avatar') FROM rows
+             WHERE json_extract(data, '$.kind') = 'settings'
+               AND json_extract(data, '$.avatar') != ''",
         )?;
         stmt.query_map([], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?
@@ -190,4 +193,30 @@ pub(crate) fn gc(conn: &Connection, data: &Path, now: i64) -> rusqlite::Result<(
         conn.execute("DELETE FROM blob_orphans WHERE hash = ?", [hash])?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gc_keeps_the_settings_avatar_blob() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE rows (data TEXT NOT NULL)", [])
+            .unwrap();
+        let bytes = b"profile image";
+        let hash = hex::encode(Sha256::digest(bytes));
+        store(dir.path(), &hash, bytes).unwrap();
+        conn.execute(
+            "INSERT INTO rows (data) VALUES (?1)",
+            [serde_json::json!({ "kind": "settings", "avatar": hash }).to_string()],
+        )
+        .unwrap();
+
+        gc(&conn, dir.path(), 0).unwrap();
+        gc(&conn, dir.path(), GRACE_MS).unwrap();
+
+        assert!(path(dir.path(), &hash).is_file());
+    }
 }

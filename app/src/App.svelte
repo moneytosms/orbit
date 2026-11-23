@@ -235,7 +235,7 @@
       {:else if screen.name === 'trash'}
         <Trash onchange={refresh} />
       {:else if screen.name === 'settings'}
-        <Settings />
+        <Settings {version} />
       {:else if screen.name === 'home'}
         <Dashboard {version} onchange={refresh} />
       {:else if screen.name === 'profile'}

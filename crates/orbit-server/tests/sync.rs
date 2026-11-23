@@ -855,7 +855,7 @@ async fn settings_update_creates_the_row_then_updates_it() {
     let (_, res) = sync(
         &app,
         json!({ "v": 1, "token": snap["token"], "commands": [
-            cmd(c1, "settings.update", json!({ "theme": "dracula" }), 1000),
+            cmd(c1, "settings.update", json!({ "theme": "dracula", "display_name": "Orbit User", "avatar": "a".repeat(64) }), 1000),
             cmd(c2, "settings.update", json!({ "accent": "#ff0000" }), 1001),
         ]}),
     )
@@ -872,6 +872,21 @@ async fn settings_update_creates_the_row_then_updates_it() {
     assert_eq!(settings[0]["id"], "00000000-0000-7000-8000-000000000002");
     assert_eq!(settings[0]["theme"], "dracula");
     assert_eq!(settings[0]["accent"], "#ff0000");
+    assert_eq!(settings[0]["display_name"], "Orbit User");
+    assert_eq!(settings[0]["avatar"], "a".repeat(64));
+    let (_, replica) = sync(
+        &app,
+        json!({ "v": 1, "token": snap["token"], "since": 0, "commands": [] }),
+    )
+    .await;
+    let profile = replica["delta"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["kind"] == "settings")
+        .unwrap();
+    assert_eq!(profile["display_name"], "Orbit User");
+    assert_eq!(profile["avatar"], "a".repeat(64));
 }
 
 #[tokio::test]

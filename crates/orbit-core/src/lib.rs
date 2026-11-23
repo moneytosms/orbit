@@ -260,6 +260,12 @@ pub struct Label {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Settings {
     pub id: Uuid,
+    /// Name shown across this account's Devices.
+    #[serde(default)]
+    pub display_name: String,
+    /// SHA-256 of the profile image in the shared blob store, or empty.
+    #[serde(default)]
+    pub avatar: String,
     #[serde(default)]
     pub theme: String,
     #[serde(default)]
@@ -683,6 +689,10 @@ pub enum Op {
     /// Creates the Settings row if missing; only the fields present change.
     #[serde(rename = "settings.update")]
     SettingsUpdate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        avatar: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         theme: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1318,6 +1328,8 @@ impl Op {
             .chain(description.is_some().then_some("blobs"))
             .collect(),
             Op::SettingsUpdate {
+                display_name,
+                avatar,
                 theme,
                 accent,
                 start_view,
@@ -1337,6 +1349,8 @@ impl Op {
                 vacations,
                 gamification,
             } => [
+                ("display_name", display_name.is_some()),
+                ("avatar", avatar.is_some()),
                 ("theme", theme.is_some()),
                 ("accent", accent.is_some()),
                 ("start_view", start_view.is_some()),
@@ -2224,6 +2238,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             }
         }
         Op::SettingsUpdate {
+            display_name,
+            avatar,
             theme,
             accent,
             start_view,
@@ -2248,6 +2264,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 Some(_) => return Err(ErrorCode::BadField),
                 None => Settings {
                     id: SETTINGS,
+                    display_name: String::new(),
+                    avatar: String::new(),
                     theme: String::new(),
                     accent: String::new(),
                     start_view: String::new(),
@@ -2270,6 +2288,8 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             };
             Ok(Row::Settings(Settings {
                 id: SETTINGS,
+                display_name: display_name.clone().unwrap_or(old.display_name),
+                avatar: avatar.clone().unwrap_or(old.avatar),
                 theme: theme.clone().unwrap_or(old.theme),
                 accent: accent.clone().unwrap_or(old.accent),
                 start_view: start_view.clone().unwrap_or(old.start_view),
@@ -3395,6 +3415,8 @@ mod tests {
             first,
             Row::Settings(Settings {
                 id: SETTINGS,
+                display_name: String::new(),
+                avatar: String::new(),
                 theme: "dracula".into(),
                 accent: String::new(),
                 start_view: String::new(),
@@ -3420,6 +3442,41 @@ mod tests {
         assert_eq!(
             (s.theme.as_str(), s.accent.as_str()),
             ("dracula", "#ff0000")
+        );
+        let third = apply(
+            Some(Row::Settings(s)),
+            &up(serde_json::json!({ "display_name": "Orbit User", "avatar": "a".repeat(64) })),
+        )
+        .unwrap();
+        let Row::Settings(s) = apply(
+            Some(third),
+            &up(serde_json::json!({ "display_name": "", "avatar": "" })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!((s.display_name.as_str(), s.avatar.as_str()), ("", ""));
+        let legacy: Settings = serde_json::from_value(serde_json::json!({
+            "id": SETTINGS,
+            "theme": "legacy",
+            "accent": "",
+            "start_view": ""
+        }))
+        .unwrap();
+        assert_eq!(
+            (legacy.display_name.as_str(), legacy.avatar.as_str()),
+            ("", "")
+        );
+        let encoded = serde_json::to_value(Settings {
+            display_name: "Current".into(),
+            avatar: "b".repeat(64),
+            ..legacy
+        })
+        .unwrap();
+        let current: Settings = serde_json::from_value(encoded).unwrap();
+        assert_eq!(
+            (current.display_name.as_str(), current.avatar.len()),
+            ("Current", 64)
         );
         assert_eq!(
             up(serde_json::json!({ "theme": "x" })).op.target(),

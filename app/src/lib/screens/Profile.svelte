@@ -1,14 +1,22 @@
 <script lang="ts">
   import { badgeShelf, getGamification, stardust, type Shelf, type Stardust } from '$lib/sync'
+  import { getProfile } from '$lib/sync'
+  import { deviceId } from '$lib/auth'
+  import ProfileAvatar from '$lib/ProfileAvatar.svelte'
+  import ProfileEditor from '$lib/ProfileEditor.svelte'
 
   let { version = 0 }: { version?: number } = $props()
   let data = $state<Stardust>()
   let shelf = $state<Shelf>()
   let gamification = $state(true)
+  let profile = $state({ display_name: '', avatar: '' })
+  let device = $state('')
 
   $effect(() => {
     void version
     getGamification().then((on) => (gamification = on))
+    getProfile().then((p) => (profile = p))
+    deviceId().then((id) => (device = id ?? ''))
     stardust().then((d) => (data = d))
     badgeShelf().then((s) => (shelf = s))
   })
@@ -24,6 +32,9 @@
 </script>
 
 <h1 class="page-title">Profile</h1>
+<section class="panel mb-4" aria-label="Profile details">
+  <ProfileEditor {version} />
+</section>
 {#if data}
   {#if gamification}
     <div class="flex flex-col items-center gap-1 px-3 py-4 text-center">
@@ -52,7 +63,9 @@
             stroke-dashoffset={C * (1 - frac)}
           />
         </svg>
-        <span class="absolute inset-0 flex items-center justify-center text-3xl font-semibold">O</span>
+        <span class="absolute inset-0 flex items-center justify-center">
+          <ProfileAvatar name={profile.display_name} avatar={profile.avatar} {device} size="size-20 text-3xl" />
+        </span>
       </div>
       <p class="text-lg font-semibold">{data.level.name} · Level {data.level.n}</p>
       <p class="text-muted">

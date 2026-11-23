@@ -414,6 +414,8 @@ mod tests {
     fn settings(f: impl FnOnce(&mut Settings)) -> Settings {
         let mut s = Settings {
             id: SETTINGS,
+            display_name: String::new(),
+            avatar: String::new(),
             theme: String::new(),
             accent: String::new(),
             start_view: String::new(),

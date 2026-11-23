@@ -18,6 +18,8 @@
   import { clearCursor, isTyping, matcher } from '$lib/keys'
   import Shortcuts from './Shortcuts.svelte'
   import DropTarget from './DropTarget.svelte'
+  import ProfileAvatar from './ProfileAvatar.svelte'
+  import { deviceId } from '$lib/auth'
   import { Button } from '$lib/components/ui/button'
   import { routes, type Route, type Screen } from '$lib/routes'
   import {
@@ -35,6 +37,7 @@
     type Area,
     type Project,
     type View,
+    getProfile,
   } from '$lib/sync'
   import { inbox_id } from '../../wasm/orbit_wasm'
 
@@ -76,14 +79,21 @@
   let areaExpansion = $state<Record<string, boolean>>({})
   let pinned = $state<View[]>([])
   let hiddenViews = $state<View[]>([])
+  let profile = $state({ display_name: '', avatar: '' })
+  let device = $state('')
   let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin })))
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
   $effect(() => {
     void areas
     loadViews()
+    getProfile().then((p) => (profile = p))
+    deviceId().then((id) => (device = id ?? ''))
   })
   onMount(() => {
+    const refreshProfile = () => getProfile().then((p) => (profile = p))
+    window.addEventListener('orbit-profile-change', refreshProfile)
+    refreshProfile()
     try {
       const saved: unknown = JSON.parse(localStorage.getItem('orbit.sidebar.area-expansion') ?? '{}')
       if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
@@ -94,6 +104,7 @@
     } catch {
       // Keep project-count defaults when storage is unavailable or invalid.
     }
+    return () => window.removeEventListener('orbit-profile-change', refreshProfile)
   })
   $effect(() => {
     if (composing || !composerOpener) return
@@ -251,8 +262,14 @@
     aria-current={screen.name === r || (r === 'roadmaps' && screen.name === 'roadmap') ? 'page' : undefined}
     class="group flex h-8 items-center gap-[9px] rounded-[7px] px-2.5 hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
   >
-    <Icon size={16} class="text-icon group-aria-[current=page]:text-accent" />
-    <span class="flex-1">{routes[r].label}</span>
+    {#if r === 'profile'}
+      <ProfileAvatar name={profile.display_name} avatar={profile.avatar} {device} size="size-5 text-[0.625rem]" />
+    {:else}
+      <Icon size={16} class="text-icon group-aria-[current=page]:text-accent" />
+    {/if}
+    <span class="min-w-0 flex-1 truncate"
+      >{r === 'profile' && profile.display_name ? `Signed in as ${profile.display_name}` : routes[r].label}</span
+    >
     {#if count}<span class="text-[0.7812rem] text-muted">{count}</span>{/if}
   </a>
 {/snippet}

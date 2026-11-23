@@ -15,6 +15,9 @@
   import { isAndroidTauri, isDesktopTauri } from '$lib/platform'
   import * as auth from '$lib/auth'
   import TodoistImport from '$lib/TodoistImport.svelte'
+  import ProfileEditor from '$lib/ProfileEditor.svelte'
+
+  let { version = 0 }: { version?: number } = $props()
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
   import {
     getDaySettings,
@@ -235,6 +238,7 @@
     ['reminders', 'Reminders'],
     ['general', 'Day and calendar'],
     ['capture-shortcut', 'Quick capture'],
+    ['profile', 'Profile'],
     ['account', 'Account and devices'],
     ['targets', 'Productivity'],
     ['data', 'Data'],
@@ -630,6 +634,11 @@
         <p class="mt-2 text-sm text-muted">Opens a small capture window. Captures are saved on this device and sync when online.</p>
       </section>
     {/if}
+
+    <section id="profile" class="panel scroll-mt-4">
+      <h2 class="panel-title">Profile</h2>
+      <ProfileEditor {version} />
+    </section>
 
     <section id="account" class="panel scroll-mt-4">
       <h2 class="panel-title">Account and devices <span class="font-normal text-muted">{list.length || ''}</span></h2>
