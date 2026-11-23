@@ -84,8 +84,21 @@ in place. A build-from-source install updates with `git pull` and
 
 ## 5. Use it from AI tools
 
-`orbit mcp` runs the same commands as an MCP server over stdio. Sign in first, then for Claude Code:
+`orbit mcp` runs the same commands as an MCP server over stdio. Sign in first (`orbit login`), then for Claude Code:
 
 ```sh
 claude mcp add orbit -- orbit mcp
+```
+
+Or in a project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "orbit": {
+      "command": "orbit",
+      "args": ["mcp"]
+    }
+  }
+}
 ```

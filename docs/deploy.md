@@ -214,6 +214,31 @@ docker compose exec orbit orbit-server backup /data/manual-backup
 This writes `./data/manual-backup/orbit-<timestamp-ms>.db` plus blobs. Copy the directory off the
 machine to keep it safe.
 
+### Copy backups off the machine
+
+The automatic snapshots sit on the same disk as the data, so they are not a backup on their own. A daily
+job takes a manual snapshot and copies both kinds off the machine, keeping the ten newest manual ones:
+
+```sh
+cat > "$HOME/orbit-backup.sh" <<'SH'
+#!/bin/sh
+set -eu
+DIR="$HOME/orbit"
+OFFBOX="$HOME/orbit-offbox"
+cd "$DIR"
+docker compose exec -T orbit orbit-server backup /data/manual-backup
+mkdir -p "$OFFBOX/manual" "$OFFBOX/auto"
+rsync -a --delete "$DIR/data/manual-backup/" "$OFFBOX/manual/"
+rsync -a "$DIR/data/backups/" "$OFFBOX/auto/"
+find "$OFFBOX/manual" -name 'orbit-*.db' | sort | head -n -10 | xargs -r rm -f
+SH
+chmod +x "$HOME/orbit-backup.sh"
+( crontab -l 2>/dev/null; echo "15 4 * * * $HOME/orbit-backup.sh >> $HOME/orbit-backup.log 2>&1" ) | crontab -
+```
+
+Then pull `~/orbit-offbox` to another machine with whichever tool you already use (rsync, rclone,
+restic).
+
 ### Restore
 
 Restore replaces the live database, so the server must be stopped:

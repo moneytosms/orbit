@@ -38,6 +38,21 @@ with `scripts/check-release-assets.sh X.Y.Z dist`; it performs no publishing.
 - A native-only change, such as an Android notification or desktop tray fix, needs an APK/AppImage
   release. The UI should continue to work with older shells.
 
+## Compatibility matrix
+
+Sync protocol: the server is at `PROTOCOL_V = 1` and accepts clients down to `MIN_CLIENT_PROTOCOL`
+(`PROTOCOL_V - 1`, never below 1). A client older than that gets HTTP 426 `upgrade_required` with the
+upgrade link; a client newer than the server gets HTTP 400.
+
+| Client | Ships as | Gets protocol changes by | Falls behind when | Fix |
+| --- | --- | --- | --- | --- |
+| Web / PWA | Served by the server (`ORBIT_WEB`) | Server deploy; the service worker updates itself | Never, it is the server's own UI | Reload the page |
+| Linux desktop | AppImage (`Orbit_<version>_amd64.AppImage`) | Server deploy for UI; AppImage release for shell changes | Shell change needs a new AppImage | In-app updater, or `yay -Syu orbit-bin` on AUR |
+| Android | APK (`Orbit-<version>-android.apk`) | Server deploy for UI; APK release for native changes | Native change needs a new APK | Install the new APK, or Obtainium |
+| CLI | Linux tarballs (`orbit-<version>-linux-<arch>.tar.gz`) | Its own release | Gets HTTP 426 after a protocol bump | `orbit self-update` |
+
+Protocol bumps: keep `N-1` for at least one minor release, so only clients two protocols behind see 426.
+
 ## Operator update path
 
 Most client changes ship with the server image. Pull the desired version and restart the container;

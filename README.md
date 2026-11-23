@@ -10,6 +10,8 @@ Screenshot: the web app on made-up demo data.
 
 **Install:** set up the server with [docs/deploy.md](docs/deploy.md), then install the clients (web, Linux, Android, CLI) with [docs/install.md](docs/install.md).
 
+**New here?** [First ten minutes](docs/first-ten-minutes.md) takes you from an empty machine to one synced task.
+
 ## Features
 
 Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked draft). Some items there are planned, not built.

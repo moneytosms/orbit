@@ -69,11 +69,7 @@ orbit-app --hidden
 
 ### Quick capture hotkey
 
-`orbit-app --capture` shows the window and opens quick capture. If Orbit is already running, the running instance does it. Hyprland example from [linux-desktop.md](linux-desktop.md), in `~/.config/hypr/bindings.lua`:
-
-```lua
-o.bind("SUPER + ALT + A", "Orbit quick capture", "orbit-app --capture")
-```
+`orbit-app --capture` opens quick capture. The default shortcut, changing it, and the Hyprland binding are in [linux-desktop.md](linux-desktop.md#global-shortcut) and [Hyprland](linux-desktop.md#hyprland).
 
 ### Updates
 
@@ -123,36 +119,7 @@ Share any text from another app (browser, notes, a chat) and choose **Orbit**. T
 
 ## 5. CLI and MCP
 
-The CLI runs on your own device and needs no checkout or Rust toolchain. On Linux (x86_64 and aarch64):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/moneytosms/orbit/main/scripts/install-cli.sh | sh
-orbit login https://orbit.example.com
-orbit ls
-```
-
-Install options, sign-in details (`--name`, two-factor codes), `orbit sync`, `orbit logout` and updates are on one page: [cli-install.md](cli-install.md). The full reference is in [cli.md](cli.md) and the man pages are in `docs/man/`.
-
-### MCP (AI tools)
-
-`orbit mcp` runs the same commands as an MCP server over stdio. Sign in with `orbit login` first. To add it to Claude Code:
-
-```sh
-claude mcp add orbit -- orbit mcp
-```
-
-Or in a project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "orbit": {
-      "command": "orbit",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+Install the `orbit` command, sign in, update it and connect it to AI tools (MCP) on one page: [cli-install.md](cli-install.md). The full command reference is in [cli.md](cli.md) and the man pages are in `docs/man/`.
 
 ## 6. Updating each client
 
