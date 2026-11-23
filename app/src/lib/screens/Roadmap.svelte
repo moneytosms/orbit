@@ -89,6 +89,11 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
     onchange()
     await load()
   }
+  async function runCodeImport() {
+    importing = false
+    onchange()
+    await load()
+  }
   async function place(itemId: string, phaseId: string | null) {
     if (!id) return
     await placeItem(id, itemId, phaseId)
@@ -290,7 +295,7 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   <Dialog.Root bind:open={importing}>
     <Dialog.Content class="max-h-[85vh] overflow-y-auto">
       <Dialog.Title>Import Mermaid</Dialog.Title>
-      <MermaidImport onimport={runImport} />
+      <MermaidImport onimport={runImport} roadmapId={id} onimportcode={runCodeImport} />
     </Dialog.Content>
   </Dialog.Root>
   <Backlinks id={roadmap.id} />

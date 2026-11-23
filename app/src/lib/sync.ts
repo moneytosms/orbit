@@ -25,6 +25,8 @@ import {
   badge_shelf,
   routine_days,
   parse_mermaid,
+  parse_roadmap_code,
+  export_roadmap_code,
 } from '../../wasm/orbit_wasm'
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
@@ -1680,6 +1682,136 @@ export type MermaidPlan = { title: string | null; phases: MermaidPhase[] }
 export type MermaidResult = { ok: MermaidPlan } | { error: { line: number; message: string } }
 /** Parses Mermaid gantt or flowchart text in core; returns the plan or the error line. */
 export const parseMermaid = (text: string): MermaidResult => JSON.parse(parse_mermaid(text))
+
+export type RoadmapCode = {
+  name: string | null
+  parent: string | null
+  nodes: Record<string, { id: string | null; kind: GraphNodeKind; ref_id: string | null; title: string; x: number; y: number; band_id: string | null; line?: number }>
+  edges: { id: string | null; source: string; target: string; kind: GraphEdgeKind; label: string; taken: boolean; line?: number }[]
+  bands: Record<string, { id: string | null; name: string; start: string | null; end: string | null }>
+}
+export type RoadmapCodeResult = { ok: RoadmapCode } | { error: { line: number; message: string } }
+export const parseRoadmapCode = (text: string): RoadmapCodeResult => JSON.parse(parse_roadmap_code(text))
+export const exportRoadmapCode = (code: RoadmapCode) => export_roadmap_code(JSON.stringify(code))
+
+export async function roadmapCode(id: string): Promise<RoadmapCode> {
+  const [roadmap, graph] = await Promise.all([getRoadmap(id), roadmapGraph(id)])
+  if (!roadmap) throw new Error('Roadmap not found')
+  const nodes: RoadmapCode['nodes'] = {}
+  const nodeKeys = new Map<string, string>()
+  graph.nodes.forEach((node, index) => { nodeKeys.set(node.id, `n${index}`) })
+  const bandKeys = new Map<string, string>()
+  const bands: RoadmapCode['bands'] = {}
+  graph.bands.forEach((band, index) => {
+    bandKeys.set(band.id, `p${index}`)
+    bands[`p${index}`] = { id: band.id, name: band.name, start: band.start, end: band.end }
+  })
+  graph.nodes.forEach((node) => {
+    const band_id = node.band_id ? bandKeys.get(node.band_id) ?? null : null
+    nodes[nodeKeys.get(node.id)!] = { id: node.id, kind: node.node_kind, ref_id: node.ref_id, title: node.title, x: node.x, y: node.y, band_id }
+  })
+  return { name: roadmap.name, parent: roadmap.parent_id, nodes, bands, edges: graph.edges.flatMap((edge) => {
+    const source = nodeKeys.get(edge.source_id), target = nodeKeys.get(edge.target_id)
+    const taken = graph.nodes.some((node) => node.id === edge.source_id && node.taken_edge_id === edge.id)
+    return source && target ? [{ id: edge.id, source, target, kind: edge.edge_kind, label: edge.label, taken }] : []
+  }) }
+}
+
+export type RoadmapCodeDiff = { createNodes: number; updateNodes: number; createEdges: number; updateEdges: number; createBands: number; updateBands: number }
+/** Kinds whose nodes reference an Orbit row; other kinds are annotations and carry no ref_id. */
+const REF_KINDS: GraphNodeKind[] = ['task', 'project', 'goal', 'milestone']
+type RoadmapCodeError = { line: number; message: string }
+const codeError = (line: number | undefined, text: string): RoadmapCodeError =>
+  line ? { line, message: `Line ${line}: ${text}` } : { line: 0, message: text }
+
+/** Resolves ids and checks the code against the stored roadmap without writing anything. */
+async function planRoadmapCode(id: string, code: RoadmapCode) {
+  const rows = await allRows()
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const graph = await roadmapGraph(id)
+  const existingNodes = new Map(graph.nodes.map((node) => [node.id, node]))
+  const existingEdges = new Map(graph.edges.map((edge) => [edge.id, edge]))
+  const existingBands = new Map(graph.bands.map((band) => [band.id, band]))
+  const bandIds = new Map(Object.entries(code.bands).map(([key, band]) => [key, band.id ?? newId()]))
+  const nodeIds = new Map(Object.entries(code.nodes).map(([key, node]) => [key, node.id ?? newId()]))
+  const edgeIds = code.edges.map((edge) => edge.id ?? newId())
+  const errors: RoadmapCodeError[] = []
+  for (const key of Object.keys(code.bands)) {
+    const bandId = bandIds.get(key)!
+    const prior = byId.get(bandId)
+    if (prior && (prior.kind !== 'phase' || prior.roadmap_id !== id)) errors.push(codeError(undefined, `Band id ${bandId} belongs to another row`))
+  }
+  for (const [key, node] of Object.entries(code.nodes)) {
+    const nodeId = nodeIds.get(key)!
+    const prior = byId.get(nodeId)
+    if (prior && (prior.kind !== 'graph_node' || prior.roadmap_id !== id)) errors.push(codeError(node.line, `Node id ${nodeId} belongs to another row`))
+    if (node.ref_id && REF_KINDS.includes(node.kind)) {
+      const row = byId.get(node.ref_id)
+      if (!row || row.kind !== node.kind) errors.push(codeError(node.line, `Reference ${node.ref_id} is missing or is not a ${node.kind}`))
+    } else if (!node.ref_id && node.kind !== 'task' && REF_KINDS.includes(node.kind) && !existingNodes.has(nodeId))
+      errors.push(codeError(node.line, `${node.kind} node needs "ref" with an existing id`))
+    if (node.band_id && !code.bands[node.band_id]) errors.push(codeError(node.line, `Unknown band ${node.band_id}`))
+  }
+  code.edges.forEach((edge, index) => {
+    const edgeId = edgeIds[index]
+    const prior = byId.get(edgeId)
+    if (prior && (prior.kind !== 'graph_edge' || prior.roadmap_id !== id)) errors.push(codeError(edge.line, `Edge id ${edgeId} belongs to another row`))
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) errors.push(codeError(edge.line, 'Edge references an unknown node'))
+  })
+  const diff: RoadmapCodeDiff = {
+    createNodes: [...nodeIds.values()].filter((nodeId) => !existingNodes.has(nodeId)).length,
+    updateNodes: [...nodeIds.values()].filter((nodeId) => existingNodes.has(nodeId)).length,
+    createEdges: edgeIds.filter((edgeId) => !existingEdges.has(edgeId)).length,
+    updateEdges: edgeIds.filter((edgeId) => existingEdges.has(edgeId)).length,
+    createBands: [...bandIds.values()].filter((bandId) => !existingBands.has(bandId)).length,
+    updateBands: [...bandIds.values()].filter((bandId) => existingBands.has(bandId)).length,
+  }
+  errors.sort((a, b) => a.line - b.line)
+  return { diff, errors, nodeIds, bandIds, edgeIds, existingNodes, existingEdges, existingBands }
+}
+
+/** Counts what an import would create or update, and every problem with its line. Writes nothing. */
+export async function previewRoadmapCode(
+  id: string,
+  code: RoadmapCode,
+): Promise<{ diff: RoadmapCodeDiff; errors: RoadmapCodeError[] }> {
+  const { diff, errors } = await planRoadmapCode(id, code)
+  return { diff, errors }
+}
+/** Applies only when the code validates. Rows absent from source are retained. */
+export async function importRoadmapCode(id: string, code: RoadmapCode): Promise<void> {
+  const plan = await planRoadmapCode(id, code)
+  if (plan.errors.length) throw new Error(plan.errors.map((error) => error.message).join('\n'))
+  const { nodeIds, bandIds, edgeIds, existingNodes, existingEdges, existingBands } = plan
+  for (const [key, band] of Object.entries(code.bands)) {
+    const bandId = bandIds.get(key)!
+    if (existingBands.has(bandId)) await updatePhase(bandId, { name: band.name, start: band.start, end: band.end })
+    else await enqueue('phase.create', { id: bandId, roadmap_id: id, name: band.name, order: await appendOrder(id), start: band.start, end: band.end })
+  }
+  for (const [key, node] of Object.entries(code.nodes)) {
+    const nodeId = nodeIds.get(key)!, bandId = node.band_id ? bandIds.get(node.band_id)! : null
+    if (existingNodes.has(nodeId)) {
+      await updateGraphNode(nodeId, { title: node.title, band_id: bandId })
+      await moveGraphNode(nodeId, node.x, node.y)
+      continue
+    }
+    // Task nodes without a reference get a new Inbox task, so the graph always points at a real row.
+    const refId = REF_KINDS.includes(node.kind) ? node.ref_id ?? (node.kind === 'task' ? await createTask(node.title) : null) : null
+    await enqueue('roadmap.node.create', { id: nodeId, roadmap_id: id, kind: node.kind, ref_id: refId, title: node.title, x: node.x, y: node.y, band_id: bandId })
+  }
+  for (const [index, edge] of code.edges.entries()) {
+    const edgeId = edgeIds[index], source_id = nodeIds.get(edge.source)!, target_id = nodeIds.get(edge.target)!
+    if (existingEdges.has(edgeId)) await updateGraphEdge(edgeId, { source_id, target_id, kind: edge.kind, label: edge.label })
+    else await enqueue('roadmap.edge.create', { id: edgeId, roadmap_id: id, source_id, target_id, kind: edge.kind, label: edge.label })
+  }
+  // The taken branch of each decision: the edge flagged `taken`, or none when the source has no flagged edge.
+  const taken = new Map<string, string>()
+  for (const [index, edge] of code.edges.entries()) if (edge.taken) taken.set(nodeIds.get(edge.source)!, edgeIds[index])
+  for (const nodeId of nodeIds.values()) {
+    const edgeId = taken.get(nodeId) ?? null
+    if (edgeId !== (existingNodes.get(nodeId)?.taken_edge_id ?? null)) await decideGraphNode(nodeId, edgeId)
+  }
+}
 /** Creates Phases and items from a parsed plan inside a Roadmap, placing each item in its Phase. */
 export async function importMermaid(roadmapId: string, plan: MermaidPlan): Promise<void> {
   const rows = await visibleRows()
