@@ -34,6 +34,20 @@ These come from the server and client code, so they decide how the route has to 
 | Attachment uploads are limited by `ORBIT_MAX_BLOB_MB`, default 25 | Below Cloudflare's 100 MB request ceiling. Leave the default. |
 | Every client stores the server address without a trailing slash and expects a bare origin | Hand out `https://orbit.example.com` and nothing longer. |
 
+## Request volume and tunnel cost
+
+For one continuously visible client, the normal sync timer yields 1,440 `/sync` requests/day at
+60 seconds, 17,280/day at 5 seconds, and 21,600/day at 4 seconds. These are interval calculations
+(`86,400 seconds/day ÷ polling interval`), not Cloudflare billing-meter readings; multiply by the
+number of visible clients and add requests caused by edits. A 4 second timer is 15 times the current
+poll request volume.
+
+The tunnel itself adds an estimated $0 plan charge for an included tunnel within Cloudflare's first
+1,000 tunnels. This does not price the origin machine, its network transfer, or other Cloudflare
+products. Check the current [Tunnel overview](https://developers.cloudflare.com/tunnel/) and
+[tunnel pricing](https://developers.cloudflare.com/tunnel/features/tunnels-for-platforms/) before
+budgeting a deployment; account terms can change.
+
 ## 1. Run the server on the VPS
 
 Follow [Run it](deploy.md#1-run-it), then make the data mount absolute so a wrong working directory

@@ -177,7 +177,7 @@ pub fn with_web(router: Router, dir: &Path) -> Router {
 
 async fn sync(
     State(st): State<St>,
-    _: auth::Device,
+    auth::Device(device_id): auth::Device,
     headers: HeaderMap,
     Json(req): Json<SyncRequest>,
 ) -> Response {
@@ -207,8 +207,39 @@ async fn sync(
         .flatten()
         .and_then(|v| v.strip_prefix(GRAPH_CURSOR_V1))
         .and_then(|v| v.parse::<u64>().ok());
+    // Debug-only latency trace (#14); off unless ORBIT_SYNC_TRACE=1.
+    let trace = std::env::var("ORBIT_SYNC_TRACE").is_ok_and(|value| value == "1");
+    let received_at = trace.then(now_ms);
+    let targets = trace.then(|| {
+        req.commands
+            .iter()
+            .map(|command| (command.uuid, command.op.target()))
+            .collect::<Vec<_>>()
+    });
     match run(&mut conn, &st.data, req, graph, graph_cursor) {
         Ok(response) => {
+            if let Some(targets) = targets {
+                let applied: Vec<_> = targets
+                    .iter()
+                    .filter(|(uuid, _)| matches!(response.statuses.get(uuid), Some(Status::Ok)))
+                    .map(|(_, target)| target.to_string())
+                    .collect();
+                let delta: Vec<_> = response
+                    .delta
+                    .iter()
+                    .map(|row| row.id().to_string())
+                    .collect();
+                eprintln!(
+                    "sync_trace {}",
+                    serde_json::json!({
+                        "device": device_id,
+                        "received_at": received_at,
+                        "applied_at": now_ms(),
+                        "commands": applied,
+                        "delta": delta,
+                    })
+                );
+            }
             let graph_token = response.token;
             let mut response = Json(response).into_response();
             if graph
