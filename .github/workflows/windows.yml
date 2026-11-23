@@ -1,0 +1,68 @@
+# Windows desktop: the NSIS installer (Orbit_<version>_x64-setup.exe), its updater signature and a
+# `windows-x86_64` latest.json fragment. release.yml calls this on every tag. Run it by hand with an
+# existing tag to build the current ref and attach it to that release (used once for v0.3.0).
+name: windows
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to attach the installer to, e.g. v0.3.0
+        required: true
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack,tauri-cli
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm -C app install --frozen-lockfile
+      # `just wasm` without just: its recipes need a POSIX sh.
+      - run: wasm-pack build crates/orbit-wasm --target web --out-dir ../../app/wasm --no-pack
+      - name: NSIS installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: cargo tauri build --bundles nsis
+      - name: Collect installer, signature and latest.json fragment
+        run: |
+          mkdir -p dist
+          cp target/release/bundle/nsis/*-setup.exe target/release/bundle/nsis/*-setup.exe.sig dist/
+          exe=$(basename dist/*-setup.exe)
+          [[ "$exe" == "Orbit_${TAG#v}_x64-setup.exe" ]] || { echo "unexpected installer name: $exe" >&2; exit 1; }
+          jq -n --arg sig "$(cat "dist/$exe.sig")" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$exe" \
+            '{platforms: {"windows-x86_64": {signature: $sig, url: $url}}}' > dist/latest-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+      - name: Attach to the existing release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          gh release download "$TAG" -p latest.json -p SHA256SUMS
+          jq -s '.[0] * .[1]' latest.json latest-windows.json > merged.json && mv merged.json latest.json
+          rm latest-windows.json
+          exe=$(basename *-setup.exe)
+          # Replace the changed latest.json line and add the installer's lines.
+          { grep -v -e ' latest.json$' SHA256SUMS; sha256sum latest.json "$exe" "$exe.sig"; } | sed 's/ \*/  /' > sums
+          mv sums SHA256SUMS
+          gh release upload "$TAG" --clobber latest.json SHA256SUMS "$exe" "$exe.sig"

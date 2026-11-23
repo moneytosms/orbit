@@ -1,5 +1,6 @@
 # Runs on the tag that scripts/release.sh --publish pushes. Builds the server image, the
-# AppImage, the signed APK and the orbit CLI (linux x86_64 and aarch64), then creates the GitHub Release with them.
+# AppImage, the Windows installer (windows.yml), the signed APK and the orbit CLI (linux x86_64 and aarch64),
+# then creates the GitHub Release with them.
 name: release
 on:
   push:
@@ -142,8 +143,12 @@ jobs:
           name: cli-${{ matrix.arch }}
           path: dist/*
 
+  windows:
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+
   publish:
-    needs: [image, linux, android, cli]
+    needs: [image, linux, windows, android, cli]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -153,6 +158,11 @@ jobs:
         with:
           merge-multiple: true
           path: dist
+      - name: Merge the Windows updater entry into latest.json
+        run: |
+          jq -s '.[0] * .[1]' dist/latest.json dist/latest-windows.json > dist/merged.json
+          mv dist/merged.json dist/latest.json
+          rm dist/latest-windows.json
       - name: Generate release checksums
         run: scripts/write-release-checksums.sh dist
       - name: Verify GHCR image tags

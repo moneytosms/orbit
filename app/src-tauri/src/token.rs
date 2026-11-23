@@ -11,12 +11,13 @@ pub struct Stored {
 
 type Res<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// `$XDG_DATA_HOME/orbit`, else `~/.local/share/orbit`.
+/// `$XDG_DATA_HOME/orbit`, else `~/.local/share/orbit`, else `%APPDATA%\orbit` (Windows).
 pub fn data_dir() -> PathBuf {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))
         .unwrap_or_else(std::env::temp_dir);
     base.join("orbit")
 }
@@ -67,16 +68,15 @@ pub fn file_load(dir: &Path) -> Option<Stored> {
 
 pub fn file_save(dir: &Path, s: &Stored) -> Res<()> {
     use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     std::fs::create_dir_all(dir)?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(file(dir))?;
-    // An existing file keeps its old mode through `open`.
-    f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut f = options.open(file(dir))?;
+    // An existing file keeps its old mode through `open`. Windows: the profile directory's ACL guards it.
+    #[cfg(unix)]
+    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     f.write_all(serde_json::to_string(s)?.as_bytes())?;
     Ok(())
 }

@@ -8,6 +8,8 @@ dist="${2:?usage: check-release-assets.sh VERSION DIST_DIR}"
 required=(
   "Orbit_${version}_amd64.AppImage"
   "Orbit_${version}_amd64.AppImage.sig"
+  "Orbit_${version}_x64-setup.exe"
+  "Orbit_${version}_x64-setup.exe.sig"
   "latest.json"
   "Orbit-${version}-android.apk"
   "orbit-${version}-linux-x86_64.tar.gz"
@@ -36,6 +38,14 @@ jq -e --arg version "$version" --arg asset "Orbit_${version}_amd64.AppImage" \
 signature="$(jq -r '.platforms["linux-x86_64"].signature // empty' "$dist/latest.json")"
 [[ "$signature" == "$(<"$dist/Orbit_${version}_amd64.AppImage.sig")" ]] || {
   echo "latest.json signature does not match the AppImage signature asset" >&2
+  exit 1
+}
+
+jq -e --arg asset "Orbit_${version}_x64-setup.exe" \
+  '.platforms["windows-x86_64"].url | endswith($asset)' \
+  "$dist/latest.json" >/dev/null || { echo "latest.json does not point to the versioned Windows installer" >&2; exit 1; }
+[[ "$(jq -r '.platforms["windows-x86_64"].signature // empty' "$dist/latest.json")" == "$(<"$dist/Orbit_${version}_x64-setup.exe.sig")" ]] || {
+  echo "latest.json signature does not match the Windows installer signature asset" >&2
   exit 1
 }
 

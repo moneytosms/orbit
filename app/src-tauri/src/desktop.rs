@@ -8,7 +8,11 @@ use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager, Url, Webview};
 use tauri_plugin_notification::NotificationExt;
 
+#[cfg(not(windows))]
 const BUNDLED: &str = "tauri://localhost/server.html";
+// WebView2 serves bundled pages from http://tauri.localhost, not tauri://localhost.
+#[cfg(windows)]
+const BUNDLED: &str = "http://tauri.localhost/server.html";
 const AUTO_UPDATES: &str = "auto-updates";
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 static LAST_REQUIRED_PROTOCOL: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
@@ -43,7 +47,9 @@ fn save(url: &str) -> std::io::Result<()> {
 }
 
 fn is_bundled(url: &Url) -> bool {
-    url.scheme() == "tauri" && url.host_str() == Some("localhost")
+    // Not `origin()`: a `tauri:` URL has an opaque origin that equals nothing.
+    let bundled: Url = BUNDLED.parse().expect("BUNDLED is a URL");
+    url.scheme() == bundled.scheme() && url.host_str() == bundled.host_str()
 }
 
 /// Commands run only for the bundled pages or the saved server: a page the window wandered to must not

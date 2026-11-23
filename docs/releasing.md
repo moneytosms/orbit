@@ -16,6 +16,7 @@ just release 0.1.0 --publish    # bumps the repo, commits, tags v0.1.0, pushes
 - `ghcr.io/<owner>/<repo>:<version>` and `:latest` (linux/amd64, linux/arm64)
 - `Orbit_<version>_amd64.AppImage` (Linux desktop)
 - `Orbit_<version>_amd64.AppImage.sig` and `latest.json` (desktop updater)
+- `Orbit_<version>_x64-setup.exe` and `.exe.sig` (Windows installer, unsigned for SmartScreen; `.sig` feeds the updater)
 - `Orbit-<version>-android.apk` (signed release APK)
 - `orbit-<version>-linux-x86_64.tar.gz` and `orbit-<version>-linux-aarch64.tar.gz` (CLI)
 - `SHA256SUMS` for the release assets

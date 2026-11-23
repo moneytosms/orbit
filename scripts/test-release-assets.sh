@@ -8,6 +8,8 @@ trap 'rm -rf "$dist"' EXIT
 names=(
   "Orbit_${version}_amd64.AppImage"
   "Orbit_${version}_amd64.AppImage.sig"
+  "Orbit_${version}_x64-setup.exe"
+  "Orbit_${version}_x64-setup.exe.sig"
   "Orbit-${version}-android.apk"
   "orbit-${version}-linux-x86_64.tar.gz"
   "orbit-${version}-linux-aarch64.tar.gz"
@@ -21,9 +23,11 @@ for arch in x86_64 aarch64; do
   rm -rf "$dist/$folder"
 done
 signature="$(<"$dist/Orbit_${version}_amd64.AppImage.sig")"
-jq -n --arg version "$version" --arg signature "$signature" \
+win_signature="$(<"$dist/Orbit_${version}_x64-setup.exe.sig")"
+jq -n --arg version "$version" --arg signature "$signature" --arg win_signature "$win_signature" \
   --arg url "https://example.test/Orbit_${version}_amd64.AppImage" \
-  '{version:$version,platforms:{"linux-x86_64":{signature:$signature,url:$url}}}' > "$dist/latest.json"
+  --arg win_url "https://example.test/Orbit_${version}_x64-setup.exe" \
+  '{version:$version,platforms:{"linux-x86_64":{signature:$signature,url:$url},"windows-x86_64":{signature:$win_signature,url:$win_url}}}' > "$dist/latest.json"
 "$root/scripts/write-release-checksums.sh" "$dist"
 "$root/scripts/check-release-assets.sh" "$version" "$dist"
 "$root/scripts/write-release-checksums.sh" "$dist"
