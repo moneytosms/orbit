@@ -636,17 +636,42 @@ pub fn item_progress(rows: &[Row], item_id: Uuid) -> f64 {
     }
 }
 
-/// The placements in `phase_id` whose item still exists and isn't trashed or archived.
+/// The items in `phase_id` whose row still exists and isn't trashed or archived. Membership comes
+/// from the graph nodes' `band_id` once the Phase's roadmap has any; before that, from Placements.
 fn phase_items<'a>(rows: &'a [Row], phase_id: Uuid, ids: &ById<'a>) -> Vec<&'a Row> {
-    let mut items: Vec<&Row> = rows
-        .iter()
-        .filter_map(|r| match r {
-            Row::Placement(p) if p.phase_id == Some(phase_id) => ids.get(&p.item_id).copied(),
-            _ => None,
-        })
-        .filter(|r| is_placeable(r) && !hidden(r, ids))
-        .collect();
+    let roadmap_id = rows.iter().find_map(|r| match r {
+        Row::Phase(p) if p.id == phase_id => Some(p.roadmap_id),
+        _ => None,
+    });
+    let graphed = roadmap_id.filter(|rm| {
+        rows.iter()
+            .any(|r| matches!(r, Row::GraphNode(n) if n.roadmap_id == *rm))
+    });
+    let mut items: Vec<&Row> = match graphed {
+        Some(roadmap_id) => rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::GraphNode(n)
+                    if n.roadmap_id == roadmap_id
+                        && n.trashed_at.is_none()
+                        && n.band_id == Some(phase_id) =>
+                {
+                    ids.get(&n.ref_id?).copied()
+                }
+                _ => None,
+            })
+            .collect(),
+        None => rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Placement(p) if p.phase_id == Some(phase_id) => ids.get(&p.item_id).copied(),
+                _ => None,
+            })
+            .collect(),
+    };
+    items.retain(|r| is_placeable(r) && !hidden(r, ids));
     items.sort_by_key(|r| r.id());
+    items.dedup_by_key(|r| r.id());
     items
 }
 
@@ -1309,6 +1334,74 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].source_id, nodes[0].id);
         assert!(matches!(rows[3], Row::Placement(_)));
+    }
+
+    #[test]
+    fn band_membership_follows_graph_nodes() {
+        let node = |band: Option<u128>| {
+            Row::GraphNode(GraphNode {
+                id: uid(80),
+                roadmap_id: uid(50),
+                kind: NodeKind::Task,
+                ref_id: Some(uid(11)),
+                title: String::new(),
+                x: 0.0,
+                y: 0.0,
+                band_id: band.map(uid),
+                taken_edge_id: None,
+                decided_at: None,
+                trashed_at: None,
+            })
+        };
+        let mut rows = vec![
+            phase(60, "a", None, None, false),
+            task(11, uid(1), true),
+            task(12, uid(1), false),
+            node(Some(60)),
+            place(60, 12),
+        ];
+        // The stale Placement for task 12 doesn't count once graph nodes exist.
+        assert_eq!(phase_progress(&rows, uid(60)), 1.0);
+        let items = &summary(&rows, uid(50), "2026-01-01").phases[0].items;
+        assert_eq!(
+            items.iter().map(|i| i.id).collect::<Vec<_>>(),
+            vec![uid(11)]
+        );
+        let Row::GraphNode(n) = &rows[3] else {
+            unreachable!()
+        };
+        let moved = apply(
+            Some(Row::GraphNode(n.clone())),
+            &cmd(Op::RoadmapNodeUpdate {
+                id: uid(80),
+                title: None,
+                kind: None,
+                ref_id: None,
+                band_id: Some(None),
+            }),
+        )
+        .unwrap();
+        rows[3] = moved;
+        assert_eq!(phase_progress(&rows, uid(60)), 0.0);
+        assert!(
+            summary(&rows, uid(50), "2026-01-01").phases[0]
+                .items
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn legacy_roadmap_without_graph_rows_uses_placements() {
+        let rows = vec![
+            phase(60, "a", None, None, false),
+            task(11, uid(1), true),
+            task(12, uid(1), false),
+            place(60, 11),
+            place(60, 12),
+        ];
+        assert_eq!(phase_progress(&rows, uid(60)), 0.5);
+        let items = &summary(&rows, uid(50), "2026-01-01").phases[0].items;
+        assert_eq!(items.len(), 2);
     }
 
     #[test]
