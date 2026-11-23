@@ -431,6 +431,8 @@ export const createProject = async (areaId: string, name: string) =>
   enqueue('project.create', { id: newId(), parent_id: areaId, name, order: await appendOrder(areaId) })
 export const createSection = async (parentId: string, name: string) =>
   enqueue('section.create', { id: newId(), parent_id: parentId, name, order: await appendOrder(parentId) })
+export const updateSection = (id: string, patch: { name?: string; order?: string }) =>
+  enqueue('section.update', { id, ...patch })
 /** Without `parentId` the Task lands in the Inbox. Returns the new Task's id. */
 export const createTask = async (title: string, parentId?: string) => {
   const id = newId()
@@ -579,6 +581,8 @@ export async function whatsNext(): Promise<NextItem[]> {
   )
 }
 export const deleteItem = (id: string) => enqueue('item.delete', { id })
+/** Deletes a Section; the delete effect reparents its Tasks on every replica. */
+export const deleteSection = (id: string) => deleteItem(id)
 export const restoreItem = (id: string) => enqueue('item.restore', { id })
 export const archiveItem = (id: string) => enqueue('item.archive', { id })
 export const unarchiveItem = (id: string) => enqueue('item.unarchive', { id })
@@ -826,7 +830,7 @@ export async function quickAdd(p: Parsed, fallbackParentId: string, forceParent 
 const COMPLETES = ['task.complete', 'goal.complete', 'milestone.update']
 
 /** Applies a command to its row via core; throws the error code if core rejects it. */
-async function predict(rows: IDBObjectStore, cmd: Command, queued: Command[] = []) {
+async function predict(rows: IDBObjectStore, cmd: Command, queued: Command[] = []): Promise<string[]> {
   const key = cmd.type.startsWith('reminder.') ? cmd.args.task_id : cmd.args.id
   const snapshotRequest = cmd.type === 'task.uncomplete' ? rows.getAll() : undefined
   const [existing, snapshot] = await Promise.all([
@@ -869,7 +873,34 @@ async function predict(rows: IDBObjectStore, cmd: Command, queued: Command[] = [
       rows.delete(completion.id)
     }
   }
-  rows.put(JSON.parse(apply(from, JSON.stringify(cmd))))
+  const updated = JSON.parse(apply(from, JSON.stringify(cmd))) as Row
+  rows.put(updated)
+  const affected: string[] = []
+  if (
+    cmd.type === 'item.delete' &&
+    existing?.kind === 'section' &&
+    updated.kind === 'section' &&
+    updated.trashed_at !== null
+  ) {
+    const all = await req<Row[]>(rows.getAll())
+    const tasks = all
+      .filter((row): row is Task => row.kind === 'task' && row.parent_id === existing.id)
+      .sort(byOrder)
+    let last = all
+      .flatMap((row) =>
+        'order' in row && 'parent_id' in row && row.parent_id === existing.parent_id ? [row.order] : [],
+      )
+      .sort()
+      .at(-1)
+    for (const task of tasks) {
+      const order = orderAfter(last)
+      last = order
+      const move = { ...cmd, args: { id: task.id, parent_id: existing.parent_id, order } }
+      rows.put(JSON.parse(apply(JSON.stringify(task), JSON.stringify(move))))
+      affected.push(task.id)
+    }
+  }
+  return affected
 }
 
 /** Like the server: completing a Task completes its open descendants at the same moment. */
@@ -898,18 +929,21 @@ async function enqueue(type: string, args: Command['args']): Promise<void> {
   await enqueueCommand(type, args)
 }
 
-async function enqueueCommand(type: string, args: Command['args']): Promise<{ uuid: string; hlc: Hlc }> {
+async function enqueueCommand(
+  type: string,
+  args: Command['args'],
+): Promise<{ uuid: string; hlc: Hlc; affected: string[] }> {
   const result = await tx(['rows', 'outbox', 'meta'], async (s) => {
     const hlc: Hlc = JSON.parse(next_hlc(JSON.stringify(await clock(s('meta'))), Date.now()))
     const cmd = { uuid: newId(), type, args, hlc }
     const queued = await req<Command[]>(s('outbox').getAll())
-    await predict(s('rows'), cmd, queued)
+    const affected = await predict(s('rows'), cmd, queued)
     if (type === 'task.complete') await cascade(s('rows'), cmd)
     s('meta').put(hlc, 'hlc')
     s('outbox').put(cmd)
-    return { uuid: cmd.uuid, hlc }
+    return { uuid: cmd.uuid, hlc, affected }
   })
-  await emitRows([(type.startsWith('reminder.') ? args.task_id : args.id) as string | undefined])
+  await emitRows([(type.startsWith('reminder.') ? args.task_id : args.id) as string | undefined, ...result.affected])
   changed()
   clearTimeout(debounce)
   debounce = setTimeout(sync, 2000)

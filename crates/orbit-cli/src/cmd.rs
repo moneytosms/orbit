@@ -783,6 +783,12 @@ pub fn done(r: &str, dry_run: bool) -> Done {
 
 pub fn show(r: &str) -> Done {
     let ctx = open()?;
+    let id = refs::resolve(&ctx.dir, &ctx.client, r)?;
+    if let Some(Row::Section(section)) = ctx.client.get_row(id).map_err(internal)? {
+        let human = format!("{}\nid: {}\nsection", section.name, section.id);
+        let body = json!({ "section": serde_json::to_value(&section).map_err(internal)? });
+        return Ok((human, body));
+    }
     let task = task_of(&ctx, r)?;
     let status = if task.completed_at.is_some() {
         "done"

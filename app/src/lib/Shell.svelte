@@ -315,6 +315,7 @@
             >
               <a
                 href="#/area/{a.id}"
+                onclick={() => (drawer = false)}
                 aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
                 class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 font-medium"
               >
@@ -342,6 +343,7 @@
                 <div class="group flex h-7 items-center rounded-[7px] hover:bg-hover">
                   <a
                     href="#/project/{p.id}"
+                    onclick={() => (drawer = false)}
                     aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
                     class="flex min-w-0 flex-1 items-center rounded-[7px] pr-1 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
                   >

@@ -591,6 +591,12 @@ fn run_command(
                         row.set_trashed(born_trashed);
                     }
                     write(&tx, &row, &clocks)?;
+                    if let Row::Section(section) = &row
+                        && section.trashed_at.is_some()
+                        && matches!(&cmd.op, Op::ItemDelete { .. })
+                    {
+                        reparent_section_tasks(&tx, section.id, cmd)?;
+                    }
                     if let (Some(Row::Page(old)), Op::PageEditBody { body, base_rev, .. }) =
                         (&existing, &cmd.op)
                         && orbit_core::page::is_conflict(old, *base_rev)
@@ -1000,6 +1006,31 @@ fn all_rows(conn: &Connection) -> rusqlite::Result<Vec<Row>> {
         rows.push(serde_json::from_str(&data?).map_err(json_err)?);
     }
     Ok(rows)
+}
+
+/// Deleting a Section moves every direct Task, including completed or already trashed Tasks,
+/// back to its Area or Project. Child moves use the delete's HLC so newer moves still win.
+fn reparent_section_tasks(
+    conn: &Connection,
+    section_id: orbit_core::Uuid,
+    cmd: &Command,
+) -> rusqlite::Result<()> {
+    let rows = all_rows(conn)?;
+    for effect in orbit_core::section_delete_effects(&rows, section_id, cmd) {
+        let Some((data, clocks)) = load(conn, &effect.op.target().to_string())? else {
+            continue;
+        };
+        let old: Row = serde_json::from_str(&data).map_err(json_err)?;
+        let old_clocks: Clocks = serde_json::from_str(&clocks).map_err(json_err)?;
+        let mut clocks = old_clocks.clone();
+        let Ok(row) = apply_lww(Some(old.clone()), &mut clocks, &effect) else {
+            continue;
+        };
+        if row != old || clocks != old_clocks {
+            write(conn, &row, &clocks)?;
+        }
+    }
+    Ok(())
 }
 
 /// Materialize deterministic graph rows for old Placement data. Writes are idempotent so a

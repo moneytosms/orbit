@@ -6,16 +6,18 @@
   import {
     archiveItem,
     deleteItem,
+    deleteSection,
     renamePage,
     renameRoadmap,
     rowsSnapshot,
     updateArea,
     updateGoal,
     updateProject,
+    updateSection,
     updateView,
   } from '$lib/sync'
 
-  type Kind = 'area' | 'project' | 'view' | 'goal' | 'roadmap' | 'page'
+  type Kind = 'area' | 'project' | 'view' | 'goal' | 'roadmap' | 'page' | 'section'
   let {
     id,
     name,
@@ -75,6 +77,7 @@
     else if (kind === 'goal') await updateGoal(id, { name: next })
     else if (kind === 'roadmap') await renameRoadmap(id, next)
     else if (kind === 'page') await renamePage(id, next)
+    else if (kind === 'section') await updateSection(id, { name: next })
     else await updateView(id, { name: next })
     value = next
     open = false
@@ -83,7 +86,8 @@
 
   async function remove() {
     const navigate = await routeIsAffected()
-    await deleteItem(id)
+    if (kind === 'section') await deleteSection(id)
+    else await deleteItem(id)
     open = false
     onchange()
     if (navigate) location.hash = fallbackHref
@@ -150,7 +154,10 @@
         <Button variant="primary" disabled={!value.trim()} onclick={rename}>Save</Button>
       </div>
     {:else}
-      <p class="mt-2 text-sm text-muted">“{name}” will move to Trash. You can restore it from there.</p>
+      <p class="mt-2 text-sm text-muted">
+        {#if kind === 'section'}Tasks in “{name}” will move to its parent. The Section will move to Trash.{:else}“{name}”
+          will move to Trash. You can restore it from there.{/if}
+      </p>
       <div class="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
         <Button variant="destructive" onclick={remove}>Delete</Button>

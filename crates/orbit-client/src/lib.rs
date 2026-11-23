@@ -3,6 +3,7 @@
 use orbit_core::{
     Command, ErrorCode, Hlc, Op, PROTOCOL_V, Row, Status, SyncRequest, SyncResponse, Task,
     UpgradeRequired, Uuid, VersionInfo, apply, completion_for, new_id, parse,
+    section_delete_effects,
 };
 use rusqlite::{Connection, OptionalExtension};
 
@@ -574,6 +575,20 @@ fn predict(db: &Connection, cmd: &Command) -> Result<()> {
             }
         }
         _ => {}
+    }
+    if matches!(&cmd.op, Op::ItemDelete { .. })
+        && let Row::Section(section) = &new
+        && section.trashed_at.is_some()
+    {
+        let rows = all_rows(db)?;
+        for effect in section_delete_effects(&rows, section.id, cmd) {
+            let Some(existing) = row(db, effect.op.target())? else {
+                continue;
+            };
+            let moved = apply(Some(existing), &effect)
+                .map_err(|code| format!("rejected: {}", serde_json::json!(code)))?;
+            put(db, &moved)?;
+        }
     }
     Ok(())
 }
