@@ -72,17 +72,15 @@ step "bump lockstep version to $VERSION in $WORK"
 sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"$/version = \"$VERSION\"/" Cargo.toml
 sed -i -E "s/(orbit-[a-z]+ = \{ version = \")[0-9.]+(\", path)/\1$VERSION\2/" crates/*/Cargo.toml
 sed -i -E "s/^  \"version\": \"[^\"]+\"/  \"version\": \"$VERSION\"/" app/package.json app/src-tauri/tauri.conf.json
-sed -i -E "s/^pkgver=.*/pkgver=$VERSION/" packaging/aur/PKGBUILD
 
 step "verify lockstep (cargo resolves the workspace, updates Cargo.lock)"
 cargo metadata --format-version 1 >/dev/null
-for f in Cargo.toml app/package.json app/src-tauri/tauri.conf.json packaging/aur/PKGBUILD; do
+for f in Cargo.toml app/package.json app/src-tauri/tauri.conf.json; do
   grep -q "$VERSION" "$f" || {
     echo "release: $f did not take version $VERSION" >&2
     exit 1
   }
 done
-(cd packaging/aur && makepkg --printsrcinfo >/dev/null)
 echo "    versions: $(grep -h '^version = ' Cargo.toml) / package.json $(grep -m1 '"version"' app/package.json | tr -d ' ,') / tauri.conf.json $(grep -m1 '"version"' app/src-tauri/tauri.conf.json | tr -d ' ,')"
 
 step "changelog (git-cliff, conventional commits)"
@@ -104,7 +102,7 @@ if ((PUBLISH)); then
   step "commit and tag"
   cd "$ROOT"
   git add Cargo.toml Cargo.lock crates/*/Cargo.toml app/package.json app/src-tauri/tauri.conf.json \
-    packaging/aur/PKGBUILD CHANGELOG.md
+    CHANGELOG.md
   git commit -m "chore: release $TAG"
   git tag -a "$TAG" -m "Orbit $TAG"
 fi
@@ -114,8 +112,6 @@ run git push origin HEAD
 run git push origin "$TAG"
 echo "    tag push starts .github/workflows/release.yml: GHCR image, signed AppImage/APK, CLI tarballs,"
 echo "    checksummed GitHub Release assets."
-echo "    After the release workflow finishes, run: just release-aur $VERSION"
-echo "    Then copy packaging/aur/PKGBUILD and .SRCINFO to orbit-bin and push to the AUR."
 
 if ((PUBLISH)); then
   echo "released $TAG"

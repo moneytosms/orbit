@@ -15,7 +15,7 @@ Pick the clients you want:
 | Client | Platforms | Where |
 | --- | --- | --- |
 | Web / PWA | any browser; installable on desktop and phone | below |
-| Desktop app | Linux AppImage, or AUR `orbit-bin` | [Desktop app](linux-desktop.md) |
+| Desktop app | Linux AppImage | [Desktop app](linux-desktop.md) |
 | Android | Android 12+ (minSdk 31), sideloaded APK | [Android app](android.md) |
 | CLI and MCP | Linux prebuilt; anywhere else from source | [CLI: install and sign in](cli-install.md) |
 
@@ -33,7 +33,7 @@ Pick the clients you want:
 
 - **Server:** see [Deploy](deploy.md).
 - **Web / PWA:** the service worker updates itself in the background (`registerType: 'autoUpdate'`). Close and reopen the app to load the new version.
-- **Linux AppImage:** the in-app updater installs new releases; restart when it asks. AUR installs: `yay -Syu orbit-bin`.
+- **Linux AppImage:** the in-app updater installs new releases; restart when it asks.
 - **Android:** install the new APK over the old one, or let Obtainium do it. Android only updates an app when the new APK has the same signature, so always use the release APK and never a debug build.
 - **CLI:** run the install command again (see [cli-install.md](cli-install.md#4-update)).
 
@@ -44,7 +44,7 @@ Run `orbit sync` before a CLI update so you do not leave queued changes behind.
 1. Revoke the Device first: Settings > **Account and devices** > **Revoke** on that Device. The device is signed out on the server and can no longer sync.
 2. Remove the local copy:
    - **Web:** remove the installed app (browser's app menu, or Settings on the phone), and clear the site data if you want the offline copy gone.
-   - **Linux:** delete the AppImage (or `yay -R orbit-bin`), disable autostart, and remove the local data with `rm -r ~/.local/share/orbit` (or `$XDG_DATA_HOME/orbit`). This deletes the local replica and the saved token.
+   - **Linux:** delete the AppImage, disable autostart, and remove the local data with `rm -r ~/.local/share/orbit` (or `$XDG_DATA_HOME/orbit`). This deletes the local replica and the saved token.
    - **Android:** uninstall Orbit from the launcher or Settings > Apps.
    - **CLI:** run `orbit sync` first, then `orbit logout`. Logout refuses while changes are unsynced unless you pass `--yes`. Then delete the `orbit` binary (`cargo uninstall orbit-cli`).
 

@@ -71,7 +71,7 @@ Open the server's address in a browser; it can be installed as a PWA. Browser re
 
 ### Linux desktop
 
-Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage; an AUR package (`orbit-bin`) is prepared in `packaging/aur`. Install steps, flags and the hotkey: [docs/linux-desktop.md](docs/linux-desktop.md).
+Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage. Install steps, flags and the hotkey: [docs/linux-desktop.md](docs/linux-desktop.md).
 
 ### Android
 

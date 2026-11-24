@@ -1,7 +1,7 @@
 # Releasing Orbit
 
 For maintainers cutting a release. Releases are lockstep: one semver `X.Y.Z` applies to the Cargo workspace, the crate path-dep pins,
-`app/package.json`, `app/src-tauri/tauri.conf.json` and `packaging/aur/PKGBUILD`.
+`app/package.json`, and `app/src-tauri/tauri.conf.json`.
 
 ## Before you start
 
@@ -53,7 +53,7 @@ upgrade link; a client newer than the server gets HTTP 400.
 | Client | Ships as | Gets protocol changes by | Falls behind when | Fix |
 | --- | --- | --- | --- | --- |
 | Web / PWA | Served by the server (`ORBIT_WEB`) | Server deploy; the service worker updates itself | Never, it is the server's own UI | Reload the page |
-| Linux desktop | AppImage (`Orbit_<version>_amd64.AppImage`) | Server deploy for UI; AppImage release for shell changes | Shell change needs a new AppImage | In-app updater, or `yay -Syu orbit-bin` on AUR |
+| Linux desktop | AppImage (`Orbit_<version>_amd64.AppImage`) | Server deploy for UI; AppImage release for shell changes | Shell change needs a new AppImage | In-app updater |
 | Android | APK (`Orbit-<version>-android.apk`) | Server deploy for UI; APK release for native changes | Native change needs a new APK | Install the new APK, or Obtainium |
 | CLI | Linux tarballs (`orbit-<version>-linux-<arch>.tar.gz`) | Its own release | Gets HTTP 426 after a protocol bump | `orbit self-update` |
 
@@ -102,22 +102,6 @@ The Linux AppImage updates itself with `tauri-plugin-updater`. `tauri.conf.json`
 The private key stays outside the repo at `~/.config/orbit/updater.key`. Never commit it. CI reads it from
 the `TAURI_SIGNING_PRIVATE_KEY` secret, and its password from `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. If the key
 is lost, installed copies cannot verify updates signed with a new key, so users would reinstall by hand.
-
-## AUR (`orbit-bin`)
-
-After the GitHub Release is published:
-
-```sh
-just release-aur X.Y.Z
-```
-
-This downloads the release AppImage with `gh`, updates the checksum and regenerates `.SRCINFO`.
-For an offline fixture, pass `--asset-dir DIR`; add `--dry-run` to preview without changing the
-files. Keep `SKIP` only in this repository's `PKGBUILD` template. Verify the checksum is 64
-hexadecimal characters before copying both files to the AUR repository. The staged release checks
-also verify the AppImage and its `SHA256SUMS` entry.
-
-Push `PKGBUILD` and `.SRCINFO` to the `orbit-bin` AUR repository. See `packaging/aur/README.md`.
 
 ## Server image
 

@@ -20,13 +20,7 @@ chmod +x Orbit_<version>_amd64.AppImage
 ./Orbit_<version>_amd64.AppImage
 ```
 
-**AUR (`orbit-bin`)**, once published:
-
-```sh
-yay -S orbit-bin
-```
-
-The PKGBUILD is in `packaging/aur/`. It installs the same AppImage as `/usr/bin/orbit-app`. If the AppImage fails to start with a FUSE error, install your distribution's FUSE 2 package (on Arch, `fuse2`).
+If the AppImage fails to start with a FUSE error, install your distribution's FUSE 2 package (on Arch, `fuse2`).
 
 ### First launch
 
@@ -66,7 +60,7 @@ The float/center rule is needed because Hyprland may tile the overlay despite it
 
 ### Updates
 
-The AppImage checks `https://github.com/moneytosms/orbit/releases/latest/download/latest.json` at start. A newer, signature-checked AppImage is downloaded and installed, and a notification asks you to restart. It never restarts by itself; failures are only logged to stderr. The `.deb` is not updated this way. For an AUR install, update with the AUR helper: `yay -Syu orbit-bin`.
+The AppImage checks `https://github.com/moneytosms/orbit/releases/latest/download/latest.json` at start. A newer, signature-checked AppImage is downloaded and installed, and a notification asks you to restart. It never restarts by itself; failures are only logged to stderr. The `.deb` is not updated this way.
 
 Releases are signed with a minisign key kept outside the repo (`~/.config/orbit/updater.key`; the public key is in `tauri.conf.json`). CI reads it from the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets and publishes `latest.json` and the `.sig` with the AppImage.
 
