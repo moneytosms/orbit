@@ -163,3 +163,27 @@ async fn export_has_pages_as_markdown_and_their_blobs() {
     assert_eq!(raw, bytes);
     assert!(archive.by_name("items.json").is_ok());
 }
+
+#[tokio::test]
+async fn backup_status_reports_the_newest_snapshot_without_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let (status, _, _) = get(&app, "/backup/status", false).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, body) = get(&app, "/backup/status", true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap(),
+        json!({ "last_backup_ms": null })
+    );
+    let backups = dir.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    for n in [1000, 3000, 2000] {
+        std::fs::write(backups.join(format!("orbit-{n}.db")), b"x").unwrap();
+    }
+    let (_, _, body) = get(&app, "/backup/status", true).await;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap(),
+        json!({ "last_backup_ms": 3000 })
+    );
+}

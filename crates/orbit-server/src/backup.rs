@@ -96,6 +96,11 @@ pub fn restore(data: &Path, snapshot: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Time (ms since epoch) of the newest snapshot in `dir`, if any.
+pub fn last(dir: &Path) -> Option<u64> {
+    listed(dir).ok()?.first().map(|(n, _)| *n)
+}
+
 /// True when `dir` has no snapshot, or the newest is older than 24 h.
 pub fn due(dir: &Path, now_ms: u64) -> bool {
     match listed(dir) {

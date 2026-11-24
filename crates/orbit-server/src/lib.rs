@@ -162,6 +162,7 @@ fn build(
         .route("/sync", post(sync))
         .route("/export", get(export))
         .route("/disk", get(disk))
+        .route("/backup/status", get(backup_status))
         .route("/auth", get(auth::state))
         .route("/auth/setup", post(auth::setup))
         .route("/auth/login", post(auth::login))
@@ -419,6 +420,12 @@ async fn disk(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(serde_json::json!({ "free_bytes": free_bytes })))
+}
+
+/// When the newest server backup was taken; `null` before the first.
+async fn backup_status(State(st): State<St>, _: auth::Device) -> Json<serde_json::Value> {
+    let last = backup::last(&st.data.join("backups"));
+    Json(serde_json::json!({ "last_backup_ms": last }))
 }
 
 fn run(
