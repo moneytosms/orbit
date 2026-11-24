@@ -19,6 +19,7 @@ import {
   tree,
   updateGraphNode,
 } from './sync'
+import { PROMPT_EXAMPLE, roadmapPrompt } from './roadmapPrompt'
 
 // Local-only: these tests never reach the network, so every sync attempt fails like an offline device.
 vi.stubGlobal('fetch', async () => {
@@ -113,4 +114,35 @@ test('a code with a bad reference reports its line and writes nothing', async ()
   expect(after.nodes.map((node) => node.title)).toEqual(before.nodes.map((node) => node.title))
   expect(after.edges).toHaveLength(before.edges.length)
   expect(after.bands).toHaveLength(before.bands.length)
+})
+
+test('the Copy for AI prompt lists the closed kinds and real ids, and its own example imports', async () => {
+  const prompt = roadmapPrompt(
+    [{ id: 'area-1', title: 'College' }],
+    [{ id: 'proj-1', title: 'Thesis' }],
+    [{ id: 'goal-1', title: 'Get fit' }],
+    [{ id: 'task-1', title: 'Read the Rust book' }],
+  )
+  for (const needle of [
+    '%%orbit:v1',
+    'single fenced code block and nothing else',
+    'task, project, goal, milestone, decision, note, text, heading',
+    'then, blocks, depends_on, decides',
+    'College (id area-1)',
+    'Thesis (id proj-1)',
+    'Get fit (id goal-1)',
+    'Read the Rust book (id task-1)',
+  ])
+    expect(prompt).toContain(needle)
+  const road = await newRoadmap('Prompt', 'Fresh')
+  const parsed = parseRoadmapCode(PROMPT_EXAMPLE)
+  if (!('ok' in parsed)) throw new Error(parsed.error.message)
+  const preview = await previewRoadmapCode(road, parsed.ok)
+  expect(preview.errors).toEqual([])
+  expect(preview.diff).toMatchObject({ createNodes: 3, createEdges: 2, createBands: 1 })
+  await importRoadmapCode(road, parsed.ok)
+  const graph = await roadmapGraph(road)
+  expect(graph.nodes.map((n) => n.node_kind).sort()).toEqual(['decision', 'task', 'task'])
+  expect(graph.nodes.filter((n) => n.band_id)).toHaveLength(1)
+  expect(parseRoadmapCode(exportRoadmapCode(await roadmapCode(road)))).toHaveProperty('ok')
 })

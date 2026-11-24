@@ -897,7 +897,7 @@ async function predict(rows: IDBObjectStore, cmd: Command, queued: Command[] = [
     for (const task of tasks) {
       const order = orderAfter(last)
       last = order
-      const move = { ...cmd, args: { id: task.id, parent_id: existing.parent_id, order } }
+      const move = { ...cmd, type: 'item.move', args: { id: task.id, parent_id: existing.parent_id, order } }
       rows.put(JSON.parse(apply(JSON.stringify(task), JSON.stringify(move))))
       affected.push(task.id)
     }

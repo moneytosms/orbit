@@ -1,0 +1,44 @@
+# Roadmaps
+
+For daily users who want to plan a goal as a graph: tasks, decisions and notes you can place anywhere, connect and hand to an AI as text. A Roadmap is owned by an Area, Project or Goal and has no done-condition of its own.
+
+## Before you start
+
+- An owner for the Roadmap: an Area, Project or Goal.
+- Some tasks to reference (optional). The canvas can also create new ones.
+
+## Steps
+
+### Build it on the canvas
+
+1. Create a Roadmap from the Roadmaps screen or the **+** menu, then open it on the **Canvas** tab.
+2. Add nodes with the toolbar: **Add** (a new task), **Decision**, **Note**, **Heading**, or **Add existing...** to place a Goal, Milestone, Project or existing task. Or drag an open task from **Task source** onto the canvas; dropping it on another node connects the two.
+3. Drag nodes anywhere. **Snap** aligns them to a 24 px grid and guides appear when edges line up. Hold Shift and drag the background to select several nodes. Scroll to pan; Ctrl plus scroll or the zoom buttons zoom; **Map** shows a minimap.
+4. Connect nodes by dragging from the dot on a node's right edge to another node, or use **Connect to...**. Select a connection to set its kind (then, blocks, depends on, decides), give it a label such as `yes`, drag its endpoints to reroute it, or delete it.
+5. A Decision is a diamond-shaped node with labelled branches. Select it and choose the branch you took: the node is marked decided, the untaken branch is hidden, and nothing is deleted.
+6. Add **Bands** for stages or time periods and assign nodes to them in the selection panel. A band is drawn around its nodes and drives the progress of its phase.
+7. **Tidy up** lays the graph out in layers from its connections. Nothing is auto-arranged unless you ask. Keyboard: Tab moves through nodes, arrows nudge, Enter opens the row, Delete removes, Ctrl+Z undoes the last move.
+8. The **List**, **Board** and **Timeline** tabs show the same graph by phase and date.
+
+### Copy it to or from an AI
+
+1. Choose **Import from code...** and the **Orbit code** tab.
+2. **Copy for AI** copies a prompt with the format, the closed list of node and edge kinds, a worked example and the real ids of your Areas, Projects, Goals and open tasks, so the AI references them instead of inventing duplicates. Paste it into a chat and ask for the plan.
+3. Paste the single code block the AI returns into the text box. A live preview lists errors by line and counts new and updated nodes, edges and bands. **Import** writes nothing until you press it.
+4. **Copy as code** exports the open Roadmap in the same format, so you can send it to an AI and paste the answer back. The format is Mermaid `flowchart` plus `%%orbit` lines and starts with `%%orbit:v1`; the parser is strict about the version.
+
+## Verify it worked
+
+Reload the page and open the Roadmap on another device after syncing: node positions, connections, labels and decided branches are unchanged. Copy as code, then import it into a new Roadmap and compare the preview: it should report the same nodes, edges and bands.
+
+## Troubleshooting
+
+**Import says "Line N: ...".** The parser reports the 1-based line of the first problem. Unknown node or edge kinds are errors, not guesses: ask the AI to use only the listed kinds.
+
+**A node I deleted is gone from the canvas.** Deleted rows wait 30 days in Trash. Restore it there.
+
+**The canvas is cramped on a phone.** The toolbar shows icons only on narrow screens. Use the zoom buttons, Fit and the minimap to move around.
+
+## Next
+
+[CLI: install and sign in](cli-install.md): script Orbit from the terminal.

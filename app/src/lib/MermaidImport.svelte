@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { Button } from '$lib/components/ui/button'
+  import { roadmapPrompt } from '$lib/roadmapPrompt'
   import {
     exportRoadmapCode,
     importRoadmapCode,
@@ -132,51 +133,16 @@
   /** Prompt for an AI: the format, the closed kind lists, and the existing ids it may reference. */
   async function copyPrompt() {
     const [areas, items] = await Promise.all([tree(), placeable()])
-    const list = (rows: { id: string; title: string }[]) =>
-      rows.map((row) => `- ${row.title} (id ${row.id})`).join('\n') || '- none'
     const of = (kind: string) =>
       items.filter((item) => item.kind === kind).map((item) => ({ id: item.id, title: item.title }))
     await copy(
       'ai',
-      [
-        'Write an Orbit roadmap as code. An Orbit roadmap is a graph of steps: tasks, goals, milestones, decisions with labelled branches, notes and headings, placed in optional bands (time periods).',
-        'Reply with a single fenced code block and nothing else. Use exactly this format, version %%orbit:v1:',
-        '',
-        '```',
-        '%%orbit:v1',
-        'flowchart LR',
-        '  %%orbit roadmap "Upskill" parent=<area id>',
-        '  %%orbit band p0 {"name":"Week 1","start":"2026-11-21","end":"2026-11-27"}',
-        '  %%orbit node t1 {"ref":"<task id>","x":120,"y":40}',
-        '  %%orbit node d1 {"x":420,"y":40}',
-        '  %%orbit edge d1 -> t1 {"kind":"then","label":"if funded","taken":true}',
-        '',
-        '  t1["Read the Rust book"]:::task',
-        '  d1{"Do I need a PhD?"}:::decision',
-        '  d1 -- yes --> t1',
-        '```',
-        '',
-        'Rules:',
-        '- Node keys and band keys are identifiers (letters, digits, underscores). Each node line `%%orbit node <key> {...}` is followed by its shape line `<key>["Title"]:::<kind>` (decision nodes use `<key>{"Title"}:::decision`).',
-        '- Node kinds, closed list: task, project, goal, milestone, decision, note, text, heading. Omit any other type.',
-        '- Edge kinds, closed list: then, blocks, depends_on, decides. Use `then` when unsure.',
-        '- A decision has one edge per branch; set "taken":true on at most one of its outgoing edges, only when it is already known.',
-        '- "ref" must be the id of an existing row listed below, or left out. Never invent ids, and do not repeat a row that already exists.',
-        '- Bands are optional time periods; "start" and "end" are YYYY-MM-DD dates.',
-        '- x and y are optional grid positions; leave them out if unsure.',
-        '',
-        'Areas (use as parent=<id>):',
-        areas.map(({ area }) => `- ${area.name} (id ${area.id})`).join('\n') || '- none',
-        '',
-        'Projects:',
-        list(of('project')),
-        '',
-        'Goals:',
-        list(of('goal')),
-        '',
-        'Open tasks:',
-        list(of('task')),
-      ].join('\n'),
+      roadmapPrompt(
+        areas.map(({ area }) => ({ id: area.id, title: area.name })),
+        of('project'),
+        of('goal'),
+        of('task'),
+      ),
     )
   }
   onDestroy(() => {

@@ -1,7 +1,12 @@
 # Releasing Orbit
 
-Releases are lockstep: one semver `X.Y.Z` applies to the Cargo workspace, the crate path-dep pins,
+For maintainers cutting a release. Releases are lockstep: one semver `X.Y.Z` applies to the Cargo workspace, the crate path-dep pins,
 `app/package.json`, `app/src-tauri/tauri.conf.json` and `packaging/aur/PKGBUILD`.
+
+## Before you start
+
+- Push access to the repository, a clean `main`, and the secrets listed under [Secrets](#secrets-github-actions) set in GitHub Actions.
+- `just check` passes locally.
 
 ## Cut a release
 
@@ -121,3 +126,21 @@ docker run --rm -p 8080:8080 -v orbit-data:/data ghcr.io/<owner>/<repo>:<version
 ```
 
 The container runs as uid 10001, listens on `0.0.0.0:8080` and keeps its data in `/data`.
+
+## Verify it worked
+
+The release workflow finishes green and the GitHub Release lists the AppImage with its signature, the Windows installer, `Orbit-<version>-android.apk`, the CLI archives and `latest.json`. Then check the update path:
+
+```sh
+orbit self-update --dry-run
+```
+
+It downloads and verifies the new CLI archive without replacing the executable.
+
+## Troubleshooting
+
+**A release job fails on signing.** The signing secrets are missing or wrong. Re-check [Secrets](#secrets-github-actions); the Android key and the Tauri updater key are separate.
+
+## Next
+
+[Deploy Orbit](deploy.md): how operators pick up the new server image.
