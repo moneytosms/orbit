@@ -129,13 +129,16 @@
     <select
       bind:value={parentId}
       aria-label="Roadmap owner"
+      disabled={!areas.length}
       class="h-9 rounded-md border border-line bg-surface px-2 text-sm"
     >
       {#each areas as a (a.area.id)}
         <option value={a.area.id}>{a.area.name}</option>
+      {:else}
+        <option value="">No area</option>
       {/each}
     </select>
-    <Button type="submit" variant="primary">Add</Button>
+    <Button type="submit" variant="primary" disabled={!parentId}>Add</Button>
   </form>
   <div class="mt-3">
     <Button variant="ghost" onclick={() => (building = true)}>Start from 30-day plan</Button>
