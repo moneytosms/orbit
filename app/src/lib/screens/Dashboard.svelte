@@ -192,14 +192,12 @@
       aria-label={title(w)}
       tabindex={editing ? 0 : undefined}
       onkeydown={(e) => key(e, w)}
-      class="panel relative flex min-h-24 min-w-0 flex-col overflow-hidden {w.kind === 'glance'
-        ? 'p-2'
-        : ''} desk:min-h-0 desk:[grid-column:var(--c)] desk:[grid-row:var(--r)] {editing
+      class="panel relative flex min-h-24 min-w-0 flex-col overflow-hidden desk:min-h-0 desk:[grid-column:var(--c)] desk:[grid-row:var(--r)] {editing
         ? 'outline-dashed outline-1 outline-line-strong focus-visible:outline-2 focus-visible:outline-accent'
         : ''}"
       style="--c: {w.x + 1} / span {w.w}; --r: {w.y + 1} / span {w.h}"
     >
-      <header class="{w.kind === 'glance' ? 'mb-0' : 'mb-2'} flex min-w-0 items-start gap-2">
+      <header class="mb-2 flex min-w-0 items-start gap-2">
         {#if editing}
           <button
             type="button"
@@ -210,7 +208,7 @@
         {/if}
         <div class="min-w-0 flex-1">
           <h2 class="truncate text-[0.9062rem] font-semibold">{title(w)}</h2>
-          <p class="truncate text-xs text-muted">{summaries[w.id] ?? 'Loading…'}</p>
+          {#if w.kind !== 'glance'}<p class="truncate text-xs text-muted">{summaries[w.id] ?? 'Loading…'}</p>{/if}
         </div>
         {#if editing}
           <button type="button" aria-label="Hide {title(w)}" class={iconBtn} onclick={() => hide(w)}
@@ -220,7 +218,7 @@
       </header>
       <div class="min-h-0 flex-1 overflow-auto">
         {#if w.kind === 'glance'}
-          <Glance {version} onmeta={(value) => setSummary(w.id, value)} />
+          <Glance {version} />
         {:else if w.kind === 'next'}
           <NextList {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'routines'}
@@ -235,9 +233,9 @@
           <ViewList viewId={w.view_id} {version} onmeta={(value) => setSummary(w.id, value)} />
         {/if}
       </div>
-      <a href={href(w)} class="{w.kind === 'glance' ? 'mt-0' : 'mt-2'} self-start text-xs text-muted hover:text-text"
-        >Open →</a
-      >
+      {#if w.kind !== 'glance'}
+        <a href={href(w)} class="mt-2 self-start text-xs text-muted hover:text-text">Open →</a>
+      {/if}
       {#if editing}
         <button
           type="button"

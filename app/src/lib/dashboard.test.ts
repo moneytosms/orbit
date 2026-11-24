@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { defaultLayout, move, phoneOrder, place, resize, taskIsUpcoming, type Widget } from './dashboard'
+import { defaultLayout, doneShare, move, phoneOrder, place, resize, taskIsUpcoming, type Widget } from './dashboard'
 
 const w = (id: string, x: number, y: number, ww: number, h: number, hidden = false): Widget => ({
   id,
@@ -63,7 +63,7 @@ test('place puts a widget at the bottom and shows a hidden one again', () => {
   expect(place(ws, w('n', 0, 0, 6, 1)).find((x) => x.id === 'n')?.y).toBe(2)
 })
 
-test('Upcoming omits overdue and due-today tasks already shown by What\'s next', () => {
+test("Upcoming omits overdue and due-today tasks already shown by What's next", () => {
   const rows = [
     { id: 'late', kind: 'task', due: { date: '2026-11-21' } },
     { id: 'today', kind: 'task', due: { date: '2026-11-22' } },
@@ -71,4 +71,10 @@ test('Upcoming omits overdue and due-today tasks already shown by What\'s next',
     { id: 'goal', kind: 'goal' },
   ]
   expect(rows.filter((row) => taskIsUpcoming(row, '2026-11-22')).map((row) => row.id)).toEqual(['future', 'goal'])
+})
+
+test('doneShare is done over all of today and 1 on an empty day', () => {
+  expect(doneShare(3, 1)).toBe(0.75)
+  expect(doneShare(0, 4)).toBe(0)
+  expect(doneShare(0, 0)).toBe(1)
 })

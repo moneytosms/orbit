@@ -315,10 +315,7 @@
             >
               <a
                 href="#/area/{a.id}"
-                onclick={() => {
-                  drawer = false
-                  toggleArea(a)
-                }}
+                onclick={() => toggleArea(a)}
                 aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
                 class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 font-medium"
               >
@@ -330,14 +327,13 @@
                 aria-expanded={areaIsExpanded(a)}
                 aria-controls="area-projects-{instance}-{a.id}"
                 onclick={() => toggleArea(a)}
-                class="grid size-7 shrink-0 place-items-center rounded-[5px] text-muted hover:bg-press"
+                class="grid size-8 shrink-0 place-items-center rounded-[5px] text-muted hover:bg-press"
               >
                 {#if areaIsExpanded(a)}<ChevronDown size={14} aria-hidden="true" />{:else}<ChevronRight
                     size={14}
                     aria-hidden="true"
                   />{/if}
               </button>
-              <EntityMenu id={a.id} name={a.area.name} kind="area" fallbackHref="#/home" archiveable {onchange} />
             </div>
           </DropTarget>
           <div id="area-projects-{instance}-{a.id}" class="flex flex-col gap-0.5" hidden={!areaIsExpanded(a)}>
@@ -352,14 +348,6 @@
                   >
                     {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
                   </a>
-                  <EntityMenu
-                    id={p.id}
-                    name={p.name}
-                    kind="project"
-                    fallbackHref="#/area/{a.id}"
-                    archiveable
-                    {onchange}
-                  />
                 </div>
               </DropTarget>
             {/each}

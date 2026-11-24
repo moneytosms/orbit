@@ -15,7 +15,7 @@ export type Widget = {
 }
 
 export const KINDS: { kind: string; title: string; w: number; h: number }[] = [
-  { kind: 'glance', title: 'Life at a glance', w: 12, h: 1 },
+  { kind: 'glance', title: 'Life at a glance', w: 12, h: 2 },
   { kind: 'next', title: "What's next", w: 6, h: 4 },
   { kind: 'routines', title: 'Routines', w: 6, h: 2 },
   { kind: 'upcoming', title: 'Upcoming', w: 6, h: 3 },
@@ -32,11 +32,11 @@ const at = (kind: string, x: number, y: number): Widget => {
 /** The layout of a first run, before the user changes anything. */
 export const defaultLayout = (): Widget[] => [
   at('glance', 0, 0),
-  at('next', 0, 1),
-  at('routines', 6, 1),
-  at('upcoming', 6, 3),
-  at('goals', 0, 5),
-  at('streaks', 6, 6),
+  at('next', 0, 2),
+  at('routines', 6, 2),
+  at('upcoming', 6, 4),
+  at('goals', 0, 6),
+  at('streaks', 6, 7),
 ]
 
 const hit = (a: Widget, b: Widget) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
@@ -82,6 +82,9 @@ export function place(widgets: Widget[], widget: Widget): Widget[] {
 /** The visible widgets on a phone: one column, by y then x. */
 export const phoneOrder = (widgets: Widget[]): Widget[] =>
   widgets.filter((w) => !w.hidden).sort((a, b) => a.y - b.y || a.x - b.x)
+
+/** Share of today's Tasks finished, 0..1; an empty day counts as complete. */
+export const doneShare = (done: number, left: number) => (done + left === 0 ? 1 : done / (done + left))
 
 export type Glance = { dueToday: number; overdue: number; activeGoals: number }
 
