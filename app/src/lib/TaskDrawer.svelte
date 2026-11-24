@@ -1,7 +1,6 @@
 <script lang="ts">
   import * as Sheet from '$lib/components/ui/sheet'
   import Backlinks from '$lib/Backlinks.svelte'
-  import Editor from '$lib/Editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import {
     addReminder,
@@ -175,7 +174,11 @@
         <div class="grid gap-1.5">
           <span class="text-xs font-medium text-muted">Description</span>
           {#key task.id}
-            <Editor value={task.description} label="Description" owner={ownerId} onchange={saveDescription} />
+            {#await import('$lib/Editor.svelte')}
+              <p class="text-muted">Loading editor...</p>
+            {:then { default: Editor }}
+              <Editor value={task.description} label="Description" owner={ownerId} onchange={saveDescription} />
+            {/await}
           {/key}
           <Backlinks id={task.id} version={linkVersion} />
         </div>

@@ -123,6 +123,18 @@ orbit sync
 
 **Changes seem stuck.** The CLI queues changes offline. Run `orbit sync` while online; `orbit status` shows how many are waiting.
 
+## Environment variables
+
+| Variable              | Default                              | Meaning                                                              |
+| --------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| `ORBIT_DIR`           | `$XDG_DATA_HOME/orbit`, else `~/.local/share/orbit` | Where the CLI keeps its local copy and session.       |
+| `ORBIT_PASSWORD`      | unset                                | Password for `orbit login`; otherwise read from stdin.               |
+| `ORBIT_TODOIST_TOKEN` | unset                                | Token for `orbit import todoist`; otherwise read from stdin. Never stored. |
+| `ORBIT_RELEASE_API`   | GitHub releases API                  | Release feed `orbit update` checks; override for a mirror or tests.  |
+| `ORBIT_BIN`           | `~/.local/bin`                       | Install directory for the install script.                            |
+| `ORBIT_VERSION`       | latest                               | Version the install script installs.                                 |
+| `ORBIT_RELEASES`      | GitHub releases URL                  | Releases URL the install script downloads from; for tests.           |
+
 ## Next
 
 [CLI: reference](cli.md): every command and option.

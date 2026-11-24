@@ -89,6 +89,7 @@ import {
   createGraphNode,
   createGraphEdge,
   roadmapGraph,
+  start,
 } from './sync'
 
 const INBOX = '00000000-0000-7000-8000-000000000001'
@@ -1239,3 +1240,17 @@ for (const owner of ['area', 'project'] as const) {
     expect((await getTask(task))?.parent_id).toBe(parent)
   })
 }
+
+test('sync fires the change callback only when the delta or outbox moved', async () => {
+  const onChange = vi.fn()
+  vi.stubGlobal('addEventListener', vi.fn())
+  start(onChange)
+  await sync()
+  onChange.mockClear()
+  delta = []
+  await sync()
+  expect(onChange).not.toHaveBeenCalled()
+  delta = [{ kind: 'task', id: '01900000-0000-7000-8000-0000000000bb', parent_id: INBOX, title: 'Pushed' }]
+  await sync()
+  expect(onChange).toHaveBeenCalled()
+})

@@ -44,13 +44,7 @@ Rust (axum) server with SQLite as the source of truth. Clients sync through clie
 
 ### Server
 
-Environment variables:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `ORBIT_ADDR` | `127.0.0.1:8080` | listen address |
-| `ORBIT_DATA` | `data` | data directory (`orbit.db`, `backups/`) |
-| `ORBIT_WEB` | unset | directory of the built web app to serve |
+Configured by environment variables, listed in [docs/deploy.md](docs/deploy.md#what-you-are-running). The data directory (`ORBIT_DATA`, default `data`) holds `orbit.db`, `blobs/` and `backups/`. CLI variables are in [docs/cli-install.md](docs/cli-install.md#environment-variables).
 
 Docker Compose (image `ghcr.io/moneytosms/orbit`, see [docs/releasing.md](docs/releasing.md)). The data directory is created for you and the server restarts after a reboot:
 
@@ -103,10 +97,12 @@ Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`. Install and
 
 ## Development
 
-Toolchain (Rust, JDK, Gradle, Android SDK) is expected under `~/.toolchain`; `rust-toolchain.toml` pins stable plus the wasm32 target. You also need `just`, `pnpm` and `wasm-pack`.
+Setup and prerequisites (Rust, wasm32 target, `wasm-pack`, `just`, Node 24, `pnpm`; JDK and Android SDK only for Android) with install commands for Arch and Ubuntu: [docs/contributing.md](docs/contributing.md). The maintainers keep their toolchain under `~/.toolchain` with sccache; that is optional.
+
+`just check` runs, in order: the wasm build, `pnpm install --frozen-lockfile`, svelte-check, vitest, the web build, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the `site/` steps (`npm ci`, check, build, verify).
 
 ```sh
-just check            # the gate: svelte-check, vitest, web build, cargo fmt/clippy/test, wasm build
+just check            # the gate (steps above)
 just hooks            # once per clone; pre-push runs `just check`
 just fmt src/lib/sync.ts   # cargo fmt + prettier on named app files (paths relative to app/)
 just server           # server on 127.0.0.1:8080, data in ./data

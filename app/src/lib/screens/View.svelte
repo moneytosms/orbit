@@ -14,7 +14,6 @@
   import FilterEditor from '$lib/FilterEditor.svelte'
   import Table from '$lib/Table.svelte'
   import Timeline from '$lib/Timeline.svelte'
-  import Calendar from '$lib/Calendar.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import EntityMenu from '$lib/EntityMenu.svelte'
   import {
@@ -418,14 +417,18 @@
     onopen={open}
   />
 {:else if layout === 'calendar'}
-  <Calendar
-    rows={allRows}
-    onchange={async () => {
-      await load()
-      onchange()
-    }}
-    onopen={(id) => (openId = id)}
-  />
+  {#await import('$lib/Calendar.svelte')}
+    <p class="p-4 text-muted">Loading calendar...</p>
+  {:then { default: Calendar }}
+    <Calendar
+      rows={allRows}
+      onchange={async () => {
+        await load()
+        onchange()
+      }}
+      onopen={(id) => (openId = id)}
+    />
+  {/await}
 {:else}
   {#each groups as g (g.key)}
     {#if g.key}<h3 class="mt-4 mb-1 px-2 text-[0.7812rem] font-semibold text-muted">{label(g.key)}</h3>{/if}

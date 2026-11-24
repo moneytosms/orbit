@@ -380,11 +380,14 @@ const clock = async (meta: IDBObjectStore): Promise<Hlc> =>
 
 const allRows = () => tx(['rows'], (s) => req<Row[]>(s('rows').getAll()))
 /** Rows that are not trashed, archived or under such a row. */
-const visibleRows = async () => {
-  const rows = await allRows()
-  const hidden = new Set<string>(hidden_ids(JSON.stringify(rows)))
-  return rows.filter((r) => !hidden.has(r.id))
-}
+let visibleInFlight: Promise<Row[]> | undefined
+// Same-tick getters share one scan; cleared on settle so a later write is never masked.
+const visibleRows = () =>
+  (visibleInFlight ??= (async () => {
+    const rows = await allRows()
+    const hidden = new Set<string>(hidden_ids(JSON.stringify(rows)))
+    return rows.filter((r) => !hidden.has(r.id))
+  })().finally(() => (visibleInFlight = undefined)))
 
 /** Areas except the Inbox, each with its Projects, both in display order. */
 export async function tree(): Promise<{ area: Area; projects: Project[] }[]> {
@@ -1070,7 +1073,7 @@ async function flush() {
       ) as string[],
       prior,
     )
-    changed()
+    if (commands.length || body.delta.length || body.full) changed()
     // A partly answered batch would be resent as-is: stop rather than loop.
     const remainingGraph = graphSupported && queued.some(isGraphCommand)
     if ((commands.length < 100 && !remainingGraph) || answered < commands.length) return
@@ -1175,7 +1178,19 @@ export const routineIcon = (routine: Pick<Routine, 'id' | 'icon'>) => {
 }
 /** Moves Routines past their length to Archived, history kept; already archived ones are not listed. */
 async function archiveEndedRoutines() {
-  for (const r of await routines()) if ((await routineStats(r.id)).ended) await archiveItem(r.id)
+  const ours = await routines()
+  if (!ours.length) return
+  const rows = await allRows()
+  const today = await localDay()
+  const byRoutine = new Map<string, Row[]>()
+  for (const r of rows) {
+    const key = r.kind === 'checkin' ? r.routine_id : r.id
+    byRoutine.set(key, [...(byRoutine.get(key) ?? []), r])
+  }
+  for (const r of ours) {
+    const stats: RoutineStats = JSON.parse(routine_stats(JSON.stringify(byRoutine.get(r.id) ?? []), r.id, today))
+    if (stats.ended) await archiveItem(r.id)
+  }
 }
 /** Archived Routines, history kept. */
 export async function archivedRoutines(): Promise<Routine[]> {
