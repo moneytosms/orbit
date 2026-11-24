@@ -63,7 +63,7 @@
           disabled={busy}
         />
         <Input value={f.name} maxlength={60} aria-label="Name of {f.name}" onchange={(e) => rename(f, e)} />
-        <Button type="button" variant="outline" disabled={busy} onclick={() => run(() => removeFeed(f.id))}
+        <Button type="button" variant="destructive" disabled={busy} onclick={() => run(() => removeFeed(f.id))}
           >Remove</Button
         >
       </div>

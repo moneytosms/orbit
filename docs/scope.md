@@ -63,6 +63,8 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 
 - **Server push:** daily summary and missed-routine alerts via self-hosted ntfy.
 - **Google Calendar:** read-only events on the Dashboard and the Calendar view, with integration health in Settings. Built in 0.6 via a secret iCal feed URL (no OAuth); the server polls it, see `crates/orbit-server/src/calendar.rs`.
+- **Orbit's own events (future scope):** create and edit events inside Orbit (local, offline, synced like tasks), separate from the read-only iCal feeds. Not built.
+- **Google Calendar two-way sync (future scope):** write events back through Google OAuth. Needs a Google Cloud project per self-hoster; refresh tokens expire after 7 days while the consent screen is in Testing. Not built.
 
 ## Removed
 
