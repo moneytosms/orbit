@@ -1,7 +1,6 @@
 <script lang="ts">
   import Backlinks from '$lib/Backlinks.svelte'
   import EntityMenu from '$lib/EntityMenu.svelte'
-  import Editor from '$lib/Editor.svelte'
   import { editPageBody, getPage, linkTarget, renamePage, type Page } from '$lib/sync'
 
   let { id, onchange }: { id: string; onchange: () => void } = $props()
@@ -69,7 +68,11 @@
       />
       <EntityMenu id={page.id} name={page.title} kind="page" {fallbackHref} onchange={refresh} />
     </div>
-    <Editor value={page.body} label="Page body" owner={page.parent_id} pageId={page.id} chrome="page" editable={!readonly} onchange={saveBody} />
+    {#await import('$lib/Editor.svelte')}
+      <p class="text-muted">Loading editor...</p>
+    {:then { default: Editor }}
+      <Editor value={page.body} label="Page body" owner={page.parent_id} pageId={page.id} chrome="page" editable={!readonly} onchange={saveBody} />
+    {/await}
     <Backlinks id={page.id} version={linkVersion} />
   {/key}
 {:else if loaded}
