@@ -6,9 +6,9 @@ name: Site
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/**", "*.md", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "app/**", "crates/**", "*.md", ".github/workflows/pages.yml"]
   pull_request:
-    paths: ["site/**", "docs/**", "*.md", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", "app/**", "crates/**", "*.md", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +33,22 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: site/package-lock.json
+      - run: rustup show
+        working-directory: .
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2
+        with:
+          tool: just,wasm-pack
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 12
+      # The web app with an in-browser fake server, served at /demo/ (no backend needed).
+      - name: Build the web demo
+        working-directory: .
+        run: |
+          just wasm
+          pnpm -C app install --frozen-lockfile
+          VITE_DEMO=1 VITE_DEMO_BASE=/orbit/demo/ pnpm -C app build
+          cp -r app/dist-demo site/public/demo
       - run: npm ci
       - run: npx astro check
       - run: npm run build

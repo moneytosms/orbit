@@ -386,7 +386,7 @@
 {#snippet nav(instance: string)}
   <div class="flex h-full flex-col gap-4 overflow-y-auto p-3">
     <div class="flex items-center gap-2 px-1.5">
-      <img src="/icon.svg" alt="" class="size-6" />
+      <img src="{import.meta.env.BASE_URL}icon.svg" alt="" class="size-6" />
       <span class="flex-1 text-[0.9375rem] font-semibold">Orbit</span>
       <Button variant="primary" size="sm" onclick={newTask}>
         <Plus size={14} class="text-accent-ink" /> Add task

@@ -3,3 +3,4 @@ dist/
 .astro/
 test-results/
 .capture-tmp/
+public/demo

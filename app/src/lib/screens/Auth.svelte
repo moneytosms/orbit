@@ -52,7 +52,7 @@
     class="flex w-full max-w-[360px] flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-1"
   >
     <div class="flex items-center gap-2">
-      <img src="/icon.svg" alt="" class="size-7" />
+      <img src="{import.meta.env.BASE_URL}icon.svg" alt="" class="size-7" />
       <span class="text-base font-semibold">Orbit</span>
     </div>
     {#if pending}

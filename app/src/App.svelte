@@ -259,7 +259,7 @@
   />
 {/if}
 
-<UpdateNotice />
+{#if !import.meta.env.VITE_DEMO}<UpdateNotice />{/if}
 
 {#if toast}
   <p
