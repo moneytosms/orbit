@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.1 - 2026-11-24
+
+### Bug fixes
+
+- Key login lockout on forwarded client IP for loopback peers
+- Reject plain http server URLs for non-local hosts in the app
+- Allow plain http for Tailscale addresses
+- Narrow the Android FileProvider paths
+
+### Chores
+
+- Keep .env files out of the docker build context
+- Scope release workflow permissions to the jobs that need them
+- Pin GitHub Actions to commit SHAs
+- Remove unused deleteView and checkinsOf
+
+### Documentation
+
+- Consolidate env var tables in deploy and cli-install
+- Document real contributor prerequisites and gate steps
+- Record Android spike outcome in ADR 0001
+
+### Features
+
+- Add baseline security headers and trim Android remote grants
+- Add ORBIT_SECURE_COOKIE to mark the web cookie Secure
+- 30-day sliding web session cookie
+
+### Performance
+
+- Enable SQLite WAL and batch blob gc in one transaction
+- Throttle purge and blob gc to once per 5 minutes
+- Skip badge table scan for ops that cannot earn badges
+- Fire sync change callback only on real changes
+- Scan rows once when archiving ended routines
+- Share one visible-rows scan across same-tick getters
+- Lazy-load Calendar and Editor to shrink main bundle
+
 ## 0.4.0 - 2026-11-24
 
 ### Bug fixes
