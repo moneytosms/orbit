@@ -1,6 +1,6 @@
-# Orbit scope (draft)
+# Orbit scope
 
-Status: **draft**. Decisions here feed the [v1 map](https://github.com/moneytosms/orbit/issues/1).
+Status: **v1 built and released**. Everything under "v1 (Phase 1)", Routines, Reminders, Calendar and Editable views is **built**; Phase 2 items are **deferred**; Windows is **built but untested**, macOS is **deferred**. Real-device Android checks are still outstanding. Decisions here feed the [v1 map](https://github.com/moneytosms/orbit/issues/1).
 Sources: planning chat decisions, the v1 map, `docs/adr/0001-stack.md`, and a creator's "personal dashboard built in Claude Code" video, filtered to cheap, high-value ideas only.
 
 ## Principles
@@ -51,7 +51,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 
 ## Kept from the video (cheap, high value)
 
-| Feature | Phase | Why keep |
+| Feature | Phase (all built) | Why keep |
 |---|---|---|
 | Routines with streaks | 1 | Separates habits from tasks so the Dashboard isn't a wall of reminders |
 | **Slipping** view | 1 | One last-touched timestamp and a query; stops projects silently dying |
@@ -66,9 +66,9 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 
 ## Removed
 
-People, content pipeline, books and Kindle import, inventory, the Library (notes, quotes, journal) and everything built on it (resurfacing, review flags, photo-journal AI), chat over your data, AI voice routing, time logging, retainers, checklist templates, and watch capture. No code exists yet, so this removal is in the plan only.
+People, content pipeline, books and Kindle import, inventory, the Library (notes, quotes, journal) and everything built on it (resurfacing, review flags, photo-journal AI), chat over your data, AI voice routing, time logging, retainers, checklist templates, and watch capture. None of it is built.
 
-## v1 (Phase 1) feature list
+## v1 (Phase 1) feature list (all built)
 
 - Areas, Projects, Inbox; tasks with sections, subtasks, priorities, labels, due dates, recurring tasks.
 - Goals with milestones and progress.
@@ -111,7 +111,8 @@ Scheduled on each device from synced data; no server involved.
 | Web | Any browser; installable as a PWA | Svelte 5, served by the Orbit server |
 | Linux desktop | `.AppImage`, `.deb`, `.rpm` | Tauri 2 (same Svelte UI) + tray, hotkey, notifications |
 | Android | Signed `.apk` you sideload | Tauri 2 (same Svelte UI) + Kotlin module for widget, share, alarms, background sync |
-| Windows, macOS | `.msi`/`.exe`, `.dmg` | Same Tauri build, later phase |
+| Windows | `.msi`/`.exe` | Same Tauri build. Built, untested, unsigned |
+| macOS | `.dmg` | Same Tauri build. Deferred |
 
 **Tauri is locked** for desktop and Android: one Svelte UI serves web, Linux and Android, and the Rust shell shares `orbit-core` with the server, so it is the least-work route to all three installable clients. A native GPUI desktop client stays an idea for later (research ticket "GPUI desktop client maturity", answered in issue #10: not viable now; revisit when the conditions listed there hold).
 

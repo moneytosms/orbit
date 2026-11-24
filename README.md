@@ -14,7 +14,7 @@ Screenshot: the web app on made-up demo data.
 
 ## Features
 
-Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked draft). Some items there are planned, not built.
+Scope and status are tracked in [docs/scope.md](docs/scope.md): v1 is built, Phase 2 and macOS are deferred.
 
 - Areas, Projects, and an Inbox; tasks with subtasks, priorities, labels, due dates and recurrence.
 - Goals with progress, and Routines with check-ins and streaks, kept separate from recurring tasks. See [GLOSSARY.md](GLOSSARY.md).
