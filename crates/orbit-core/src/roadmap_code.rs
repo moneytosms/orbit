@@ -781,4 +781,101 @@ flowchart LR
         let text = "%%orbit:v1\nflowchart LR\na[\"ok\"]\nb[\"ok\"]\na => b\n";
         assert_eq!(parse(text).unwrap_err().line, 5);
     }
+    /// Seeded generator so a failure reproduces; no property-testing dependency needed.
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self, n: usize) -> usize {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((self.0 >> 33) as usize) % n
+        }
+    }
+
+    #[test]
+    fn random_graphs_roundtrip_through_code_and_the_text_is_stable() {
+        const KINDS: [&str; 8] = [
+            "task",
+            "project",
+            "goal",
+            "milestone",
+            "decision",
+            "note",
+            "text",
+            "heading",
+        ];
+        const EDGES: [&str; 4] = ["then", "blocks", "depends_on", "decides"];
+        const TITLES: [&str; 7] = [
+            "Read the Rust book",
+            "Say \"yes\"",
+            "a --> b",
+            "[bracket] {brace} (paren)",
+            "caf\u{e9} \u{1f680}",
+            "50% | pipe",
+            "back\\slash",
+        ];
+        const REFS: [&str; 2] = [
+            "8b9c91af-0c1e-44ef-b45d-1bb9d5aa3f06",
+            "d12c0a04-f9a3-4b77-9556-0ff2db02a6de",
+        ];
+        for seed in 0..200u64 {
+            let mut rng = Lcg(seed + 1);
+            let mut graph = RoadmapCode {
+                name: (rng.next(2) == 0).then(|| TITLES[rng.next(TITLES.len())].into()),
+                parent: None,
+                nodes: BTreeMap::new(),
+                edges: vec![],
+                bands: BTreeMap::new(),
+            };
+            for b in 0..rng.next(3) {
+                graph.bands.insert(
+                    format!("p{b}"),
+                    CodeBand {
+                        id: None,
+                        name: TITLES[rng.next(TITLES.len())].into(),
+                        start: (rng.next(2) == 0).then(|| "2026-11-21".into()),
+                        end: None,
+                    },
+                );
+            }
+            let count = 1 + rng.next(8);
+            for n in 0..count {
+                let kind = KINDS[rng.next(KINDS.len())];
+                let has_ref = matches!(kind, "task" | "project" | "goal" | "milestone");
+                let band = (!graph.bands.is_empty() && rng.next(2) == 0)
+                    .then(|| format!("p{}", rng.next(graph.bands.len())));
+                graph.nodes.insert(
+                    format!("n{n}"),
+                    node(
+                        None,
+                        kind,
+                        has_ref.then(|| REFS[rng.next(2)]),
+                        TITLES[rng.next(TITLES.len())],
+                        (rng.next(40) * 24) as f64,
+                        band.as_deref(),
+                    ),
+                );
+            }
+            for _ in 0..rng.next(10) {
+                let (a, b) = (rng.next(count), rng.next(count));
+                graph.edges.push(edge(
+                    None,
+                    &format!("n{a}"),
+                    &format!("n{b}"),
+                    EDGES[rng.next(4)],
+                    if rng.next(2) == 0 {
+                        ""
+                    } else {
+                        TITLES[rng.next(TITLES.len())]
+                    },
+                    false,
+                ));
+            }
+            let text = export(&graph).unwrap();
+            let parsed = parse(&text).unwrap_or_else(|e| panic!("seed {seed}: {e:?}\n{text}"));
+            assert_eq!(parsed, graph, "seed {seed}\n{text}");
+            assert_eq!(export(&parsed).unwrap(), text, "seed {seed}: unstable text");
+        }
+    }
 }

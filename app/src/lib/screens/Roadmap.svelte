@@ -8,7 +8,7 @@
   import RoadmapBuilder from '$lib/RoadmapBuilder.svelte'
   import Backlinks from '$lib/Backlinks.svelte'
   import EntityMenu from '$lib/EntityMenu.svelte'
-import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
+  import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
   import RoadmapLenses from '$lib/RoadmapLenses.svelte'
   import RoadmapTimeline from '$lib/RoadmapTimeline.svelte'
   import { hiddenNodeIds } from '$lib/roadmapGraph'
@@ -187,11 +187,11 @@ import RoadmapGraphCanvas from '$lib/RoadmapGraphCanvas.svelte'
     </form>
   {/if}
   <div class="mt-3 flex gap-2">
-    <Button variant="ghost" onclick={() => (importing = true)}>Import Mermaid…</Button>
+    <Button variant="ghost" onclick={() => (importing = true)}>Import from code…</Button>
   </div>
   <Dialog.Root bind:open={importing}>
     <Dialog.Content class="max-h-[85vh] overflow-y-auto">
-      <Dialog.Title>Import Mermaid</Dialog.Title>
+      <Dialog.Title>Import from code</Dialog.Title>
       <MermaidImport onimport={runImport} roadmapId={id} onimportcode={runCodeImport} />
     </Dialog.Content>
   </Dialog.Root>
