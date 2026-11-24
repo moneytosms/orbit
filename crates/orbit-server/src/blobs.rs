@@ -164,6 +164,7 @@ pub(crate) fn gc(conn: &Connection, data: &Path, now: i64) -> rusqlite::Result<(
             .collect::<rusqlite::Result<_>>()?
     };
     let files = on_disk(data);
+    let tx = conn.unchecked_transaction()?;
     let present: HashSet<&str> = files.iter().map(|(h, _)| h.as_str()).collect();
     for (hash, file) in &files {
         if referenced.contains(hash) {
@@ -192,7 +193,7 @@ pub(crate) fn gc(conn: &Connection, data: &Path, now: i64) -> rusqlite::Result<(
     for hash in known.iter().filter(|h| !present.contains(h.as_str())) {
         conn.execute("DELETE FROM blob_orphans WHERE hash = ?", [hash])?;
     }
-    Ok(())
+    tx.commit()
 }
 
 #[cfg(test)]

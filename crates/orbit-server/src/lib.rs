@@ -79,7 +79,11 @@ fn now_ms() -> i64 {
 fn open(data_dir: &Path) -> rusqlite::Result<Connection> {
     std::fs::create_dir_all(data_dir)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
-    Connection::open(data_dir.join("orbit.db"))
+    let conn = Connection::open(data_dir.join("orbit.db"))?;
+    // WAL: commits stop fsyncing the whole journal. Backups use VACUUM INTO, so `-wal`/`-shm` are safe.
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(conn)
 }
 
 /// Opens (or creates) `<data_dir>/orbit.db` and returns the HTTP app, plus the setup code

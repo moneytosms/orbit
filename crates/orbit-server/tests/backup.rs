@@ -93,3 +93,14 @@ fn snapshot_includes_blobs_and_restore_brings_them_back() {
     assert!(out.status.success());
     assert_eq!(fs::read(blob_file(&data)).unwrap(), b"attachment");
 }
+
+#[test]
+fn server_database_runs_in_wal_mode() {
+    let tmp = tempfile::tempdir().unwrap();
+    orbit_server::app(tmp.path()).unwrap();
+    let conn = Connection::open(tmp.path().join("orbit.db")).unwrap();
+    let mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(mode, "wal");
+}

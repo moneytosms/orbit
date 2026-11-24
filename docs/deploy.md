@@ -22,6 +22,9 @@ directory (`orbit.db`, attachments in `blobs/`, snapshots in `backups/`) and ser
 apps talk to, plus the web UI (a PWA) at `/` when `ORBIT_WEB` points at the built web app. The Docker
 image sets that for you. Nothing is stored anywhere else.
 
+The database runs in SQLite WAL mode, so `orbit.db-wal` and `orbit.db-shm` appear next to `orbit.db`.
+Copy snapshots (below), not the bare `orbit.db`, when backing up or snapshotting a volume.
+
 | Variable            | Default          | Meaning                                                                   |
 | ------------------- | ---------------- | ------------------------------------------------------------------------- |
 | `ORBIT_DATA`        | `data`           | Data directory (`orbit.db`, `blobs/`, `backups/`). Docker image: `/data`. |
