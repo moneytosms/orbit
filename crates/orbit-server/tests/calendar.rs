@@ -88,60 +88,83 @@ fn fake(body: String, calls: Arc<AtomicUsize>) -> Fetcher {
     })
 }
 
+fn json_of(body: &str) -> Value {
+    serde_json::from_str(body).unwrap()
+}
+
+async fn add(app: &(Router, String), name: &str, url: &str) -> (StatusCode, String) {
+    call(
+        app,
+        "POST",
+        "/calendar/feeds",
+        Some(json!({ "name": name, "url": url })),
+        true,
+    )
+    .await
+}
+
 #[tokio::test]
 async fn every_calendar_endpoint_needs_a_device() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path(), fake(String::new(), Arc::default())).await;
     for (m, p) in [
         ("GET", "/calendar/events?from=0&to=1"),
-        ("GET", "/calendar/feed"),
-        ("PUT", "/calendar/feed"),
-        ("DELETE", "/calendar/feed"),
+        ("GET", "/calendar/feeds"),
+        ("POST", "/calendar/feeds"),
+        ("PATCH", "/calendar/feeds/1"),
+        ("DELETE", "/calendar/feeds/1"),
     ] {
-        let body = (m == "PUT").then(|| json!({ "url": SECRET_URL }));
+        let body = matches!(m, "POST" | "PATCH")
+            .then(|| json!({ "name": "x", "url": SECRET_URL, "visible": false }));
         let (status, _) = call(&app, m, p, body, false).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{m} {p}");
     }
 }
 
 #[tokio::test]
-async fn set_feed_fetches_stores_serves_events_and_never_returns_the_url() {
+async fn feeds_are_added_listed_edited_and_removed_and_the_url_never_comes_back() {
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let app = app(dir.path(), fake(feed_for_today(), calls.clone())).await;
 
-    let (status, body) = call(&app, "GET", "/calendar/feed", None, true).await;
-    assert_eq!(status, StatusCode::OK);
-    let v: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(
-        (v["configured"].clone(), v["event_count"].clone()),
-        (json!(false), json!(0))
-    );
+    let (_, body) = call(&app, "GET", "/calendar/feeds", None, true).await;
+    assert_eq!(body, "[]");
 
-    let (status, body) = call(
-        &app,
-        "PUT",
-        "/calendar/feed",
-        Some(json!({ "url": SECRET_URL })),
-        true,
-    )
-    .await;
+    let (status, body) = add(&app, "Work", SECRET_URL).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        !body.contains("TOPSECRET") && !body.contains("me%40x.com"),
-        "{body}"
-    );
-    let v: Value = serde_json::from_str(&body).unwrap();
+    let secret = |b: &str| b.contains("TOPSECRET") || b.contains("me%40x.com");
+    assert!(!secret(&body), "{body}");
+    let v = json_of(&body);
+    assert_eq!(v["name"], "Work");
     assert_eq!(v["url_masked"], "https://calendar.google.com/…");
+    assert_eq!(v["visible"], true);
     assert_eq!(v["event_count"], 4);
     assert_eq!(v["last_error"], Value::Null);
     assert!(v["last_sync_ms"].as_i64().unwrap() > 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let id = v["id"].as_i64().unwrap();
 
-    let (_, body) = call(&app, "GET", "/calendar/feed", None, true).await;
-    assert!(!body.contains("TOPSECRET"));
+    let (_, body) = call(&app, "GET", "/calendar/feeds", None, true).await;
+    assert!(!secret(&body));
+    assert_eq!(json_of(&body).as_array().unwrap().len(), 1);
 
     let (status, body) = call(
+        &app,
+        "PATCH",
+        &format!("/calendar/feeds/{id}"),
+        Some(json!({ "name": "Job", "color": "career" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let v = json_of(&body);
+    assert_eq!(
+        (v["name"].clone(), v["color"].clone()),
+        (json!("Job"), json!("career"))
+    );
+    assert!(!secret(&body));
+
+    let (_, body) = call(
         &app,
         "GET",
         "/calendar/events?from=0&to=99999999999999",
@@ -149,26 +172,111 @@ async fn set_feed_fetches_stores_serves_events_and_never_returns_the_url() {
         true,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    let ev: Vec<Value> = serde_json::from_str(&body).unwrap();
+    assert!(!secret(&body));
+    let ev = json_of(&body);
+    let ev = ev.as_array().unwrap();
     assert_eq!(ev.len(), 4);
     assert!(
         ev.iter()
-            .any(|e| e["summary"] == "Holiday" && e["all_day"] == true)
+            .all(|e| e["feed_id"] == id && e["feed_name"] == "Job" && e["color"] == "career")
     );
+    let holiday = ev.iter().find(|e| e["summary"] == "Holiday").unwrap();
+    assert_eq!(holiday["all_day"], true);
+    assert_eq!(holiday["start_date"].as_str().unwrap().len(), 10);
+    let standup = ev.iter().find(|e| e["summary"] == "Standup").unwrap();
+    assert_eq!(standup["start_date"], Value::Null);
     let (_, body) = call(&app, "GET", "/calendar/events?from=0&to=1", None, true).await;
     assert_eq!(body, "[]");
 
-    let (_, body) = call(&app, "DELETE", "/calendar/feed", None, true).await;
-    let v: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(
-        (v["configured"].clone(), v["event_count"].clone()),
-        (json!(false), json!(0))
-    );
+    let (status, _) = call(&app, "DELETE", &format!("/calendar/feeds/{id}"), None, true).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, body) = call(
+        &app,
+        "GET",
+        "/calendar/events?from=0&to=99999999999999",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(body, "[]");
+    let (status, _) = call(&app, "DELETE", &format!("/calendar/feeds/{id}"), None, true).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/calendar/feeds/999",
+        Some(json!({ "visible": false })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn set_feed_rejects_unsafe_urls_without_fetching_or_storing() {
+async fn hidden_feeds_contribute_no_events() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path(), fake(feed_for_today(), Arc::default())).await;
+    let a = json_of(&add(&app, "A", SECRET_URL).await.1)["id"]
+        .as_i64()
+        .unwrap();
+    let b = json_of(
+        &add(&app, "B", "https://example.com/other-secret.ics")
+            .await
+            .1,
+    )["id"]
+        .as_i64()
+        .unwrap();
+    let count = |app: &(Router, String)| {
+        let app = app.clone();
+        async move {
+            let (_, body) = call(
+                &app,
+                "GET",
+                "/calendar/events?from=0&to=99999999999999",
+                None,
+                true,
+            )
+            .await;
+            let v = json_of(&body);
+            let mut ids: Vec<i64> = v
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["feed_id"].as_i64().unwrap())
+                .collect();
+            ids.sort();
+            ids.dedup();
+            (v.as_array().unwrap().len(), ids)
+        }
+    };
+    assert_eq!(count(&app).await, (8, vec![a, b]));
+    call(
+        &app,
+        "PATCH",
+        &format!("/calendar/feeds/{a}"),
+        Some(json!({ "visible": false })),
+        true,
+    )
+    .await;
+    assert_eq!(count(&app).await, (4, vec![b]));
+    // Hiding keeps health and events stored; showing again brings them back.
+    let (_, body) = call(&app, "GET", "/calendar/feeds", None, true).await;
+    let feeds = json_of(&body);
+    assert_eq!(feeds[0]["visible"], false);
+    assert_eq!(feeds[0]["event_count"], 4);
+    call(
+        &app,
+        "PATCH",
+        &format!("/calendar/feeds/{a}"),
+        Some(json!({ "visible": true })),
+        true,
+    )
+    .await;
+    assert_eq!(count(&app).await.0, 8);
+}
+
+#[tokio::test]
+async fn create_rejects_unsafe_urls_bad_input_and_the_eleventh_feed_without_fetching() {
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let app = app(dir.path(), fake(feed_for_today(), calls.clone())).await;
@@ -177,23 +285,35 @@ async fn set_feed_rejects_unsafe_urls_without_fetching_or_storing() {
         "https://127.0.0.1/a.ics",
         "https://[::1]/a.ics",
     ] {
-        let (status, body) = call(
-            &app,
-            "PUT",
-            "/calendar/feed",
-            Some(json!({ "url": u })),
-            true,
-        )
-        .await;
+        let (status, body) = add(&app, "X", u).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{u}");
         assert!(!body.contains(u));
     }
+    for (name, color) in [("", "college"), ("   ", "college"), ("ok", "hotpink")] {
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/calendar/feeds",
+            Some(json!({ "name": name, "url": SECRET_URL, "color": color })),
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{name:?} {color}");
+    }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    let (_, body) = call(&app, "GET", "/calendar/feed", None, true).await;
     assert_eq!(
-        serde_json::from_str::<Value>(&body).unwrap()["configured"],
-        false
+        call(&app, "GET", "/calendar/feeds", None, true).await.1,
+        "[]"
     );
+
+    for i in 0..10 {
+        let (status, _) = add(&app, "F", &format!("https://example.com/{i}.ics")).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, body) = add(&app, "Extra", "https://example.com/extra.ics").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("at most 10"));
+    assert_eq!(calls.load(Ordering::SeqCst), 10);
 }
 
 #[tokio::test]
@@ -202,16 +322,9 @@ async fn fetch_failure_shows_in_health_not_as_an_http_error() {
     let failing: Fetcher =
         Arc::new(|_| Box::pin(async { Err("feed returned HTTP 404".to_string()) }));
     let app = app(dir.path(), failing).await;
-    let (status, body) = call(
-        &app,
-        "PUT",
-        "/calendar/feed",
-        Some(json!({ "url": SECRET_URL })),
-        true,
-    )
-    .await;
+    let (status, body) = add(&app, "Gone", SECRET_URL).await;
     assert_eq!(status, StatusCode::OK);
-    let v: Value = serde_json::from_str(&body).unwrap();
+    let v = json_of(&body);
     assert_eq!(v["last_error"], "feed returned HTTP 404");
     assert_eq!(v["last_sync_ms"], Value::Null);
 }

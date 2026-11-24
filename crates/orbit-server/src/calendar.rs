@@ -1,7 +1,8 @@
-//! Read-only Google Calendar via a secret iCal feed URL: storage, SSRF-safe fetch, poll, endpoints.
+//! Read-only calendars via secret iCal feed URLs (several, each with name/color/visibility): storage,
+//! SSRF-safe fetch, poll, endpoints.
 //!
 //! The URL is a secret: it is never logged, never put in an error, and clients only see
-//! `scheme://host/…`. Events live in `calendar_events`, outside the synced row store.
+//! `scheme://host/…`. Events live in `calendar_events` (keyed by `feed_id`), outside the synced row store.
 
 use std::{
     future::Future,
@@ -13,18 +14,18 @@ use std::{
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use reqwest::{Url, redirect::Policy};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{St, auth, ical, lock, now_ms};
 
 const DAY_MS: i64 = 86_400_000;
-/// How often the poll job refreshes a configured feed.
+/// How often the poll job refreshes the feeds.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// Days before now and after now that occurrences are expanded and stored.
 const PAST_DAYS: i64 = 31;
@@ -33,6 +34,10 @@ const MAX_BYTES: usize = 5 * 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REDIRECTS: usize = 3;
 const MAX_ROWS: i64 = 5_000;
+/// Feeds a user may add.
+const MAX_FEEDS: i64 = 10;
+/// Design-token names (see app.css); the client paints `var(--<color>)`, so themes and dark mode just work.
+const COLORS: [&str; 6] = ["college", "career", "learning", "home", "accent", "ok"];
 
 /// Fetches a feed URL to bytes. Tests swap in a fake; the real one is `fetch_feed`.
 pub type Fetcher = Arc<
@@ -45,10 +50,47 @@ pub fn real_fetcher() -> Fetcher {
 
 pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS calendar_feed (id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT, last_sync INTEGER, last_error TEXT);
-         CREATE TABLE IF NOT EXISTS calendar_events (uid TEXT NOT NULL, summary TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, all_day INTEGER NOT NULL);
-         CREATE INDEX IF NOT EXISTS calendar_events_start ON calendar_events (start_ms);",
-    )
+        "CREATE TABLE IF NOT EXISTS calendar_feeds (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL, color TEXT NOT NULL, visible INTEGER NOT NULL DEFAULT 1, last_sync INTEGER, last_error TEXT);
+         CREATE TABLE IF NOT EXISTS calendar_events (feed_id INTEGER NOT NULL DEFAULT 0, uid TEXT NOT NULL, summary TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, all_day INTEGER NOT NULL, start_date TEXT, end_date TEXT);",
+    )?;
+    // Events from the single-feed version lack the new columns.
+    let has = |t: &str, c: &str| -> rusqlite::Result<bool> {
+        conn.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info(?1) WHERE name = ?2",
+            [t, c],
+            |r| r.get(0),
+        )
+    };
+    if !has("calendar_events", "feed_id")? {
+        conn.execute_batch(
+            "ALTER TABLE calendar_events ADD COLUMN feed_id INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE calendar_events ADD COLUMN start_date TEXT;
+             ALTER TABLE calendar_events ADD COLUMN end_date TEXT;
+             UPDATE calendar_events SET start_date = date(start_ms / 1000, 'unixepoch'), end_date = date(end_ms / 1000, 'unixepoch') WHERE all_day = 1;",
+        )?;
+    }
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS calendar_events_start ON calendar_events (start_ms);
+         CREATE INDEX IF NOT EXISTS calendar_events_feed ON calendar_events (feed_id);",
+    )?;
+    // The single `calendar_feed` row becomes feed "Calendar" and adopts the stored events.
+    let legacy: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'calendar_feed'",
+        [],
+        |r| r.get(0),
+    )?;
+    if legacy {
+        conn.execute_batch(
+            "BEGIN;
+             INSERT INTO calendar_feeds (name, url, color, visible, last_sync, last_error)
+               SELECT 'Calendar', url, 'college', 1, last_sync, last_error FROM calendar_feed WHERE url IS NOT NULL;
+             DELETE FROM calendar_events WHERE feed_id = 0 AND NOT EXISTS (SELECT 1 FROM calendar_feeds);
+             UPDATE calendar_events SET feed_id = (SELECT MAX(id) FROM calendar_feeds) WHERE feed_id = 0;
+             DROP TABLE calendar_feed;
+             COMMIT;",
+        )?;
+    }
+    Ok(())
 }
 
 // ---- SSRF ----
@@ -172,144 +214,231 @@ async fn fetch_feed(raw: String) -> Result<Vec<u8>, String> {
 
 // ---- refresh + poll ----
 
-fn feed_url(conn: &Connection) -> rusqlite::Result<Option<String>> {
-    Ok(conn
-        .query_row("SELECT url FROM calendar_feed WHERE id = 1", [], |r| {
-            r.get::<_, Option<String>>(0)
-        })
-        .optional()?
-        .flatten())
-}
-
-fn record_error(db: &Mutex<Connection>, msg: &str) {
+fn record_error(db: &Mutex<Connection>, id: i64, msg: &str) {
     let _ = lock(db).execute(
-        "UPDATE calendar_feed SET last_error = ?1 WHERE id = 1",
-        [msg],
+        "UPDATE calendar_feeds SET last_error = ?2 WHERE id = ?1",
+        (id, msg),
     );
 }
 
-/// Fetches the configured feed and replaces the stored events. On failure the old events stay and
-/// `last_error` is set; `last_sync` only moves on success. No URL configured: does nothing.
-pub async fn refresh(db: &Mutex<Connection>, fetch: &Fetcher, now: i64) {
-    let Ok(Some(url)) = feed_url(&lock(db)) else {
+/// Fetches one feed and replaces its stored events. On failure its old events stay and `last_error`
+/// is set; `last_sync` only moves on success. Other feeds are never touched. Unknown id: does nothing.
+pub async fn refresh_feed(db: &Mutex<Connection>, fetch: &Fetcher, id: i64, now: i64) {
+    let Ok(url) = lock(db).query_row("SELECT url FROM calendar_feeds WHERE id = ?1", [id], |r| {
+        r.get::<_, String>(0)
+    }) else {
         return;
     };
     let body = match fetch(url).await {
         Ok(b) => b,
-        Err(e) => return record_error(db, &e),
+        Err(e) => return record_error(db, id, &e),
     };
     let Ok(text) = String::from_utf8(body) else {
-        return record_error(db, "feed is not UTF-8 text");
+        return record_error(db, id, "feed is not UTF-8 text");
     };
     if !text.contains("BEGIN:VCALENDAR") {
-        return record_error(db, "response is not an iCalendar feed");
+        return record_error(db, id, "response is not an iCalendar feed");
     }
     let events = ical::parse_feed(&text, now - PAST_DAYS * DAY_MS, now + FUTURE_DAYS * DAY_MS);
     let mut conn = lock(db);
     let res = (|| {
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM calendar_events", [])?;
+        // The feed may have been removed while fetching: store nothing then.
+        let n = tx.execute(
+            "UPDATE calendar_feeds SET last_sync = ?2, last_error = NULL WHERE id = ?1",
+            (id, now),
+        )?;
+        if n == 0 {
+            return Ok(());
+        }
+        tx.execute("DELETE FROM calendar_events WHERE feed_id = ?1", [id])?;
         for e in &events {
             tx.execute(
-                "INSERT INTO calendar_events (uid, summary, start_ms, end_ms, all_day) VALUES (?1, ?2, ?3, ?4, ?5)",
-                (&e.uid, &e.summary, e.start_ms, e.end_ms, e.all_day),
+                "INSERT INTO calendar_events (feed_id, uid, summary, start_ms, end_ms, all_day, start_date, end_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                (id, &e.uid, &e.summary, e.start_ms, e.end_ms, e.all_day, &e.start_date, &e.end_date),
             )?;
         }
-        tx.execute(
-            "UPDATE calendar_feed SET last_sync = ?1, last_error = NULL WHERE id = 1",
-            [now],
-        )?;
         tx.commit()
     })();
     if res.is_err() {
         drop(conn);
-        record_error(db, "could not store events");
+        record_error(db, id, "could not store events");
     }
 }
 
-/// Refreshes the feed now and then every `POLL_INTERVAL`, for the life of the server.
+/// Refreshes every feed, one after another; a failing feed only records its own error.
+pub async fn refresh_all(db: &Mutex<Connection>, fetch: &Fetcher, now: i64) {
+    let ids: Vec<i64> = {
+        let conn = lock(db);
+        let Ok(mut stmt) = conn.prepare("SELECT id FROM calendar_feeds ORDER BY id") else {
+            return;
+        };
+        let Ok(rows) = stmt.query_map([], |r| r.get(0)) else {
+            return;
+        };
+        rows.flatten().collect()
+    };
+    for id in ids {
+        refresh_feed(db, fetch, id, now).await;
+    }
+}
+
+/// Refreshes all feeds now and then every `POLL_INTERVAL`, for the life of the server.
 pub async fn poll(st: St) {
     loop {
-        refresh(&st.db, &st.fetcher, now_ms()).await;
+        refresh_all(&st.db, &st.fetcher, now_ms()).await;
         tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 
 // ---- endpoints ----
 
-fn health(conn: &Connection) -> rusqlite::Result<Value> {
-    let (url, last_sync, last_error) = conn
-        .query_row(
-            "SELECT url, last_sync, last_error FROM calendar_feed WHERE id = 1",
-            [],
-            |r| {
-                Ok((
-                    r.get::<_, Option<String>>(0)?,
-                    r.get::<_, Option<i64>>(1)?,
-                    r.get::<_, Option<String>>(2)?,
-                ))
-            },
-        )
-        .optional()?
-        .unwrap_or_default();
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM calendar_events", [], |r| r.get(0))?;
-    Ok(json!({
-        "configured": url.is_some(),
-        "url_masked": url.as_deref().map(mask),
-        "last_sync_ms": last_sync,
-        "last_error": last_error,
-        "event_count": count,
-    }))
+type ApiErr = (StatusCode, Json<Value>);
+
+fn err(code: StatusCode, msg: &str) -> ApiErr {
+    (code, Json(json!({ "error": msg })))
 }
 
-fn internal(e: rusqlite::Error) -> StatusCode {
+fn internal(e: rusqlite::Error) -> ApiErr {
     eprintln!("calendar: {e}");
-    StatusCode::INTERNAL_SERVER_ERROR
+    err(StatusCode::INTERNAL_SERVER_ERROR, "storage failed")
 }
 
-pub(crate) async fn feed(State(st): State<St>, _: auth::Device) -> Result<Json<Value>, StatusCode> {
-    health(&lock(&st.db)).map(Json).map_err(internal)
+/// Feeds with health. The URL appears only masked.
+fn feeds_json(conn: &Connection, only: Option<i64>) -> rusqlite::Result<Vec<Value>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, url, color, visible, last_sync, last_error,
+                (SELECT COUNT(*) FROM calendar_events e WHERE e.feed_id = f.id)
+         FROM calendar_feeds f WHERE ?1 IS NULL OR id = ?1 ORDER BY id",
+    )?;
+    stmt.query_map([only], |r| {
+        Ok(json!({
+            "id": r.get::<_, i64>(0)?,
+            "name": r.get::<_, String>(1)?,
+            "url_masked": mask(&r.get::<_, String>(2)?),
+            "color": r.get::<_, String>(3)?,
+            "visible": r.get::<_, bool>(4)?,
+            "last_sync_ms": r.get::<_, Option<i64>>(5)?,
+            "last_error": r.get::<_, Option<String>>(6)?,
+            "event_count": r.get::<_, i64>(7)?,
+        }))
+    })
+    .and_then(|it| it.collect())
+}
+
+fn one(conn: &Connection, id: i64) -> Result<Json<Value>, ApiErr> {
+    feeds_json(conn, Some(id))
+        .map_err(internal)?
+        .pop()
+        .map(Json)
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "no such calendar"))
+}
+
+fn clean_name(name: &str) -> Result<&str, ApiErr> {
+    let n = name.trim();
+    if n.is_empty() || n.chars().count() > 60 {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "name must be 1 to 60 characters",
+        ));
+    }
+    Ok(n)
+}
+
+fn clean_color(color: &str) -> Result<&str, ApiErr> {
+    if COLORS.contains(&color) {
+        Ok(color)
+    } else {
+        Err(err(StatusCode::BAD_REQUEST, "unknown color"))
+    }
+}
+
+pub(crate) async fn list(
+    State(st): State<St>,
+    _: auth::Device,
+) -> Result<Json<Vec<Value>>, ApiErr> {
+    feeds_json(&lock(&st.db), None).map(Json).map_err(internal)
 }
 
 #[derive(Deserialize)]
-pub(crate) struct SetFeed {
+pub(crate) struct NewFeed {
+    name: String,
     url: String,
+    color: Option<String>,
 }
 
-/// Stores the URL, refreshes once, and returns the health (a failed fetch shows up there, not as an error).
-pub(crate) async fn set_feed(
+/// Adds a feed, refreshes it once, and returns it (a failed fetch shows up in its health, not as an error).
+pub(crate) async fn create(
     State(st): State<St>,
     _: auth::Device,
-    Json(body): Json<SetFeed>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let url =
-        check_url(&body.url).map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
-    let internal = |e| (internal(e), Json(json!({ "error": "storage failed" })));
-    {
-        let mut conn = lock(&st.db);
-        let tx = conn.transaction().map_err(internal)?;
-        tx.execute("DELETE FROM calendar_events", [])
+    Json(body): Json<NewFeed>,
+) -> Result<Json<Value>, ApiErr> {
+    let name = clean_name(&body.name)?;
+    let url = check_url(&body.url).map_err(|e| err(StatusCode::BAD_REQUEST, e))?;
+    let id = {
+        let conn = lock(&st.db);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM calendar_feeds", [], |r| r.get(0))
             .map_err(internal)?;
-        tx.execute(
-            "INSERT INTO calendar_feed (id, url, last_sync, last_error) VALUES (1, ?1, NULL, NULL)
-             ON CONFLICT (id) DO UPDATE SET url = ?1, last_sync = NULL, last_error = NULL",
-            [url.as_str()],
+        if n >= MAX_FEEDS {
+            return Err(err(StatusCode::BAD_REQUEST, "at most 10 calendars"));
+        }
+        let color = match body.color.as_deref() {
+            Some(c) => clean_color(c)?,
+            None => COLORS[n as usize % COLORS.len()],
+        };
+        conn.execute(
+            "INSERT INTO calendar_feeds (name, url, color) VALUES (?1, ?2, ?3)",
+            (name, url.as_str(), color),
         )
         .map_err(internal)?;
-        tx.commit().map_err(internal)?;
-    }
-    refresh(&st.db, &st.fetcher, now_ms()).await;
-    health(&lock(&st.db)).map(Json).map_err(internal)
+        conn.last_insert_rowid()
+    };
+    refresh_feed(&st.db, &st.fetcher, id, now_ms()).await;
+    one(&lock(&st.db), id)
 }
 
-pub(crate) async fn clear_feed(
+#[derive(Deserialize)]
+pub(crate) struct Patch {
+    name: Option<String>,
+    color: Option<String>,
+    visible: Option<bool>,
+}
+
+pub(crate) async fn update(
     State(st): State<St>,
     _: auth::Device,
-) -> Result<Json<Value>, StatusCode> {
+    Path(id): Path<i64>,
+    Json(p): Json<Patch>,
+) -> Result<Json<Value>, ApiErr> {
+    let name = p.name.as_deref().map(clean_name).transpose()?;
+    let color = p.color.as_deref().map(clean_color).transpose()?;
     let conn = lock(&st.db);
-    conn.execute_batch("DELETE FROM calendar_events; DELETE FROM calendar_feed;")
+    conn.execute(
+        "UPDATE calendar_feeds SET name = COALESCE(?2, name), color = COALESCE(?3, color), visible = COALESCE(?4, visible) WHERE id = ?1",
+        (id, name, color, p.visible),
+    )
+    .map_err(internal)?;
+    one(&conn, id)
+}
+
+pub(crate) async fn remove(
+    State(st): State<St>,
+    _: auth::Device,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiErr> {
+    let mut conn = lock(&st.db);
+    let tx = conn.transaction().map_err(internal)?;
+    tx.execute("DELETE FROM calendar_events WHERE feed_id = ?1", [id])
         .map_err(internal)?;
-    health(&conn).map(Json).map_err(internal)
+    let n = tx
+        .execute("DELETE FROM calendar_feeds WHERE id = ?1", [id])
+        .map_err(internal)?;
+    tx.commit().map_err(internal)?;
+    if n == 0 {
+        return Err(err(StatusCode::NOT_FOUND, "no such calendar"));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -318,28 +447,37 @@ pub(crate) struct Window {
     to: i64,
 }
 
-/// Stored events overlapping `[from, to)` (epoch ms), oldest first.
+/// Events of visible feeds overlapping `[from, to)` (epoch ms), oldest first. All-day events match on
+/// their UTC-midnight sort keys, so callers pad the window by a day and pick the local day from
+/// `start_date`/`end_date`.
 pub(crate) async fn events(
     State(st): State<St>,
     _: auth::Device,
     Query(w): Query<Window>,
-) -> Result<Json<Vec<ical::Event>>, StatusCode> {
+) -> Result<Json<Vec<Value>>, ApiErr> {
     let conn = lock(&st.db);
     let mut stmt = conn
         .prepare(
-            "SELECT uid, summary, start_ms, end_ms, all_day FROM calendar_events
-             WHERE start_ms < ?2 AND MAX(end_ms, start_ms + 1) > ?1 ORDER BY start_ms, uid LIMIT ?3",
+            "SELECT e.uid, e.summary, e.start_ms, e.end_ms, e.all_day, e.start_date, e.end_date, f.id, f.name, f.color
+             FROM calendar_events e JOIN calendar_feeds f ON f.id = e.feed_id
+             WHERE f.visible = 1 AND e.start_ms < ?2 AND MAX(e.end_ms, e.start_ms + 1) > ?1
+             ORDER BY e.start_ms, e.uid LIMIT ?3",
         )
         .map_err(internal)?;
     let rows = stmt
         .query_map((w.from, w.to, MAX_ROWS), |r| {
-            Ok(ical::Event {
-                uid: r.get(0)?,
-                summary: r.get(1)?,
-                start_ms: r.get(2)?,
-                end_ms: r.get(3)?,
-                all_day: r.get(4)?,
-            })
+            Ok(json!({
+                "uid": r.get::<_, String>(0)?,
+                "summary": r.get::<_, String>(1)?,
+                "start_ms": r.get::<_, i64>(2)?,
+                "end_ms": r.get::<_, i64>(3)?,
+                "all_day": r.get::<_, bool>(4)?,
+                "start_date": r.get::<_, Option<String>>(5)?,
+                "end_date": r.get::<_, Option<String>>(6)?,
+                "feed_id": r.get::<_, i64>(7)?,
+                "feed_name": r.get::<_, String>(8)?,
+                "color": r.get::<_, String>(9)?,
+            }))
         })
         .and_then(|it| it.collect::<Result<Vec<_>, _>>())
         .map_err(internal)?;
@@ -433,26 +571,37 @@ mod tests {
     fn db() -> Mutex<Connection> {
         let conn = Connection::open_in_memory().unwrap();
         migrate(&conn).unwrap();
-        conn.execute(
-            "INSERT INTO calendar_feed (id, url) VALUES (1, 'https://example.com/secret.ics')",
-            [],
+        Mutex::new(conn)
+    }
+
+    fn add(db: &Mutex<Connection>, name: &str, url: &str) -> i64 {
+        let c = lock(db);
+        c.execute(
+            "INSERT INTO calendar_feeds (name, url, color) VALUES (?1, ?2, 'college')",
+            (name, url),
         )
         .unwrap();
-        Mutex::new(conn)
+        c.last_insert_rowid()
     }
 
     const FEED: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20240101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:S\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
     const NOW: i64 = 1_704_067_200_000; // 2024-01-01T00:00:00Z
 
-    fn state(db: &Mutex<Connection>) -> (i64, Option<i64>, Option<String>) {
+    fn state(db: &Mutex<Connection>, id: i64) -> (i64, Option<i64>, Option<String>) {
         let c = lock(db);
         let n = c
-            .query_row("SELECT COUNT(*) FROM calendar_events", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM calendar_events WHERE feed_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
             .unwrap();
         let (s, e) = c
-            .query_row("SELECT last_sync, last_error FROM calendar_feed", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT last_sync, last_error FROM calendar_feeds WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         (n, s, e)
     }
@@ -460,33 +609,148 @@ mod tests {
     #[tokio::test]
     async fn refresh_stores_events_and_records_last_sync() {
         let db = db();
-        refresh(&db, &fake(Ok(FEED)), NOW).await;
-        assert_eq!(state(&db), (3, Some(NOW), None));
+        let id = add(&db, "A", "https://example.com/secret.ics");
+        refresh_feed(&db, &fake(Ok(FEED)), id, NOW).await;
+        assert_eq!(state(&db, id), (3, Some(NOW), None));
     }
 
     #[tokio::test]
     async fn failed_refresh_keeps_old_events_and_records_error_without_moving_last_sync() {
         let db = db();
-        refresh(&db, &fake(Ok(FEED)), NOW).await;
-        refresh(&db, &fake(Err("feed returned HTTP 500")), NOW + 1).await;
+        let id = add(&db, "A", "https://example.com/secret.ics");
+        refresh_feed(&db, &fake(Ok(FEED)), id, NOW).await;
+        refresh_feed(&db, &fake(Err("feed returned HTTP 500")), id, NOW + 1).await;
         assert_eq!(
-            state(&db),
+            state(&db, id),
             (3, Some(NOW), Some("feed returned HTTP 500".into()))
         );
-        refresh(&db, &fake(Ok("<html>nope</html>")), NOW + 2).await;
+        refresh_feed(&db, &fake(Ok("<html>nope</html>")), id, NOW + 2).await;
         assert_eq!(
-            state(&db).2.as_deref(),
+            state(&db, id).2.as_deref(),
             Some("response is not an iCalendar feed")
         );
-        refresh(&db, &fake(Ok(FEED)), NOW + 3).await;
-        assert_eq!(state(&db), (3, Some(NOW + 3), None));
+        refresh_feed(&db, &fake(Ok(FEED)), id, NOW + 3).await;
+        assert_eq!(state(&db, id), (3, Some(NOW + 3), None));
     }
 
     #[tokio::test]
-    async fn refresh_without_a_url_never_fetches() {
+    async fn one_failing_feed_leaves_the_others_and_its_own_old_events_intact() {
         let db = db();
-        lock(&db).execute("DELETE FROM calendar_feed", []).unwrap();
-        let fetch: Fetcher = Arc::new(|_| panic!("fetched without a URL"));
-        refresh(&db, &fetch, NOW).await;
+        let good = add(&db, "Good", "https://good.example.com/a.ics");
+        let bad = add(&db, "Bad", "https://bad.example.com/b.ics");
+        refresh_all(&db, &fake(Ok(FEED)), NOW).await;
+        assert_eq!(state(&db, good).0, 3);
+        assert_eq!(state(&db, bad).0, 3);
+        // Second poll: bad host fails, good host serves a one-event feed.
+        let one = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:z\r\nDTSTART:20240101T100000Z\r\nSUMMARY:Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let fetch: Fetcher = Arc::new(move |url| {
+            Box::pin(async move {
+                if url.contains("bad.") {
+                    Err("feed returned HTTP 500".to_string())
+                } else {
+                    Ok(one.as_bytes().to_vec())
+                }
+            })
+        });
+        refresh_all(&db, &fetch, NOW + 1).await;
+        assert_eq!(state(&db, good), (1, Some(NOW + 1), None));
+        assert_eq!(
+            state(&db, bad),
+            (3, Some(NOW), Some("feed returned HTTP 500".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_of_an_unknown_feed_never_fetches() {
+        let db = db();
+        let fetch: Fetcher = Arc::new(|_| panic!("fetched without a feed"));
+        refresh_feed(&db, &fetch, 7, NOW).await;
+    }
+
+    #[test]
+    fn migrate_turns_the_single_feed_row_into_a_feed_and_keeps_its_events() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE calendar_feed (id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT, last_sync INTEGER, last_error TEXT);
+             CREATE TABLE calendar_events (uid TEXT NOT NULL, summary TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, all_day INTEGER NOT NULL);
+             INSERT INTO calendar_feed VALUES (1, 'https://example.com/s.ics', 42, 'old error');
+             INSERT INTO calendar_events VALUES ('a', 'Holiday', 1709251200000, 1709337600000, 1);
+             INSERT INTO calendar_events VALUES ('b', 'Call', 1709254800000, 1709258400000, 0);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap(); // idempotent
+        let (name, url, color, vis, sync, error): (String, String, String, bool, i64, String) =
+            conn.query_row(
+                "SELECT name, url, color, visible, last_sync, last_error FROM calendar_feeds",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (
+                name.as_str(),
+                url.as_str(),
+                color.as_str(),
+                vis,
+                sync,
+                error.as_str()
+            ),
+            (
+                "Calendar",
+                "https://example.com/s.ics",
+                "college",
+                true,
+                42,
+                "old error"
+            )
+        );
+        let rows: Vec<(i64, String, Option<String>)> = conn
+            .prepare("SELECT feed_id, uid, start_date FROM calendar_events ORDER BY uid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .flatten()
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                (1, "a".into(), Some("2024-03-01".into())),
+                (1, "b".into(), None)
+            ]
+        );
+        let legacy: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'calendar_feed'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy, 0);
+    }
+
+    #[test]
+    fn migrate_with_an_unconfigured_legacy_row_drops_it_and_orphan_events() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE calendar_feed (id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT, last_sync INTEGER, last_error TEXT);
+             CREATE TABLE calendar_events (uid TEXT NOT NULL, summary TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, all_day INTEGER NOT NULL);
+             INSERT INTO calendar_events VALUES ('a', 'x', 1, 2, 0);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT (SELECT COUNT(*) FROM calendar_feeds) + (SELECT COUNT(*) FROM calendar_events)", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
     }
 }

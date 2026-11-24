@@ -15,8 +15,9 @@ const MAX_STEPS: usize = 20_000;
 pub const MAX_EVENTS: usize = 5_000;
 const DAY_MS: i64 = 86_400_000;
 
-/// One event or one occurrence of a recurring event. All-day events start and end (exclusive)
-/// at UTC midnight of their dates.
+/// One event or one occurrence of a recurring event. All-day events carry `start_date` and
+/// `end_date` (exclusive), plain `YYYY-MM-DD` calendar dates with no zone; their `*_ms` are only
+/// UTC-midnight sort keys and must not be used to pick a viewer's day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Event {
     pub uid: String,
@@ -24,6 +25,15 @@ pub struct Event {
     pub start_ms: i64,
     pub end_ms: i64,
     pub all_day: bool,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
+
+/// `YYYY-MM-DD` of a UTC-midnight all-day stamp.
+pub fn date_of(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|d| d.date_naive().to_string())
+        .unwrap_or_default()
 }
 
 struct Prop {
@@ -239,6 +249,8 @@ fn expand(e: &Raw, from: i64, to: i64, replaced: &[(String, i64)], out: &mut Vec
                 start_ms: s,
                 end_ms: s + len,
                 all_day: start.all_day,
+                start_date: start.all_day.then(|| date_of(s)),
+                end_date: start.all_day.then(|| date_of(s + len)),
             });
         }
         hit
@@ -331,6 +343,8 @@ mod tests {
         assert_eq!(ev[0].start_ms, ms(2024, 3, 1, 0, 0));
         assert_eq!(ev[0].end_ms, ms(2024, 3, 3, 0, 0));
         assert_eq!(ev[0].summary, "Trip, with fold\nline");
+        assert_eq!(ev[0].start_date.as_deref(), Some("2024-03-01"));
+        assert_eq!(ev[0].end_date.as_deref(), Some("2024-03-03"));
     }
 
     #[test]

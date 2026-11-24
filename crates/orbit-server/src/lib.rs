@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use orbit_core::{
     Clocks, Command, ErrorCode, Hlc, MIN_CLIENT_PROTOCOL, Op, PROTOCOL_V, Row, Status, SyncRequest,
@@ -185,10 +185,12 @@ fn build(
         .route("/backup/status", get(backup_status))
         .route("/calendar/events", get(calendar::events))
         .route(
-            "/calendar/feed",
-            get(calendar::feed)
-                .put(calendar::set_feed)
-                .delete(calendar::clear_feed),
+            "/calendar/feeds",
+            get(calendar::list).post(calendar::create),
+        )
+        .route(
+            "/calendar/feeds/{id}",
+            patch(calendar::update).delete(calendar::remove),
         )
         .route("/auth", get(auth::state))
         .route("/auth/setup", post(auth::setup))
