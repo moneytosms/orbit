@@ -44,13 +44,7 @@ Rust (axum) server with SQLite as the source of truth. Clients sync through clie
 
 ### Server
 
-Environment variables:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `ORBIT_ADDR` | `127.0.0.1:8080` | listen address |
-| `ORBIT_DATA` | `data` | data directory (`orbit.db`, `backups/`) |
-| `ORBIT_WEB` | unset | directory of the built web app to serve |
+Configured by environment variables, listed in [docs/deploy.md](docs/deploy.md#what-you-are-running). The data directory (`ORBIT_DATA`, default `data`) holds `orbit.db`, `blobs/` and `backups/`. CLI variables are in [docs/cli-install.md](docs/cli-install.md#environment-variables).
 
 Docker Compose (image `ghcr.io/moneytosms/orbit`, see [docs/releasing.md](docs/releasing.md)). The data directory is created for you and the server restarts after a reboot:
 

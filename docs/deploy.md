@@ -28,6 +28,7 @@ image sets that for you. Nothing is stored anywhere else.
 | `ORBIT_ADDR`        | `127.0.0.1:8080` | Address the server listens on. Docker image: `0.0.0.0:8080`.              |
 | `ORBIT_WEB`         | unset            | Directory with the built web UI, served at `/`. Docker image: `/web`.     |
 | `ORBIT_MAX_BLOB_MB` | `25`             | Largest attachment accepted, in MB.                                       |
+| `ORBIT_SYNC_TRACE`  | unset            | Set to `1` for a debug latency trace of sync requests. See [sync-latency.md](sync-latency.md). |
 
 ## 1. Run it
 
