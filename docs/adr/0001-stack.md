@@ -15,3 +15,7 @@ Orbit uses a Rust (axum) server with SQLite as the source of truth, and a Todois
 
 - The Tauri 2 Android path is unproven; if the spike fails, Android becomes a native Kotlin thin client of the same sync API.
 - Web reminders only fire with a tab open; Linux reminders need the tray app running.
+
+## Outcome: Android spike (2026-11-24)
+
+The Tauri 2 Android path worked, so no Kotlin thin-client fallback was needed. The app ships as a signed release APK (`Orbit-<version>-android.apk`, see [docs/android.md](../android.md) and [docs/releasing.md](../releasing.md)) and has been smoke-tested on an emulator and one real phone (Android 16, per `docs/android.md`). Wider device testing is still open.
