@@ -155,7 +155,7 @@
   </div>
 
   {#if mode === 'canvas'}
-    <RoadmapGraphCanvas {id} onchange={load} />
+    <RoadmapGraphCanvas {id} onchange={load} onimport={() => (importing = true)} />
   {/if}
 
   {#if mode === 'timeline'}
@@ -186,9 +186,11 @@
       <Button type="submit" variant="primary">Add phase</Button>
     </form>
   {/if}
-  <div class="mt-3 flex gap-2">
-    <Button variant="ghost" onclick={() => (importing = true)}>Import from code…</Button>
-  </div>
+  {#if mode !== 'canvas'}
+    <div class="mt-3 flex gap-2">
+      <Button variant="ghost" onclick={() => (importing = true)}>Import from code…</Button>
+    </div>
+  {/if}
   <Dialog.Root bind:open={importing}>
     <Dialog.Content class="max-h-[85vh] overflow-y-auto">
       <Dialog.Title>Import from code</Dialog.Title>

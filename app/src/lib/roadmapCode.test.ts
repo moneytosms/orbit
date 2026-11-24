@@ -12,6 +12,7 @@ import {
   decideGraphNode,
   exportRoadmapCode,
   importRoadmapCode,
+  parseMermaid,
   parseRoadmapCode,
   previewRoadmapCode,
   roadmapCode,
@@ -19,7 +20,7 @@ import {
   tree,
   updateGraphNode,
 } from './sync'
-import { PROMPT_EXAMPLE, roadmapPrompt } from './roadmapPrompt'
+import { EXAMPLE_BRANCH, EXAMPLE_PLAN, MERMAID_EXAMPLE, PROMPT_EXAMPLE, roadmapPrompt } from './roadmapPrompt'
 
 // Local-only: these tests never reach the network, so every sync attempt fails like an offline device.
 vi.stubGlobal('fetch', async () => {
@@ -128,6 +129,10 @@ test('the Copy for AI prompt lists the closed kinds and real ids, and its own ex
     'single fenced code block and nothing else',
     'task, project, goal, milestone, decision, note, text, heading',
     'then, blocks, depends_on, decides',
+    'ask me questions first',
+    'Deadline:',
+    'Do NOT assume the goal',
+    'Phase: Research',
     'College (id area-1)',
     'Thesis (id proj-1)',
     'Get fit (id goal-1)',
@@ -145,4 +150,47 @@ test('the Copy for AI prompt lists the closed kinds and real ids, and its own ex
   expect(graph.nodes.map((n) => n.node_kind).sort()).toEqual(['decision', 'task', 'task'])
   expect(graph.nodes.filter((n) => n.band_id)).toHaveLength(1)
   expect(parseRoadmapCode(exportRoadmapCode(await roadmapCode(road)))).toHaveProperty('ok')
+})
+
+test('the Mermaid import example parses into two phases', () => {
+  const parsed = parseMermaid(MERMAID_EXAMPLE)
+  if (!('ok' in parsed)) throw new Error(parsed.error.message)
+  expect(parsed.ok.phases.map((p) => [p.name, p.items.length])).toEqual([
+    ['Week 1', 2],
+    ['Week 2', 1],
+  ])
+})
+
+test('a node converts between plain kinds and to a task without losing its title', async () => {
+  const road = await newRoadmap('Convert', 'Kinds')
+  const note = await createGraphNode(road, 'note', 0, 0, 'Think about it')
+  const task = await createTask('Real task')
+  const linked = await createGraphNode(road, 'task', 200, 0, '', task)
+  await updateGraphNode(note, { kind: 'decision' })
+  const made = await createTask('Think about it')
+  await updateGraphNode(note, { kind: 'task', ref_id: made, title: '' })
+  await updateGraphNode(linked, { kind: 'note', ref_id: null, title: 'Real task' })
+  const nodes = (await roadmapGraph(road)).nodes
+  expect(nodes.find((n) => n.id === note)).toMatchObject({ node_kind: 'task', ref_id: made, title: 'Think about it' })
+  expect(nodes.find((n) => n.id === linked)).toMatchObject({ node_kind: 'note', ref_id: null, title: 'Real task' })
+  await expect(updateGraphNode(note, { kind: 'note' })).rejects.toBeTruthy()
+})
+
+test('every example in the AI prompt parses, previews clean and imports', async () => {
+  const prompt = roadmapPrompt([], [], [], [])
+  const blocks = [...prompt.matchAll(/```orbit\n([\s\S]*?)\n```/g)].map((m) => m[1])
+  expect(blocks).toEqual([EXAMPLE_PLAN, EXAMPLE_BRANCH])
+  for (const [n, block] of [...blocks, PROMPT_EXAMPLE].entries()) {
+    const parsed = parseRoadmapCode(block)
+    if (!('ok' in parsed)) throw new Error(`example ${n}: line ${parsed.error.line} ${parsed.error.message}`)
+    const road = await newRoadmap(`Example ${n}`, 'Fresh')
+    const preview = await previewRoadmapCode(road, parsed.ok)
+    expect(preview.errors).toEqual([])
+    await importRoadmapCode(road, parsed.ok)
+    expect((await roadmapGraph(road)).nodes.length).toBe(Object.keys(parsed.ok.nodes).length)
+  }
+  const branch = parseRoadmapCode(EXAMPLE_BRANCH)
+  if (!('ok' in branch)) throw new Error('branch')
+  expect(branch.ok.edges.filter((e) => e.taken)).toHaveLength(1)
+  expect(new Set(branch.ok.edges.map((e) => e.kind))).toEqual(new Set(['then', 'blocks', 'decides', 'depends_on']))
 })
