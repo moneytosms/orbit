@@ -34,7 +34,12 @@
     })
   })
   const label = (r: Row) => ('title' in r ? r.title : 'name' in r ? r.name : r.kind)
-  const due = (r: Row) => (r.kind === 'task' ? (r.due?.date ?? '') : '')
+  const due = (r: Row) => {
+    const date = r.kind === 'task' ? r.due?.date : ''
+    if (!date) return ''
+    const [y, m, d] = date.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+  }
 </script>
 
 {#if loaded && rows.length === 0}
