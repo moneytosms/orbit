@@ -17,6 +17,17 @@ export const PROMPT_EXAMPLE = [
   '  d1 -- yes --> t2',
 ].join('\n')
 
+/** A small Mermaid gantt the import dialog can insert: two sections become two phases. */
+export const MERMAID_EXAMPLE = [
+  'gantt',
+  '  dateFormat YYYY-MM-DD',
+  '  section Week 1',
+  '  Read the Rust book :a, 2026-11-21, 2026-11-24',
+  '  Build a CLI :b, after a, 3d',
+  '  section Week 2',
+  '  Ship it :c, 2026-11-28, 2026-11-30',
+].join('\n')
+
 /** The "Copy for AI" prompt: the format, the closed kind lists, and the existing rows an AI may reference. */
 export function roadmapPrompt(areas: Row[], projects: Row[], goals: Row[], tasks: Row[]): string {
   const list = (rows: Row[]) => rows.map((row) => `- ${row.title} (id ${row.id})`).join('\n') || '- none'

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import { roadmapPrompt } from '$lib/roadmapPrompt'
+  import { MERMAID_EXAMPLE, PROMPT_EXAMPLE, roadmapPrompt } from '$lib/roadmapPrompt'
   import {
     exportRoadmapCode,
     importRoadmapCode,
@@ -27,7 +27,7 @@
     onimportcode?: () => void | Promise<void>
   } = $props()
 
-  let mode = $state<'mermaid' | 'orbit'>('mermaid')
+  let mode = $state<'mermaid' | 'orbit'>('orbit')
   let text = $state('')
   let plan = $state<MermaidPlan | null>(null)
   let error = $state<{ line: number; message: string } | null>(null)
@@ -165,6 +165,10 @@
 
 {#if mode === 'mermaid' || !roadmapId}
   <div class="flex flex-col gap-2">
+    <p class="text-[0.8125rem] text-muted">
+      Paste a Mermaid <code>gantt</code> or <code>flowchart</code>. Each <code>section</code> becomes a phase and each line
+      under it an item. Not sure? Insert the example, check the preview, then Import.
+    </p>
     <textarea
       aria-label="Mermaid diagram"
       placeholder={'gantt\n  section Plan\n  Task :a, 2026-01-01, 3d'}
@@ -191,12 +195,18 @@
         {/each}
       </ul>
     {/if}
-    <div class="flex justify-end">
+    <div class="flex justify-end gap-2">
+      <Button variant="ghost" onclick={() => update(MERMAID_EXAMPLE)}>Insert example</Button>
       <Button variant="primary" disabled={!plan || !!error || !count || busy} onclick={run}>Import</Button>
     </div>
   </div>
 {:else}
   <div class="flex flex-col gap-2">
+    <p class="text-[0.8125rem] text-muted">
+      Orbit code is a Mermaid flowchart plus <code>%%orbit</code> lines that place nodes, bands and connections. Easiest
+      start: <strong>Insert example</strong> to see the shape, or <strong>Copy for AI</strong>, paste the prompt into a
+      chat, and paste its answer back here. Nothing is written until you press Import.
+    </p>
     <textarea
       aria-label="Orbit code"
       placeholder={'%%orbit:v1\nflowchart LR\n  a["Read the Rust book"]:::task'}
@@ -236,6 +246,7 @@
       <p role="alert" class="rounded-md bg-danger-soft px-2 py-1 text-[0.8125rem] text-danger-text">{failure}</p>
     {/if}
     <div class="flex flex-wrap items-center justify-end gap-2">
+      <Button variant="ghost" onclick={() => updateCode(PROMPT_EXAMPLE)}>Insert example</Button>
       <Button variant="ghost" onclick={copyPrompt}>{copied === 'ai' ? 'Copied' : 'Copy for AI'}</Button>
       <Button variant="ghost" onclick={copyCode}>{copied === 'code' ? 'Copied' : 'Copy as code'}</Button>
       <Button variant="primary" disabled={!parsed || !preview || preview.errors.length > 0 || busy} onclick={runCode}

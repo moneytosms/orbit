@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, Phase } from './sync'
+import type { GraphEdge, GraphNode, GraphNodeKind, Phase } from './sync'
 
 /** Nodes hidden because they sit on an untaken branch of a decided decision. They are kept, only not shown. */
 export function hiddenNodeIds(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
@@ -60,4 +60,32 @@ export function tidyLayout(nodes: GraphNode[], edges: GraphEdge[]): Map<string, 
     out.set(n.id, { x: 80 + r * 320, y: 80 + slot * 120 })
   }
   return out
+}
+
+export const NODE_W = 240
+export const NODE_H = 64
+export type ConvertTarget = { kind: GraphNodeKind; ok: boolean; reason?: string }
+const CONVERTIBLE: GraphNodeKind[] = ['task', 'decision', 'note', 'heading']
+const REF_KINDS: GraphNodeKind[] = ['task', 'project', 'goal', 'milestone']
+
+/** Kinds a node can become. Linked nodes (task, project, goal, milestone) keep their item when they turn into a plain node. */
+export function convertTargets(node: Pick<GraphNode, 'node_kind'>): ConvertTarget[] {
+  const linked = REF_KINDS.includes(node.node_kind)
+  return CONVERTIBLE.filter((kind) => kind !== node.node_kind).map((kind) =>
+    kind === 'task' && linked
+      ? { kind, ok: false, reason: `A ${node.node_kind} is its own item and cannot become a task.` }
+      : { kind, ok: true },
+  )
+}
+
+/** A free spot for a new node: right of `anchor`, else at `at`, moved down until it overlaps nothing. */
+export function placeNew(
+  nodes: Pick<GraphNode, 'x' | 'y'>[],
+  anchor: Pick<GraphNode, 'x' | 'y'> | undefined,
+  at: { x: number; y: number },
+): { x: number; y: number } {
+  const p = anchor ? { x: anchor.x + NODE_W + 80, y: anchor.y } : { ...at }
+  const taken = (y: number) => nodes.some((n) => Math.abs(n.x - p.x) < NODE_W && Math.abs(n.y - y) < NODE_H + 16)
+  while (taken(p.y)) p.y += NODE_H + 32
+  return p
 }

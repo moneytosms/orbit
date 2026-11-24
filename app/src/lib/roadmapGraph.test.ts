@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { groupByBand, hiddenNodeIds, tidyLayout } from './roadmapGraph'
+import { convertTargets, groupByBand, hiddenNodeIds, placeNew, tidyLayout } from './roadmapGraph'
 import type { GraphEdge, GraphNode, Phase } from './sync'
 
 const node = (o: Partial<GraphNode> & { id: string }): GraphNode => ({
@@ -101,4 +101,23 @@ test('tidy lays out 500 nodes well inside a frame budget', () => {
   const out = tidyLayout(nodes, edges)
   expect(out.size).toBe(500)
   expect(performance.now() - start).toBeLessThan(250)
+})
+
+test('a task can become a note, decision or heading but a linked goal cannot become a task', () => {
+  expect(convertTargets({ node_kind: 'task' }).map((t) => [t.kind, t.ok])).toEqual([
+    ['decision', true],
+    ['note', true],
+    ['heading', true],
+  ])
+  const fromGoal = convertTargets({ node_kind: 'goal' }).find((t) => t.kind === 'task')
+  expect(fromGoal).toMatchObject({ ok: false })
+  expect(fromGoal?.reason).toMatch(/goal/)
+  expect(convertTargets({ node_kind: 'note' }).find((t) => t.kind === 'task')?.ok).toBe(true)
+})
+
+test('a new node goes right of the anchor and steps down past nodes in its way', () => {
+  expect(placeNew([], { x: 0, y: 0 }, { x: 5, y: 5 })).toEqual({ x: 320, y: 0 })
+  expect(placeNew([{ x: 0, y: 0 }], undefined, { x: 100, y: 100 })).toEqual({ x: 100, y: 100 })
+  const busy = [{ x: 320, y: 0 }]
+  expect(placeNew(busy, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ x: 320, y: 96 })
 })

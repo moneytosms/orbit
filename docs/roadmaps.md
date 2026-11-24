@@ -12,17 +12,18 @@ For daily users who want to plan a goal as a graph: tasks, decisions and notes y
 ### Build it on the canvas
 
 1. Create a Roadmap from the Roadmaps screen or the **+** menu, then open it on the **Canvas** tab.
-2. Add nodes with the toolbar: **Add** (a new task), **Decision**, **Note**, **Heading**, or **Add existing...** to place a Goal, Milestone, Project or existing task. Or drag an open task from **Task source** onto the canvas; dropping it on another node connects the two.
+2. Add nodes with **Add**: it creates a task next to the selected node (or mid-screen) and connects it, then lets you type its title. The arrow beside it adds a **Decision**, **Note**, **Heading** or **Band**. Double-click empty space to add a task there. **Add existing...** places a Goal, Milestone, Project or existing task as a node, or drag an open task from **Task source** onto the canvas (dropping it on another node connects the two). The **?** buttons explain each tool.
 3. Drag nodes anywhere. **Snap** aligns them to a 24 px grid and guides appear when edges line up. Hold Shift and drag the background to select several nodes. Scroll to pan; Ctrl plus scroll or the zoom buttons zoom; **Map** shows a minimap.
 4. Connect nodes by dragging from the dot on a node's right edge to another node, or use **Connect to...**. Select a connection to set its kind (then, blocks, depends on, decides), give it a label such as `yes`, drag its endpoints to reroute it, or delete it.
 5. A Decision is a diamond-shaped node with labelled branches. Select it and choose the branch you took: the node is marked decided, the untaken branch is hidden, and nothing is deleted.
 6. Add **Bands** for stages or time periods and assign nodes to them in the selection panel. A band is drawn around its nodes and drives the progress of its phase.
 7. **Tidy up** lays the graph out in layers from its connections. Nothing is auto-arranged unless you ask. Keyboard: Tab moves through nodes, arrows nudge, Enter opens the row, Delete removes, Ctrl+Z undoes the last move.
-8. The **List**, **Board** and **Timeline** tabs show the same graph by phase and date.
+8. Select a node and use **Convert to** (or right-click it) to change it between task, decision, note and heading. A task turned into a note stays in your task lists; a note turned into a task creates a real task. Linked goals, projects and milestones cannot become tasks. **Expand** shows the canvas full screen; Esc exits.
+9. The **List**, **Board** and **Timeline** tabs show the same graph by phase and date.
 
 ### Copy it to or from an AI
 
-1. Choose **Import from code...** and the **Orbit code** tab.
+1. Choose **Import** on the canvas toolbar (or **Import from code...**), then the **Orbit code** tab. **Insert example** fills in a small working roadmap to learn from.
 2. **Copy for AI** copies a prompt with the format, the closed list of node and edge kinds, a worked example and the real ids of your Areas, Projects, Goals and open tasks, so the AI references them instead of inventing duplicates. Paste it into a chat and ask for the plan.
 3. Paste the single code block the AI returns into the text box. A live preview lists errors by line and counts new and updated nodes, edges and bands. **Import** writes nothing until you press it.
 4. **Copy as code** exports the open Roadmap in the same format, so you can send it to an AI and paste the answer back. The format is Mermaid `flowchart` plus `%%orbit` lines and starts with `%%orbit:v1`; the parser is strict about the version.
