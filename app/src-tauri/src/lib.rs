@@ -202,9 +202,57 @@ fn forward_capture(identifier: &str) -> bool {
         .is_ok()
 }
 
+/// Rejects a plain `http://` server URL unless the host is local (loopback, private range or
+/// `.local`), so the token and password never cross the internet in cleartext. `https` always passes.
+// shortcut: no Tailscale 100.64/10 or *.ts.net allowance, add if tailnet users hit this.
+pub(crate) fn check_server_url(url: &tauri::Url) -> Result<(), String> {
+    if url.scheme() == "https" {
+        return Ok(());
+    }
+    let host = url.host_str().unwrap_or("").trim_matches(['[', ']']);
+    let local = match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        Err(_) => {
+            let d = host.trim_end_matches('.').to_ascii_lowercase();
+            d == "localhost" || d.ends_with(".local")
+        }
+    };
+    if local {
+        Ok(())
+    } else {
+        Err("use https, or http only for a local address (localhost, 192.168.x.x, .local)".into())
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::single_instance_path;
+    use super::{check_server_url, single_instance_path};
+
+    #[test]
+    fn plain_http_is_only_for_local_hosts() {
+        let ok = |u: &str| check_server_url(&u.parse().unwrap()).is_ok();
+        for u in [
+            "https://orbit.example.com",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://192.168.1.5:8080",
+            "http://10.0.0.2",
+            "http://172.16.0.1",
+            "http://nas.local:8080",
+            "http://[::1]:8080",
+        ] {
+            assert!(ok(u), "{u}");
+        }
+        for u in [
+            "http://orbit.example.com",
+            "http://8.8.8.8",
+            "http://172.32.0.1",
+            "http://evil.com.local.example.org",
+        ] {
+            assert!(!ok(u), "{u}");
+        }
+    }
 
     #[test]
     fn single_instance_path_maps_identifier_to_object_path() {

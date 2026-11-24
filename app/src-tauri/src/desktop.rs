@@ -87,6 +87,7 @@ pub async fn set_server(window: tauri::WebviewWindow, url: String) -> Result<(),
     if !matches!(url.scheme(), "http" | "https") {
         return Err("use an http or https URL".into());
     }
+    crate::check_server_url(&url)?;
     trusted(&window)?;
     let server = store(&url)?;
     // Off the main thread: the reachability check can block for seconds.

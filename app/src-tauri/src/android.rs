@@ -97,6 +97,7 @@ async fn set_server(
     if !matches!(url.scheme(), "http" | "https") {
         return Err("use an http or https URL".into());
     }
+    crate::check_server_url(&url)?;
     trusted(&app, &window)?;
     let server = url.as_str().trim_end_matches('/').to_string();
     call(&app, "setServer", json!({ "server": server }))?;
