@@ -145,7 +145,7 @@ async fn ops_that_cannot_affect_badges_skip_the_check_but_task_ops_still_award()
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path()).await;
     let creates: Vec<Value> = (0..10)
-        .map(|n| {
+        .flat_map(|n| {
             let id = task_id(n);
             [
                 cmd(
@@ -162,7 +162,6 @@ async fn ops_that_cannot_affect_badges_skip_the_check_but_task_ops_still_award()
                 ),
             ]
         })
-        .flatten()
         .collect();
     let (_, res) = sync(&app, json!({ "v": 1, "commands": creates })).await;
     assert!(!awards(&res).is_empty());
