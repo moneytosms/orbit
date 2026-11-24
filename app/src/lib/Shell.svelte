@@ -315,7 +315,10 @@
             >
               <a
                 href="#/area/{a.id}"
-                onclick={() => (drawer = false)}
+                onclick={() => {
+                  drawer = false
+                  toggleArea(a)
+                }}
                 aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
                 class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 font-medium"
               >
