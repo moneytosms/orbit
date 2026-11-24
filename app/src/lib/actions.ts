@@ -5,6 +5,7 @@ import {
   createGoal,
   createPage,
   createProject,
+  createRoadmap,
   createRoutine,
   createView,
   dayFrom,
@@ -99,6 +100,10 @@ export async function actions(): Promise<Action[]> {
     go('#/goals')
   })
   add('page.new', 'Create Page', 'Create', async () => go(`#/page/${await createPage(placeId, 'Untitled')}`))
+  add('roadmap.new', 'Create Roadmap', 'Create', async () => {
+    const area = areas.find((a) => a.area.id === placeId)?.area.id ?? areas[0]?.area.id
+    if (area) go(`#/roadmap/${await createRoadmap(area, 'New roadmap')}`)
+  })
   add('routine.new', 'Create Routine', 'Create', async () => {
     await createRoutine(placeId, {
       name: 'New routine',
