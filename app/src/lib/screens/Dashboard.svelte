@@ -5,7 +5,9 @@
   import Plus from '@lucide/svelte/icons/plus'
   import { Button } from '$lib/components/ui/button'
   import { COLS, KINDS, ROW_PX, move, phoneOrder, place, resize, titleOf, type Widget } from '$lib/dashboard'
-  import { getDashboard, setDashboard, views, type View } from '$lib/sync'
+  import Checklist from '$lib/Checklist.svelte'
+  import { checklistDismissed, dismissChecklist, showChecklist } from '$lib/onboarding'
+  import { getDashboard, setDashboard, tree, views, visibleSnapshot, type View } from '$lib/sync'
   import Glance from '$lib/widgets/Glance.svelte'
   import GoalProgress from '$lib/widgets/GoalProgress.svelte'
   import NextList from '$lib/widgets/NextList.svelte'
@@ -53,6 +55,17 @@
   $effect(() => {
     void version
     loadViews()
+  })
+
+  let areaCount = $state(1)
+  let taskCount = $state(0)
+  let dismissed = $state(checklistDismissed())
+  $effect(() => {
+    void version
+    Promise.all([tree(), visibleSnapshot()]).then(([t, rows]) => {
+      areaCount = t.length
+      taskCount = rows.filter((r) => r.kind === 'task').length
+    })
   })
 
   const save = () => setDashboard(layout)
@@ -183,6 +196,17 @@
     }}>{editing ? 'Done' : 'Edit layout'}</Button
   >
 </div>
+
+{#if showChecklist(areaCount, dismissed)}
+  <Checklist
+    hasArea={areaCount > 0}
+    hasTask={taskCount > 0}
+    ondismiss={() => {
+      dismissChecklist()
+      dismissed = true
+    }}
+  />
+{/if}
 
 <div bind:this={grid} class="grid gap-4 desk:grid-cols-12 desk:[grid-auto-rows:var(--row)]" style="--row: {ROW_PX}px">
   {#each shown as w (w.id)}
