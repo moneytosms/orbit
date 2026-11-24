@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0 - 2026-11-24
+
+### Bug fixes
+
+- Allow wasm in bundled CSP so capture window renders
+- Roadmap owner shows No area and disables Add when no areas
+- Type views mock in palette test
+- Remove-feed button variant; note future calendar scope
+
+### Chores
+
+- Remove the AUR package, scripts and docs
+
+### Features
+
+- Palette go-to actions for every screen
+- First-run onboarding checklist
+- Badge progress on locked badges
+- Backup status and export panel in Settings
+- ICal feed events, SSRF-safe fetch, poll and endpoints
+- Show iCal feed events on Calendar and Dashboard, Settings panel
+- Multiple calendar feeds with colors, visibility, local all-day dates
+- Multi-calendar settings, Home Calendar widget, local all-day dates
+
 ## 0.5.0 - 2026-11-24
 
 ### Bug fixes
