@@ -1,10 +1,34 @@
 # Changelog
 
+## 0.4.3 - 2026-11-24
+
+### Bug fixes
+
+- Friendly dates in Upcoming widget (#83)
+
+### Chores
+
+- Build the web demo in just check and pages via just demo
+- Keep astro check off the built demo
+
+### Documentation
+
+- Mark v1 scope built, tag deferred items (#88)
+
+### Features
+
+- Android bar icons follow page theme (#86)
+- In-browser web demo at /demo (#90)
+
 ## 0.4.2 - 2026-11-24
 
 ### Bug fixes
 
 - Chevron-only area collapse, draw Android content under the nav bar
+
+### Chores
+
+- Build the server image natively per arch; center nav icons above the gesture bar
 
 ## 0.4.1 - 2026-11-24
 

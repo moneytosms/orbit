@@ -3302,7 +3302,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orbit-app"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "chrono",
  "jni 0.21.1",
@@ -3326,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-cli"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "axum",
  "chrono",
@@ -3349,7 +3349,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-client"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "axum",
  "getrandom 0.4.3",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -3374,7 +3374,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-server"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "argon2",
  "axum",
@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-wasm"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "orbit-core",
  "serde_json",
