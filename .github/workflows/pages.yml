@@ -47,8 +47,7 @@ jobs:
         run: |
           just wasm
           pnpm -C app install --frozen-lockfile
-          VITE_DEMO=1 VITE_DEMO_BASE=/orbit/demo/ pnpm -C app build
-          cp -r app/dist-demo site/public/demo
+          just demo
       - run: npm ci
       - run: npx astro check
       - run: npm run build

@@ -7,10 +7,17 @@ check: wasm
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
+    just demo
     npm --prefix site ci
     npm --prefix site run check
     npm --prefix site run build
     npm --prefix site run verify
+
+# Build the in-browser web demo into site/public/demo (served at /demo/; needs `just wasm` first)
+demo:
+    VITE_DEMO=1 VITE_DEMO_BASE=/orbit/demo/ pnpm -C app build
+    mkdir -p site/public/demo
+    cp -r app/dist-demo/. site/public/demo/
 
 # Format the given app files (paths relative to app/), e.g. `just fmt src/lib/sync.ts`; plus cargo fmt
 fmt *files:
