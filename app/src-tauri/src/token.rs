@@ -54,10 +54,6 @@ pub fn clear() {
     file_clear(&data_dir());
 }
 
-pub fn has() -> bool {
-    load().is_some()
-}
-
 fn file(dir: &Path) -> PathBuf {
     dir.join("token")
 }

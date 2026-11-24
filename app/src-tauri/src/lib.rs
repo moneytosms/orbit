@@ -50,7 +50,9 @@ fn clear_token(window: tauri::WebviewWindow) {
 #[cfg(desktop)]
 #[tauri::command]
 fn has_token(window: tauri::WebviewWindow) -> bool {
-    desktop::trusted(&window).is_ok() && token::has()
+    // A token minted against another server (e.g. a dev run) counts as missing, so it is re-provisioned.
+    desktop::trusted(&window).is_ok()
+        && token::load().is_some_and(|t| desktop::saved().is_none_or(|s| s == t.server))
 }
 
 #[cfg(desktop)]
