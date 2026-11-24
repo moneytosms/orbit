@@ -23,11 +23,11 @@ export function slugFor(repoPath) {
 }
 
 export const GUIDE_REDIRECTS = Object.fromEntries([
-  ...Object.entries(redirects).map(([from, to]) => [`/guide/${from}`, `${cfg.base}/guide/${to}`]),
+  ...Object.entries(redirects).map(([from, to]) => [`/guide/${from}`, `${cfg.base}/guide/${to}/`]),
   ...manifest.flatMap((section) => section.items.flatMap((item) => {
     const previous = slugFromPath(item.id);
     const current = slugFor(item.id);
-    return previous === current ? [] : [[`/guide/${previous}`, `${cfg.base}/guide/${current}`]];
+    return previous === current ? [] : [[`/guide/${previous}`, `${cfg.base}/guide/${current}/`]];
   })),
 ]);
 
