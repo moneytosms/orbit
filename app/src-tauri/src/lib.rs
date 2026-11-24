@@ -202,26 +202,29 @@ fn forward_capture(identifier: &str) -> bool {
         .is_ok()
 }
 
-/// Rejects a plain `http://` server URL unless the host is local (loopback, private range or
-/// `.local`), so the token and password never cross the internet in cleartext. `https` always passes.
-// shortcut: no Tailscale 100.64/10 or *.ts.net allowance, add if tailnet users hit this.
+/// Rejects a plain `http://` server URL unless the host is local (loopback, private range,
+/// Tailscale `100.64.0.0/10` or `*.ts.net`, or `.local`), so the token and password never cross the internet in cleartext. `https` always passes.
 pub(crate) fn check_server_url(url: &tauri::Url) -> Result<(), String> {
     if url.scheme() == "https" {
         return Ok(());
     }
     let host = url.host_str().unwrap_or("").trim_matches(['[', ']']);
     let local = match host.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private(),
+        Ok(std::net::IpAddr::V4(ip)) => {
+            ip.is_loopback()
+                || ip.is_private()
+                || (ip.octets()[0] == 100 && (ip.octets()[1] & 0xc0) == 0x40)
+        }
         Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
         Err(_) => {
             let d = host.trim_end_matches('.').to_ascii_lowercase();
-            d == "localhost" || d.ends_with(".local")
+            d == "localhost" || d.ends_with(".local") || d.ends_with(".ts.net")
         }
     };
     if local {
         Ok(())
     } else {
-        Err("use https, or http only for a local address (localhost, 192.168.x.x, .local)".into())
+        Err("use https, or http only for a local address (localhost, 192.168.x.x, Tailscale, .local)".into())
     }
 }
 
@@ -240,6 +243,9 @@ mod tests {
             "http://10.0.0.2",
             "http://172.16.0.1",
             "http://nas.local:8080",
+            "http://100.64.0.1:8080",
+            "http://100.127.255.254",
+            "http://box.tail1234.ts.net:8080",
             "http://[::1]:8080",
         ] {
             assert!(ok(u), "{u}");
@@ -248,6 +254,9 @@ mod tests {
             "http://orbit.example.com",
             "http://8.8.8.8",
             "http://172.32.0.1",
+            "http://100.63.255.255",
+            "http://100.128.0.1",
+            "http://ts.net.evil.com",
             "http://evil.com.local.example.org",
         ] {
             assert!(!ok(u), "{u}");
