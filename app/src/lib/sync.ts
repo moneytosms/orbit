@@ -1298,9 +1298,7 @@ export async function placeable(): Promise<{ id: string; kind: string; title: st
 }
 
 /** Graph rows for a roadmap, with referenced Orbit rows available for their live titles. */
-export async function roadmapGraph(
-  id: string,
-): Promise<{
+export async function roadmapGraph(id: string): Promise<{
   nodes: GraphNode[]
   edges: GraphEdge[]
   bands: Phase[]
@@ -1588,11 +1586,16 @@ export type ShelfItem = {
   repeatable: boolean
   condition: string
   count: number
+  progress: number
+  need: number
 }
 export type Shelf = { badges: ShelfItem[]; patches: number }
 /** Every catalog Badge with how often it was earned, plus the Patch count, from core. */
-export async function badgeShelf(): Promise<Shelf> {
-  return JSON.parse(badge_shelf(JSON.stringify(await allRows())))
+export async function badgeShelf(now = Date.now()): Promise<Shelf> {
+  const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  const off = zoneOffset(settings?.timezone ?? '', now)
+  const day_start = settings?.day_start || '00:00'
+  return JSON.parse(badge_shelf(JSON.stringify(await allRows()), local_day(now, off, day_start), off, day_start))
 }
 
 const LEVEL_KEY = 'orbit.level'
