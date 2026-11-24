@@ -142,8 +142,11 @@
     line-height: 1.55;
     overflow-x: clip;
   }
+  /* Bounds absolutely positioned descendants (sr-only inputs) so the document itself never scrolls. */
   #app {
     min-width: 0;
+    position: relative;
+    overflow: clip;
   }
   .task-title-1,
   .task-title-2,

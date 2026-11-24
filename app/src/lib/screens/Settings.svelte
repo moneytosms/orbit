@@ -255,7 +255,12 @@
       return
     }
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return
-    const mods = [event.ctrlKey && 'CTRL', event.altKey && 'ALT', event.shiftKey && 'SHIFT', event.metaKey && 'SUPER'].filter(Boolean)
+    const mods = [
+      event.ctrlKey && 'CTRL',
+      event.altKey && 'ALT',
+      event.shiftKey && 'SHIFT',
+      event.metaKey && 'SUPER',
+    ].filter(Boolean)
     if (!mods.length || event.key.length !== 1) {
       captureShortcutError = 'Use at least one modifier and a letter or number.'
       return
@@ -280,6 +285,13 @@
     if (el instanceof HTMLDetailsElement) el.open = true
     el?.scrollIntoView({ block: 'start' })
   }
+  // Other screens link here with a section to open (see Profile).
+  onMount(() => {
+    const section = sessionStorage.getItem('orbit.jump')
+    if (!section) return
+    sessionStorage.removeItem('orbit.jump')
+    requestAnimationFrame(() => jump(section))
+  })
   getGamification().then((v) => (gamification = v))
   let weekStart = $state('1')
   getWeekStart().then((v) => (weekStart = String(v)))
@@ -622,7 +634,13 @@
             aria-label="Quick capture shortcut"
             bind:this={captureShortcutInput}
             readonly
-            value={recordingShortcut ? 'Press a key combination…' : captureShortcut.replaceAll('ALT', 'Alt').replaceAll('CTRL', 'Ctrl').replaceAll('SHIFT', 'Shift').replaceAll('SUPER', 'Super')}
+            value={recordingShortcut
+              ? 'Press a key combination…'
+              : captureShortcut
+                  .replaceAll('ALT', 'Alt')
+                  .replaceAll('CTRL', 'Ctrl')
+                  .replaceAll('SHIFT', 'Shift')
+                  .replaceAll('SUPER', 'Super')}
             onkeydown={recordCaptureShortcut}
             onclick={beginCaptureShortcut}
             onblur={() => (recordingShortcut = false)}
@@ -631,7 +649,9 @@
           <Button size="sm" onclick={beginCaptureShortcut}>{recordingShortcut ? 'Press shortcut' : 'Change'}</Button>
         </div>
         {#if captureShortcutError}<p role="status" class="mt-2 text-sm text-warn-text">{captureShortcutError}</p>{/if}
-        <p class="mt-2 text-sm text-muted">Opens a small capture window. Captures are saved on this device and sync when online.</p>
+        <p class="mt-2 text-sm text-muted">
+          Opens a small capture window. Captures are saved on this device and sync when online.
+        </p>
       </section>
     {/if}
 

@@ -38,6 +38,8 @@
     type Project,
     type View,
     getProfile,
+    getPage,
+    getRoadmap,
   } from '$lib/sync'
   import { inbox_id } from '../../wasm/orbit_wasm'
 
@@ -69,6 +71,54 @@
   let forceParent = $state(false)
   let wide = $state(false)
   let composerOpener: HTMLElement | null = null
+
+  type Crumb = { label: string; href?: string }
+  let crumbs = $state<Crumb[]>([])
+  /** Area › Project › Page trail above `parentId`, outermost first. Pages nest, so walk up (bounded). */
+  async function trail(parentId: string): Promise<Crumb[]> {
+    const out: Crumb[] = []
+    let id = parentId
+    for (let depth = 0; depth < 8; depth++) {
+      const project = areas.flatMap((a) => a.projects).find((p) => p.id === id)
+      if (project) {
+        out.unshift({ label: project.name, href: `#/project/${project.id}` })
+        id = project.parent_id
+        continue
+      }
+      const area = areas.find((a) => a.area.id === id)
+      if (area) {
+        out.unshift({ label: area.area.name, href: `#/area/${area.area.id}` })
+        break
+      }
+      const page = await getPage(id)
+      if (!page) break
+      out.unshift({ label: page.title || 'Untitled', href: `#/page/${page.id}` })
+      id = page.parent_id
+    }
+    return out
+  }
+  $effect(() => {
+    const s = screen
+    void areas
+    let live = true
+    const build = async (): Promise<Crumb[]> => {
+      if (s.name === 'area' || s.name === 'project') {
+        const chain = await trail(s.id)
+        return chain.map((c, i) => (i === chain.length - 1 ? { label: c.label } : c))
+      }
+      if (s.name === 'page') {
+        const page = await getPage(s.id)
+        return page ? [...(await trail(page.parent_id)), { label: page.title || 'Untitled' }] : [{ label: title }]
+      }
+      if (s.name === 'roadmap') {
+        const r = await getRoadmap(s.id)
+        return r ? [{ label: 'Roadmaps', href: '#/roadmaps' }, { label: r.name }] : [{ label: title }]
+      }
+      return [{ label: title }]
+    }
+    void build().then((c) => live && (crumbs = c))
+    return () => (live = false)
+  })
 
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
@@ -480,7 +530,17 @@
         <Menu />
       </Button>
       <div class="flex flex-1 items-center justify-center gap-1 desk:justify-start">
-        <span class="font-medium text-muted">{title}</span>
+        <nav aria-label="Breadcrumb" class="min-w-0">
+          <ol class="flex min-w-0 items-center gap-1 font-medium text-muted">
+            {#each crumbs as c, i (i)}
+              {#if i}<li aria-hidden="true" class="shrink-0 text-faint">›</li>{/if}
+              <li class="min-w-0 truncate">
+                {#if c.href}<a href={c.href} class="rounded-sm px-1 hover:bg-hover hover:text-text">{c.label}</a>
+                {:else}<span aria-current="page" class="px-1">{c.label}</span>{/if}
+              </li>
+            {/each}
+          </ol>
+        </nav>
         {#if screen.name === 'project'}
           <EntityCreateMenu
             ownerId={screen.id}
