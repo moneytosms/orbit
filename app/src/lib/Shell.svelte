@@ -530,7 +530,7 @@
 <!-- Two tabs each side keep the New task button on the bar's centre line. -->
 <nav
   aria-label="Tabs"
-  class="fixed inset-x-0 bottom-0 grid h-[4.5rem] grid-cols-[1fr_auto_1fr] border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
+  class="fixed inset-x-0 bottom-0 grid h-[calc(4.5rem+env(safe-area-inset-bottom))] grid-cols-[1fr_auto_1fr] border-t border-line bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur desk:hidden"
 >
   <div class="flex">
     {#each tabs.slice(0, tabs.indexOf('add')) as t (t)}{@render tab(t as Route)}{/each}
