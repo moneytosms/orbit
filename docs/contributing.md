@@ -4,7 +4,24 @@ For contributors who are about to open a change: how to set up, what the gate ch
 
 ## Before you start
 
-- Rust (the version pinned in `rust-toolchain.toml`, with the wasm32 target), `pnpm`, `wasm-pack`, `just` and Node. Android work also needs the JDK and Android SDK. The maintainers keep these under `~/.toolchain`; you can use your own.
+- Rust (pinned in `rust-toolchain.toml`; rustup installs it and the wasm32 target on first build), `wasm-pack`, `just`, Node 24 with npm (the `site/` checks use npm), and `pnpm` 12. The Tauri crate is part of the workspace, so Linux also needs the WebKitGTK and tray libraries. Android work also needs a JDK 21 and the Android SDK (NDK 28). The maintainers keep everything under `~/.toolchain` with sccache; that is optional, use your own.
+
+  Arch:
+
+  ```sh
+  sudo pacman -S --needed rustup just nodejs npm pnpm wasm-pack webkit2gtk-4.1 libayatana-appindicator librsvg
+  rustup default stable
+  ```
+
+  Ubuntu (24.04; get Node 24 from NodeSource or nvm if `apt` has an older one):
+
+  ```sh
+  sudo apt install just libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  npm install -g pnpm@12
+  cargo install wasm-pack
+  ```
+
 - Read the [Architecture tour](architecture.md).
 
 ## Steps
