@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 - 2026-11-24
+
+### Bug fixes
+
+- Re-provision desktop token when saved server differs
+
 ## 0.6.0 - 2026-11-24
 
 ### Bug fixes

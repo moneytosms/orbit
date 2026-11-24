@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 getrandom = "0.4.3"
-orbit-core = { version = "0.6.0", path = "../orbit-core" }
+orbit-core = { version = "0.6.1", path = "../orbit-core" }
 reqwest = { version = "0.13.5", features = ["json"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde_json = "1.0.154"
