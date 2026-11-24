@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 - 2026-11-24
+
+### Bug fixes
+
+- Chevron-only area collapse, draw Android content under the nav bar
+
 ## 0.4.1 - 2026-11-24
 
 ### Bug fixes
