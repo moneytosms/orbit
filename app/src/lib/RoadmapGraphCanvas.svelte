@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import Circle from '@lucide/svelte/icons/circle'
-  import ChevronDown from '@lucide/svelte/icons/chevron-down'
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
+  import Grid3x3 from '@lucide/svelte/icons/grid-3x3'
+  import Hand from '@lucide/svelte/icons/hand'
+  import ListPlus from '@lucide/svelte/icons/list-plus'
+  import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2'
+  import SquareDashed from '@lucide/svelte/icons/square-dashed'
+  import Undo2 from '@lucide/svelte/icons/undo-2'
   import Diamond from '@lucide/svelte/icons/diamond'
   import FileText from '@lucide/svelte/icons/file-text'
   import Heading from '@lucide/svelte/icons/heading'
@@ -17,7 +23,17 @@
   import X from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
   import HelpTip from '$lib/HelpTip.svelte'
-  import { NODE_H, NODE_W, convertTargets, hiddenNodeIds, placeNew, tidyLayout } from '$lib/roadmapGraph'
+  import {
+    NODE_H,
+    NODE_W,
+    borderPoint,
+    convertTargets,
+    edgeEnds,
+    hiddenNodeIds,
+    placeNew,
+    tidyLayout,
+    type TidyDir,
+  } from '$lib/roadmapGraph'
   import {
     createGraphEdge,
     createGraphNode,
@@ -30,6 +46,7 @@
     roadmapGraph,
     updateGraphEdge,
     updateGraphNode,
+    updatePhase,
     updateTask,
     type GraphEdge,
     type GraphEdgeKind,
@@ -59,7 +76,11 @@
   let edgeLabel = $state('')
   let draftTitle = $state('')
   let expanded = $state(false)
-  let addMenu = $state(false)
+  type Tool = 'select' | 'hand' | 'task' | 'decision' | 'note' | 'heading' | 'connect'
+  let tool = $state<Tool>('select')
+  let existingOpen = $state(false)
+  let tidyOpen = $state(false)
+  let spaceDown = $state(false)
   let editing = $state<string | null>(null)
   let fitted = false
   let frame = $state<HTMLDivElement>()
@@ -138,6 +159,14 @@
     }
     return { x: guideX, y: guideY }
   })
+  const kindClass = (k: GraphNodeKind) =>
+    k === 'decision'
+      ? 'justify-center px-12 text-center'
+      : k === 'note'
+        ? 'rounded-md border border-dashed border-line bg-sunk'
+        : k === 'heading' || k === 'text'
+          ? 'border border-transparent'
+          : 'rounded-xl border border-line border-l-4 border-l-accent bg-surface shadow-1'
   const scalePoint = (x: number, y: number) => ({ x: Math.round(x / 24) * 24, y: Math.round(y / 24) * 24 })
   const world = (e: { clientX: number; clientY: number }) => {
     const r = el!.getBoundingClientRect()
@@ -161,20 +190,15 @@
     load()
   })
 
-  function edgePoints(a: GraphNode, b: GraphNode) {
-    const forward = b.x >= a.x
-    const x1 = a.x + (forward ? 240 : 0)
-    const y1 = a.y + (a.node_kind === 'decision' ? 42 : 28)
-    const x2 = b.x + (forward ? 0 : 240)
-    const y2 = b.y + 28
-    return { x1, y1, x2, y2 }
-  }
-  function path(a: GraphNode, b: GraphNode) {
-    const { x1, y1, x2, y2 } = edgePoints(a, b)
-    const k = Math.max(36, Math.abs(x2 - x1) * 0.45)
-    const dir = x2 >= x1 ? 1 : -1
-    return `M ${x1} ${y1} C ${x1 + k * dir} ${y1}, ${x2 - k * dir} ${y2}, ${x2} ${y2}`
-  }
+  /** Where a node is drawn right now: connections follow it while it is being dragged. */
+  const at = (n?: GraphNode) =>
+    n && drag?.moved && selected.includes(n.id)
+      ? { ...n, x: n.x + drag.x - drag.startX, y: n.y + drag.y - drag.startY }
+      : n
+  /** An arrow and its reverse bend apart so both stay visible. */
+  const ends = (e: GraphEdge, a: GraphNode, b: GraphNode) =>
+    edgeEnds(a, b, edges.some((o) => o.source_id === e.target_id && o.target_id === e.source_id) ? 34 : 0)
+  const path = (p: ReturnType<typeof edgeEnds>) => `M ${p.x1} ${p.y1} Q ${p.cx} ${p.cy} ${p.x2} ${p.y2}`
   const edgeColor = (edge: GraphEdge) =>
     selectedEdge === edge.id
       ? 'var(--accent)'
@@ -225,8 +249,16 @@
     fit()
   }
   function down(e: PointerEvent) {
-    if (e.button !== 0 || (e.target as HTMLElement).closest('[data-ui],input,select,textarea')) return
+    if ((e.target as HTMLElement).closest('[data-ui],input,select,textarea')) return
+    if (e.button === 1 || (e.button === 0 && (spaceDown || tool === 'hand'))) {
+      e.preventDefault()
+      pan = { x: e.clientX, y: e.clientY }
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      return
+    }
+    if (e.button !== 0) return
     contextMenu = null
+    existingOpen = tidyOpen = false
     const endpoint = (e.target as SVGElement).closest<SVGElement>('[data-edge-end]')
     if (endpoint) {
       const [side, edgeId] = endpoint.dataset.edgeEnd!.split(':')
@@ -243,6 +275,24 @@
       return
     }
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-node]')
+    if (tool === 'connect' && target) {
+      const id = target.dataset.node!
+      if (connectFrom && connectFrom !== id) {
+        void connect(connectFrom, id)
+        connectFrom = null
+        tool = 'select'
+      } else {
+        linkDrag = { from: id, ...world(e) }
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      }
+      return
+    }
+    if (!target && PLACING.includes(tool)) {
+      const kind = tool as GraphNodeKind
+      tool = 'select'
+      void add(kind, world(e))
+      return
+    }
     if (target) {
       const id = target.dataset.node!
       if (connectFrom) {
@@ -311,7 +361,10 @@
         )
         ?.closest<HTMLElement>('[data-node]')?.dataset.node
       linkDrag = null
-      if (target && target !== from) await connect(from, target)
+      if (target && target !== from) {
+        await connect(from, target)
+        tool = 'select'
+      } else if (tool === 'connect') connectFrom = from
       marquee = null
       return
     }
@@ -375,6 +428,16 @@
         y: el!.clientHeight / 2 - (p.y + NODE_H / 2) * view.z,
       }
   }
+  const BAND_HELP =
+    'A band is a labelled frame drawn around a group of items, so one stage of the plan reads as one block. Examples: "Week 1", "Phase: Research", "Before launch".\n\nWhat it does: it keeps related items visibly together, it can carry a start and end date (then it shows on the Timeline and its progress is counted from the tasks inside it), and you can fold it down to one line to hide the detail.\n\nHow to use it: select some items and press Band in the dock (or press B) to wrap them in a new band named "Stage 1". With one item selected, the Band list in this panel moves it into another band, or "No band" takes it out; rename the band and set its dates right under it. Click the band title on the canvas to collapse or expand it.\n\nA band is only a frame around its members, so it works in any layout: left to right, top to bottom, or scattered.'
+  const DOCK_HELP =
+    'This dock works like a drawing board. Pick a tool, then click empty space on the canvas to place it. Esc goes back to Select. Click an active tool a second time to drop one in the middle of the view, next to the selected item and joined to it.\n\nSelect (V): click an item, drag to move it, Shift-click or Shift-drag for several. Hand (H): drag to pan; holding Space or the middle mouse button does the same. Scroll or pinch to zoom.\nTask (T): something to do, a real task in your lists. Decision (D): a fork where you choose one way. Note (N): free text that is not a task. Heading (G): a title for part of the map.\nConnector (C): drag from one item to another to draw an arrow meaning "this, then that". Arrows can go in any direction.\nBand (B): frame the selected items as a stage. Add existing (X): put a task, project, goal or milestone you already have on the map; it is the same item, not a copy.\nTidy up: neatly arrange everything, left to right, top to bottom, right to left or bottom to top. Nothing moves unless you press it.\nSnap: items jump to a grid so they line up. Undo reverses the last move.'
+  const CONVERT_HELP =
+    'Convert changes what an item is without losing its title. A task turned into a note or decision stays in your task lists; only its card on the map changes. A note or decision turned into a task creates a real task with the same title. A goal, project or milestone is its own item, so it cannot become a task.'
+  const CONNECT_HELP =
+    'Connecting draws an arrow from this item to another to show the order: this, then that. Press Connect to, then click the other item, or use the Connector tool (C) and drag between two items. Arrows may point up, down, left or right, and may loop back. Click an arrow afterwards to change its kind or give it a label.'
+  const EDGE_HELP =
+    'Then: a plain "next step". Blocks: the first item has to be finished before the second can start. Depends on: the first item needs the second one done first (the reverse of Blocks). Decides: a branch that leaves a Decision; label it, for example "yes" or "funded". Pick a Decision and choose which branch you took to hide the others.'
   const FLOW: GraphNodeKind[] = ['task', 'decision', 'project', 'goal', 'milestone']
   async function place(kind: GraphNodeKind, title: string, ref: string | null, at?: { x: number; y: number }) {
     const { anchor, p } = spot(at)
@@ -399,7 +462,6 @@
     heading: 'Heading',
   }
   async function add(kind: GraphNodeKind, at?: { x: number; y: number }) {
-    addMenu = false
     const title = DEFAULT_TITLE[kind] ?? ''
     const ref = kind === 'task' ? await createTask(title) : null
     // A task node shows its task's title, so the node itself stores none.
@@ -485,13 +547,83 @@
     selected = item.nodeId ? [item.nodeId] : []
     selectedEdge = item.edgeId ?? null
   }
-  async function tidy() {
-    for (const [nodeId, p] of tidyLayout(nodes, visibleEdges)) await moveGraphNode(nodeId, p.x, p.y)
+  async function tidy(dir: TidyDir) {
+    tidyOpen = false
+    for (const [nodeId, p] of tidyLayout(nodes, visibleEdges, dir)) await moveGraphNode(nodeId, p.x, p.y)
     await load()
     fit()
     onchange()
   }
+  async function doUndo() {
+    for (const n of undo) await moveGraphNode(n.id, n.x, n.y)
+    undo = []
+    await load()
+    onchange()
+  }
+  const TOOLS: { id: Tool; label: string; key: string; n: string; Icon: typeof Circle; hint: string; gap?: boolean }[] =
+    [
+      {
+        id: 'select',
+        label: 'Select',
+        key: 'V',
+        n: '1',
+        Icon: MousePointer2,
+        hint: 'Click, drag to move, Shift for many',
+      },
+      { id: 'hand', label: 'Hand', key: 'H', n: '2', Icon: Hand, hint: 'Drag to pan (or hold Space)' },
+      {
+        id: 'task',
+        label: 'Task',
+        key: 'T',
+        n: '3',
+        Icon: Circle,
+        hint: 'A real task. Click the canvas to place',
+        gap: true,
+      },
+      { id: 'decision', label: 'Decision', key: 'D', n: '4', Icon: Diamond, hint: 'A fork. Click the canvas to place' },
+      { id: 'note', label: 'Note', key: 'N', n: '5', Icon: FileText, hint: 'Free text. Click the canvas to place' },
+      { id: 'heading', label: 'Heading', key: 'G', n: '6', Icon: Heading, hint: 'A title. Click the canvas to place' },
+      {
+        id: 'connect',
+        label: 'Connector',
+        key: 'C',
+        n: '7',
+        Icon: ArrowUpRight,
+        hint: 'Drag from one item to another',
+        gap: true,
+      },
+    ]
+  const PLACING = ['task', 'decision', 'note', 'heading']
+  /** A tool is armed until the next click on the canvas; clicking an armed placing tool drops one at the centre. */
+  function pick(id: Tool) {
+    existingOpen = tidyOpen = false
+    if (tool === id && PLACING.includes(id)) {
+      tool = 'select'
+      void add(id as GraphNodeKind)
+      return
+    }
+    tool = id
+    connectFrom = null
+    el?.focus()
+  }
+  function toolKey(e: KeyboardEvent): boolean {
+    if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest('input,select,textarea')) return false
+    const k = e.key.toLowerCase()
+    const t = TOOLS.find((x) => x.key.toLowerCase() === k || x.n === k)
+    if (t) pick(t.id)
+    else if (k === 'b' || k === '8') void addBand()
+    else if (k === 'x' || k === '9') existingOpen = !existingOpen
+    else return false
+    e.preventDefault()
+    return true
+  }
   async function key(e: KeyboardEvent) {
+    if (e.key === ' ' && !(e.target as HTMLElement).closest('[data-ui],input,select,textarea')) {
+      spaceDown = true
+      e.preventDefault()
+      return
+    }
+    if (toolKey(e)) return
     if ((e.target as HTMLElement).closest('[data-ui],input,select,textarea')) return
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       const node = nodeById.get(selected[0])
@@ -507,16 +639,23 @@
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && undo.length) {
       e.preventDefault()
-      for (const n of undo) await moveGraphNode(n.id, n.x, n.y)
-      undo = []
-      await load()
-      onchange()
+      await doUndo()
       return
     }
     if (e.key === 'Escape') {
       // Esc first clears; once nothing is left to clear the window handler leaves the full canvas.
-      if (selected.length || selectedEdge || connectFrom || contextMenu || addMenu) e.preventDefault()
-      addMenu = false
+      if (
+        selected.length ||
+        selectedEdge ||
+        connectFrom ||
+        contextMenu ||
+        existingOpen ||
+        tidyOpen ||
+        tool !== 'select'
+      )
+        e.preventDefault()
+      tool = 'select'
+      existingOpen = tidyOpen = false
       selected = []
       selectedEdge = null
       connectFrom = null
@@ -622,6 +761,8 @@
       aria-label="Roadmap graph. Drag nodes to move them. Shift drag to select an area. Drag the background to pan."
       tabindex="0"
       onkeydown={key}
+      onkeyup={(e) => e.key === ' ' && (spaceDown = false)}
+      onblur={() => (spaceDown = false)}
       onpointerdown={down}
       onpointermove={move}
       onpointerup={up}
@@ -680,17 +821,18 @@
               viewBox="0 0 10 10"
               refX="9"
               refY="5"
-              markerWidth="7"
-              markerHeight="7"
+              markerUnits="userSpaceOnUse"
+              markerWidth="12"
+              markerHeight="12"
               orient="auto"><path d="M0 1L9 5L0 9z" fill="var(--icon)" /></marker
             ></defs
           >
           {#each visibleEdges as edge (edge.id)}
-            {@const a = nodeById.get(edge.source_id)}{@const b = nodeById.get(edge.target_id)}
-            {#if a && b}
+            {@const a = at(nodeById.get(edge.source_id))}{@const b = at(nodeById.get(edge.target_id))}
+            {#if a && b}{@const p = ends(edge, a, b)}
               <path
                 data-edge={edge.id}
-                d={path(a, b)}
+                d={path(p)}
                 fill="none"
                 stroke={edgeColor(edge)}
                 stroke-width={selectedEdge === edge.id ? 3 : 1.7}
@@ -715,18 +857,20 @@
                 }}
               />
               <text
-                x={(a.x + b.x + 240) / 2}
-                y={(a.y + b.y + 56) / 2 - 8}
+                x={(p.x1 + 2 * p.cx + p.x2) / 4}
+                y={(p.y1 + 2 * p.cy + p.y2) / 4 - 6}
                 fill="var(--muted)"
                 font-size="12"
+                stroke="var(--bg)"
+                stroke-width="4"
+                paint-order="stroke"
                 text-anchor="middle">{edge.label || edge.edge_kind.replace('_', ' ')}</text
               >
               {#if selectedEdge === edge.id}
-                {@const points = edgePoints(a, b)}
                 <circle
                   data-edge-end="source:{edge.id}"
-                  cx={points.x1 + (points.x2 >= points.x1 ? 7 : -7)}
-                  cy={points.y1}
+                  cx={p.x1}
+                  cy={p.y1}
                   r="6"
                   fill="var(--surface)"
                   stroke="var(--accent)"
@@ -736,8 +880,8 @@
                 />
                 <circle
                   data-edge-end="target:{edge.id}"
-                  cx={points.x2 + (points.x2 >= points.x1 ? -7 : 7)}
-                  cy={points.y2}
+                  cx={p.x2}
+                  cy={p.y2}
                   r="6"
                   fill="var(--surface)"
                   stroke="var(--accent)"
@@ -750,8 +894,8 @@
           {/each}
           {#if linkDrag}
             {@const source = nodeById.get(linkDrag.from)}
-            {#if source}<path
-                d="M {source.x + 240} {source.y + 28} L {linkDrag.x} {linkDrag.y}"
+            {#if source}{@const s0 = borderPoint(at(source)!, linkDrag)}<path
+                d="M {s0.x} {s0.y} L {linkDrag.x} {linkDrag.y}"
                 fill="none"
                 stroke="var(--accent)"
                 stroke-width="2"
@@ -764,10 +908,13 @@
             {@const a = edge ? nodeById.get(edge.source_id) : undefined}{@const b = edge
               ? nodeById.get(edge.target_id)
               : undefined}
-            {#if a && b}{@const points = edgePoints(a, b)}<path
+            {#if a && b}{@const fixed =
+                activeDrag.endpoint === 'source'
+                  ? borderPoint(at(b)!, activeDrag)
+                  : borderPoint(at(a)!, activeDrag)}<path
                 d={activeDrag.endpoint === 'source'
-                  ? `M ${activeDrag.x} ${activeDrag.y} L ${points.x2} ${points.y2}`
-                  : `M ${points.x1} ${points.y1} L ${activeDrag.x} ${activeDrag.y}`}
+                  ? `M ${activeDrag.x} ${activeDrag.y} L ${fixed.x} ${fixed.y}`
+                  : `M ${fixed.x} ${fixed.y} L ${activeDrag.x} ${activeDrag.y}`}
                 fill="none"
                 stroke="var(--accent)"
                 stroke-width="2"
@@ -799,14 +946,9 @@
             data-node={node.id}
             aria-label="{node.node_kind}: {node.title || node.node_kind}"
             title={node.title || node.node_kind}
-            class="absolute flex min-h-14 w-60 items-center gap-2 border border-line bg-surface px-3 py-2 text-left text-sm shadow-1 {node.node_kind ===
-            'decision'
-              ? 'rounded-[26px] border-warn/50 bg-warn-soft'
-              : node.node_kind === 'note'
-                ? 'rounded-md border-dashed bg-sunk'
-                : node.node_kind === 'heading' || node.node_kind === 'text'
-                  ? 'rounded-none border-transparent bg-transparent shadow-none'
-                  : 'rounded-xl border-l-4 border-l-accent'} {selected.includes(node.id)
+            class="absolute flex h-16 w-60 items-center gap-2 px-3 text-left text-sm {kindClass(
+              node.node_kind,
+            )} {selected.includes(node.id) && node.node_kind !== 'decision'
               ? 'ring-2 ring-accent'
               : ''} {node.decided_at ? 'opacity-60' : ''}"
             style="left:{node.x +
@@ -833,13 +975,25 @@
               selectedEdge = null
             }}
           >
-            {#if node.node_kind === 'decision'}<Diamond class="size-4 shrink-0 text-warn" />
+            {#if node.node_kind === 'decision'}<svg
+                aria-hidden="true"
+                class="pointer-events-none absolute inset-0 size-full overflow-visible"
+                viewBox="0 0 240 64"
+                preserveAspectRatio="none"
+                ><polygon
+                  points="120,0 240,32 120,64 0,32"
+                  fill="var(--warn-soft)"
+                  stroke={selected.includes(node.id) ? 'var(--accent)' : 'var(--warn)'}
+                  stroke-width={selected.includes(node.id) ? 3 : 1.5}
+                  stroke-linejoin="round"
+                /></svg
+              >
             {:else if node.node_kind === 'note'}<FileText class="size-4 shrink-0 text-icon" />
             {:else if node.node_kind === 'heading'}<Heading class="size-4 shrink-0 text-accent" />
             {:else if node.node_kind === 'task'}<Circle class="size-4 shrink-0 text-accent" />
             {:else}<Link class="size-4 shrink-0 text-icon" />{/if}
             <span
-              class="min-w-0 flex-1 whitespace-normal break-words {node.node_kind === 'heading'
+              class="relative min-w-0 flex-1 line-clamp-2 whitespace-normal break-words {node.node_kind === 'heading'
                 ? 'text-base font-semibold'
                 : ''}"
               title={node.title}>{node.title || `Untitled ${node.node_kind}`}</span
@@ -857,7 +1011,7 @@
               use:focusSelect
               bind:value={draftTitle}
               aria-label="Node title"
-              class="absolute z-20 h-14 w-60 rounded-xl border-2 border-accent bg-surface px-3 text-sm shadow-2 outline-none"
+              class="absolute z-20 h-16 w-60 rounded-xl border-2 border-accent bg-surface px-3 text-sm shadow-2 outline-none"
               style="left:{target.x}px;top:{target.y}px"
               onblur={commitEdit}
               onkeydown={(e) => {
@@ -875,7 +1029,7 @@
 
     <details
       data-ui
-      class="absolute left-2 top-14 z-10 max-h-[45%] w-56 overflow-hidden rounded-xl border border-line bg-surface/95 shadow-1"
+      class="absolute left-2 top-2 z-10 max-h-[45%] w-56 overflow-hidden rounded-xl border border-line bg-surface/95 shadow-1"
     >
       <summary class="cursor-pointer px-3 py-2 text-xs font-semibold">Task source · {taskChoices.length}</summary>
       <div class="max-h-56 overflow-y-auto border-t border-line p-1">
@@ -898,107 +1052,177 @@
 
     <div
       data-ui
-      class="absolute left-2 top-2 z-10 flex max-w-[calc(100%-7rem)] flex-wrap items-center gap-1 rounded-xl border border-line bg-surface/95 p-1 shadow-1"
-    >
-      <div class="relative flex items-center gap-1">
-        <div class="flex">
-          <Button size="sm" variant="primary" class="rounded-r-none" onclick={() => add('task')}
-            ><Plus class="size-4" /><span class="hidden sm:inline">Add</span></Button
-          ><Button
-            size="sm"
-            variant="primary"
-            class="rounded-l-none border-l border-bg/30 px-1.5"
-            aria-label="Choose what to add"
-            aria-haspopup="menu"
-            aria-expanded={addMenu}
-            onclick={() => (addMenu = !addMenu)}><ChevronDown class="size-4" /></Button
-          >
-        </div>
-        <HelpTip
-          label="adding to the roadmap"
-          text="Add puts a new task next to the selected item and connects it (or in the middle of the screen if nothing is selected). The arrow adds other things: a Decision, Note, Heading or Band. You can also double-click empty space to add a task exactly there."
-        />
-        {#if addMenu}
-          <div
-            role="menu"
-            class="absolute left-0 top-full z-30 mt-1 flex w-64 flex-col rounded-xl border border-line bg-surface p-1 shadow-2"
-          >
-            {#each [{ kind: 'task', label: 'Task', hint: 'Something to do. A real task in your lists.', Icon: Circle }, { kind: 'decision', label: 'Decision', hint: 'A fork: pick which branch you take.', Icon: Diamond }, { kind: 'note', label: 'Note', hint: 'A free-text card, not a task.', Icon: FileText }, { kind: 'heading', label: 'Heading', hint: 'A label to title a part of the map.', Icon: Heading }] as item (item.kind)}
-              <button
-                type="button"
-                role="menuitem"
-                class="flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-hover"
-                onclick={() => add(item.kind as GraphNodeKind)}
-                ><item.Icon class="mt-0.5 size-4 shrink-0 text-icon" /><span
-                  ><span class="block font-medium">{item.label}</span><span class="block text-xs text-muted"
-                    >{item.hint}</span
-                  ></span
-                ></button
-              >
-            {/each}
-            <button
-              type="button"
-              role="menuitem"
-              class="flex items-start gap-2 rounded-md border-t border-line px-2 py-1.5 text-left text-sm hover:bg-hover"
-              onclick={() => {
-                addMenu = false
-                void addBand()
-              }}
-              ><Plus class="mt-0.5 size-4 shrink-0 text-icon" /><span
-                ><span class="block font-medium">Band</span><span class="block text-xs text-muted"
-                  >A labelled stage drawn around the selected nodes.</span
-                ></span
-              ></button
-            >
-          </div>
-        {/if}
-      </div>
-      <span class="mx-0.5 h-5 w-px bg-line" aria-hidden="true"></span>
-      <select
-        aria-label="Add an existing task, project, goal or milestone"
-        class="h-8 max-w-36 rounded-md border border-line bg-surface px-1.5 text-xs"
-        onchange={(e) => {
-          const [kind, ref] = e.currentTarget.value.split('|')
-          if (ref) void addExisting(ref, kind as GraphNodeKind)
-          e.currentTarget.value = ''
-        }}
-      >
-        <option value="">Add existing…</option
-        >{#each choices.filter((c) => !nodes.some((n) => n.ref_id === c.id)) as choice (choice.id)}<option
-            value="{choice.kind}|{choice.id}"
-            >{choice.kind === 'task' ? '' : `${KIND_LABEL[choice.kind] ?? choice.kind}: `}{choice.title}</option
-          >{/each}
-      </select>
-      <HelpTip
-        label="adding an existing item"
-        text="Puts something you already have (a task, project, goal or milestone) on the map as a node. It is the same item, not a copy: renaming or completing it here changes it everywhere. You can also drag a task from Task source."
-      />
-      <span class="mx-0.5 h-5 w-px bg-line" aria-hidden="true"></span>
-      <Button size="sm" variant="ghost" aria-label="Tidy up graph" onclick={tidy}
-        ><Sparkles class="size-4" /><span class="hidden sm:inline">Tidy up</span></Button
-      >
-      <label class="flex h-8 items-center gap-1 px-1 text-xs text-muted"
-        ><input type="checkbox" bind:checked={snap} /> Snap</label
-      >
-      <HelpTip
-        label="tidy up and snap"
-        text="Tidy up arranges the nodes in neat columns following their connections. Snap makes nodes jump to a grid so they line up. Nothing moves on its own unless you press Tidy up."
-      />
-    </div>
-    <div
-      data-ui
       class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-xl border border-line bg-surface/95 p-1 shadow-1"
     >
       {#if onimport}<Button size="sm" variant="ghost" onclick={onimport}>Import…</Button>{/if}
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-label={expanded ? 'Exit full canvas' : 'Expand canvas to full screen'}
-        onclick={toggleExpand}
-        >{#if expanded}<Minimize2 class="size-4" /><span class="hidden sm:inline">Exit</span><kbd
-            class="hidden rounded-sm bg-sunk px-1 text-[0.6875rem] text-muted sm:inline">Esc</kbd
-          >{:else}<Maximize2 class="size-4" /><span class="hidden sm:inline">Expand</span>{/if}</Button
+    </div>
+
+    {#if existingOpen}
+      <div
+        data-ui
+        class="absolute bottom-20 left-1/2 z-20 flex max-h-64 w-72 max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-2"
+        role="menu"
+        aria-label="Add an existing item"
       >
+        <p class="px-2 py-1 text-xs text-muted">Put something you already have on the map. It stays the same item.</p>
+        {#each choices.filter((c) => !nodes.some((n) => n.ref_id === c.id)) as choice (choice.id)}
+          <button
+            type="button"
+            role="menuitem"
+            class="truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-hover"
+            onclick={() => {
+              existingOpen = false
+              void addExisting(choice.id, choice.kind)
+            }}>{choice.kind === 'task' ? '' : `${KIND_LABEL[choice.kind] ?? choice.kind}: `}{choice.title}</button
+          >
+        {:else}<p class="px-2 py-2 text-sm text-muted">Everything you have is already on the map.</p>{/each}
+      </div>
+    {/if}
+    {#if tidyOpen}
+      <div
+        data-ui
+        class="absolute bottom-20 left-1/2 z-20 flex w-52 -translate-x-1/2 flex-col rounded-xl border border-line bg-surface p-1 shadow-2"
+        role="menu"
+        aria-label="Tidy up direction"
+      >
+        <p class="px-2 py-1 text-xs text-muted">Arrange along connections:</p>
+        {#each [['lr', 'Left to right'], ['tb', 'Top to bottom'], ['rl', 'Right to left'], ['bt', 'Bottom to top']] as [dir, label] (dir)}
+          <button
+            type="button"
+            role="menuitem"
+            class="rounded-md px-2 py-1.5 text-left text-sm hover:bg-hover"
+            onclick={() => tidy(dir as TidyDir)}>{label}</button
+          >
+        {/each}
+      </div>
+    {/if}
+    {#if PLACING.includes(tool) || tool === 'connect'}
+      <p
+        data-ui
+        role="status"
+        class="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted shadow-1"
+      >
+        {tool === 'connect'
+          ? connectFrom
+            ? 'Now click the item it leads to'
+            : 'Drag from one item to another, or click two items'
+          : `Click the canvas to place a ${tool}`} · Esc cancels
+      </p>
+    {/if}
+    <div
+      data-ui
+      role="toolbar"
+      aria-label="Roadmap tools"
+      tabindex="-1"
+      onkeydown={toolKey}
+      class="absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl border border-line bg-surface/95 p-1 shadow-2"
+    >
+      {#each TOOLS as t (t.id)}
+        {#if t.gap}<span class="mx-0.5 h-6 w-px shrink-0 bg-line" aria-hidden="true"></span>{/if}
+        <button
+          type="button"
+          aria-label="{t.label} ({t.key})"
+          title="{t.label} · {t.key} or {t.n}. {t.hint}"
+          aria-pressed={tool === t.id}
+          onclick={() => pick(t.id)}
+          class="relative grid size-9 shrink-0 place-items-center rounded-xl hover:bg-hover {tool === t.id
+            ? 'bg-accent-soft text-accent'
+            : 'text-icon'}"
+          ><t.Icon class="size-[18px]" /><kbd
+            class="absolute bottom-0.5 right-1 text-[0.5625rem] leading-none text-muted">{t.n}</kbd
+          ></button
+        >
+      {/each}
+      <button
+        type="button"
+        aria-label="Band (B)"
+        title="Band · B or 8. Frame the selected items as a stage"
+        onclick={() => void addBand()}
+        class="relative grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover"
+        ><SquareDashed class="size-[18px]" /><kbd
+          class="absolute bottom-0.5 right-1 text-[0.5625rem] leading-none text-muted">8</kbd
+        ></button
+      >
+      <button
+        type="button"
+        aria-label="Add existing task or item (X)"
+        title="Add existing · X or 9. Put a task, project, goal or milestone you already have on the map"
+        aria-pressed={existingOpen}
+        onclick={() => {
+          tidyOpen = false
+          existingOpen = !existingOpen
+        }}
+        class="relative grid size-9 shrink-0 place-items-center rounded-xl hover:bg-hover {existingOpen
+          ? 'bg-accent-soft text-accent'
+          : 'text-icon'}"
+        ><ListPlus class="size-[18px]" /><kbd
+          class="absolute bottom-0.5 right-1 text-[0.5625rem] leading-none text-muted">9</kbd
+        ></button
+      >
+      <button
+        type="button"
+        aria-label="Tidy up"
+        title="Tidy up. Arrange everything neatly in a direction you choose"
+        aria-pressed={tidyOpen}
+        onclick={() => {
+          existingOpen = false
+          tidyOpen = !tidyOpen
+        }}
+        class="grid size-9 shrink-0 place-items-center rounded-xl hover:bg-hover {tidyOpen
+          ? 'bg-accent-soft text-accent'
+          : 'text-icon'}"><Sparkles class="size-[18px]" /></button
+      >
+      <span class="mx-0.5 h-6 w-px shrink-0 bg-line" aria-hidden="true"></span>
+      <button
+        type="button"
+        aria-label="Undo move (Ctrl+Z)"
+        title="Undo the last move · Ctrl+Z"
+        disabled={!undo.length}
+        onclick={() => void doUndo()}
+        class="grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover disabled:opacity-40"
+        ><Undo2 class="size-[18px]" /></button
+      >
+      <button
+        type="button"
+        aria-label="Zoom out"
+        title="Zoom out · Ctrl+scroll"
+        onclick={() => zoom(1 / 1.2)}
+        class="grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover"
+        ><Minus class="size-[18px]" /></button
+      ><span class="hidden w-10 shrink-0 text-center text-xs tabular-nums sm:inline">{Math.round(view.z * 100)}%</span
+      ><button
+        type="button"
+        aria-label="Zoom in"
+        title="Zoom in · Ctrl+scroll"
+        onclick={() => zoom(1.2)}
+        class="grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover"
+        ><Plus class="size-[18px]" /></button
+      ><button
+        type="button"
+        aria-label="Fit to screen"
+        title="Fit everything in view"
+        onclick={fit}
+        class="grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover"
+        ><Maximize class="size-[18px]" /></button
+      >
+      <button
+        type="button"
+        aria-label="Snap to grid"
+        title="Snap to grid. Items jump to a grid so they line up"
+        aria-pressed={snap}
+        onclick={() => (snap = !snap)}
+        class="grid size-9 shrink-0 place-items-center rounded-xl hover:bg-hover {snap
+          ? 'bg-accent-soft text-accent'
+          : 'text-icon'}"><Grid3x3 class="size-[18px]" /></button
+      ><button
+        type="button"
+        aria-label={expanded ? 'Exit full canvas (Esc)' : 'Expand canvas to full screen'}
+        title={expanded ? 'Exit full canvas · Esc' : 'Expand to full screen'}
+        onclick={toggleExpand}
+        class="grid size-9 shrink-0 place-items-center rounded-xl text-icon hover:bg-hover"
+        >{#if expanded}<Minimize2 class="size-[18px]" />{:else}<Maximize2 class="size-[18px]" />{/if}</button
+      >
+      <HelpTip label="the tool dock" text={DOCK_HELP} side="up" align="end" />
     </div>
 
     {#if focusedNode || focusedEdge}
@@ -1029,10 +1253,7 @@
               placeholder="Write a title"
             />{/if}
           <div class="mt-2 flex items-center gap-1 text-xs text-muted">
-            Band<HelpTip
-              label="bands"
-              text="A band is a labelled stage, like Week 1 or Research, drawn as a box around the nodes you put in it. Use bands to group steps by phase or time. A band can have dates, and it drives the phase's progress in List, Board and Timeline."
-            />
+            Band<HelpTip label="bands" align="end" text={BAND_HELP} />
           </div>
           <label class="block"
             ><select
@@ -1049,6 +1270,42 @@
                 >{/each}</select
             ></label
           >
+          {#if focusedNode.band_id}
+            {@const band = bands.find((x) => x.id === focusedNode!.band_id)}
+            {#if band}
+              <div class="mt-1 grid grid-cols-2 gap-1">
+                <input
+                  aria-label="Band name"
+                  value={band.name}
+                  class="col-span-2 h-8 rounded-md border border-line bg-bg px-2 text-sm"
+                  onblur={async (e) => {
+                    const name = e.currentTarget.value.trim()
+                    if (name && name !== band.name) {
+                      await updatePhase(band.id, { name })
+                      await load()
+                      onchange()
+                    }
+                  }}
+                  onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                />
+                {#each [['start', 'Starts'], ['end', 'Ends']] as [field, text] (field)}
+                  <label class="text-[0.6875rem] text-muted"
+                    >{text}<input
+                      type="date"
+                      aria-label="Band {field} date"
+                      value={field === 'start' ? (band.start ?? '') : (band.end ?? '')}
+                      class="mt-0.5 h-8 w-full rounded-md border border-line bg-bg px-1 text-xs text-text"
+                      onchange={async (e) => {
+                        await updatePhase(band.id, { [field]: e.currentTarget.value || null })
+                        await load()
+                        onchange()
+                      }}
+                    /></label
+                  >
+                {/each}
+              </div>
+            {/if}
+          {/if}
           {#if focusedNode.node_kind === 'decision'}
             <p class="mt-2 text-xs text-muted">
               Choose a branch to hide the untaken path. Hidden branches remain saved.
@@ -1062,10 +1319,7 @@
             </div>
           {/if}
           <div class="mt-2 flex items-center gap-1 text-xs text-muted">
-            Convert to<HelpTip
-              label="converting"
-              text="Change what this node is. A task turned into a note or decision stays in your task lists; only its card on the map changes. A note or decision turned into a task creates a real task with the same title. Titles are never lost."
-            />
+            Convert to<HelpTip label="converting" align="end" text={CONVERT_HELP} />
           </div>
           <div class="mt-1 flex flex-wrap gap-1">
             {#each convertTargets(focusedNode) as t (t.kind)}
@@ -1089,10 +1343,11 @@
                 connectFrom = focusedNode!.id
                 selectedEdge = null
               }}>Connect to…</Button
-            ><HelpTip
-              label="connecting"
-              text="Connecting draws an arrow from this node to another to show the order: this, then that. You can also drag the little dot on a node's right edge onto another node. Click an arrow to change its kind or label."
-            /><Button size="sm" variant="ghost" onclick={() => duplicateNode(focusedNode!)}>Duplicate</Button><Button
+            ><HelpTip label="connecting" align="end" text={CONNECT_HELP} /><Button
+              size="sm"
+              variant="ghost"
+              onclick={() => duplicateNode(focusedNode!)}>Duplicate</Button
+            ><Button
               size="sm"
               variant="ghost"
               aria-label="Delete node"
@@ -1106,10 +1361,7 @@
           </div>
         {:else if focusedEdge}
           <div class="mb-1 flex items-center gap-1 text-xs text-muted">
-            Kind<HelpTip
-              label="connection kinds"
-              text="Then: the next step. Blocks: the first must finish before the second can start. Depends on: the first needs the second done first. Decides: a branch leaving a Decision."
-            />
+            Kind<HelpTip label="connection kinds" align="end" text={EDGE_HELP} />
           </div>
           <select
             aria-label="Connection kind"
@@ -1191,20 +1443,7 @@
         /><Button size="sm" variant="ghost" onclick={() => (connectFrom = null)}>Cancel</Button>
       </div>
     {/if}
-    <div
-      data-ui
-      class="absolute bottom-2 left-2 z-10 flex items-center gap-0.5 rounded-lg border border-line bg-surface p-1 shadow-1"
-    >
-      <Button size="sm" variant="ghost" aria-label="Zoom out" onclick={() => zoom(1 / 1.2)}
-        ><Minus class="size-4" /></Button
-      ><span class="w-10 text-center text-xs tabular-nums">{Math.round(view.z * 100)}%</span><Button
-        size="sm"
-        variant="ghost"
-        aria-label="Zoom in"
-        onclick={() => zoom(1.2)}><Plus class="size-4" /></Button
-      ><Button size="sm" variant="ghost" aria-label="Fit to screen" onclick={fit}><Maximize class="size-4" /></Button>
-    </div>
-    <div data-ui class="absolute bottom-2 right-2 z-10">
+    <div data-ui class="absolute bottom-16 right-2 z-10">
       <Button size="sm" variant="ghost" aria-label="Toggle minimap" onclick={() => (showMinimap = !showMinimap)}
         >Map</Button
       >
@@ -1214,7 +1453,7 @@
           viewBox="{minimapBounds.x} {minimapBounds.y} {minimapBounds.width} {minimapBounds.height}"
           >{#each visibleEdges as e (e.id)}{@const a = nodeById.get(e.source_id)}{@const b = nodeById.get(
               e.target_id,
-            )}{#if a && b}{@const points = edgePoints(a, b)}<path
+            )}{#if a && b}{@const points = edgeEnds(a, b)}<path
                 d="M{points.x1} {points.y1} L{points.x2} {points.y2}"
                 stroke={edgeColor(e)}
                 stroke-width="5"
@@ -1325,8 +1564,8 @@
             {#if onimport}<Button variant="ghost" onclick={onimport}>Import from code…</Button>{/if}
           </div>
           <p class="text-xs text-muted">
-            Tip: double-click anywhere to add a step. Drag the dot on a node's right edge to connect it. The ? buttons
-            explain each tool.
+            Tip: pick a tool in the dock below, then click the canvas. Double-click anywhere adds a step. The ? at the
+            end of the dock explains every tool.
           </p>
         </div>
       </div>{/if}
