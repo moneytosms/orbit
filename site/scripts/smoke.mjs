@@ -18,10 +18,10 @@ const browser = await chromium.launch({ executablePath, headless: true });
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
 let runs = 0;
-// Extra pages of a multipage landing: any dist/**/index.html outside guide, search, assets.
+// Extra pages of a multipage landing: any dist/**/index.html outside guide, search, assets, the demo app.
 const extraRoutes = readdirSync("dist", { recursive: true })
   .map((f) => f.replaceAll("\\", "/"))
-  .filter((f) => f.endsWith("/index.html") && !/^(guide|pagefind|_astro)\//.test(f))
+  .filter((f) => f.endsWith("/index.html") && !/^(guide|pagefind|_astro|demo)\//.test(f))
   .map((f) => f.slice(0, -"index.html".length));
 
 try {
