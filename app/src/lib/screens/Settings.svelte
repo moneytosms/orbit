@@ -172,9 +172,26 @@
     }
   }
   let exportMsg = $state('')
+  let exportOk = $state(false)
+  let lastBackup = $state('Checking...')
+  const ago = (ms: number) => {
+    const m = Math.floor((Date.now() - ms) / 60_000)
+    if (m < 1) return 'just now'
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+    return m < 60
+      ? rtf.format(-m, 'minute')
+      : m < 1440
+        ? rtf.format(-Math.floor(m / 60), 'hour')
+        : rtf.format(-Math.floor(m / 1440), 'day')
+  }
+  auth.backupStatus().then(
+    (ms) => (lastBackup = ms === null ? 'Never' : ago(ms)),
+    () => (lastBackup = 'Unknown'),
+  )
   async function exportAll() {
     exporting = true
     exportMsg = ''
+    exportOk = false
     try {
       const res = await fetch('/export')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -186,6 +203,8 @@
       const a = Object.assign(document.createElement('a'), { href: url, download: `orbit-export-${day}.zip` })
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 0)
+      exportOk = true
+      exportMsg = 'Export downloaded.'
     } catch {
       exportMsg = "Couldn't export. Try again when you're online."
     } finally {
@@ -808,12 +827,14 @@
     </section>
 
     <section id="data" class="panel scroll-mt-4">
-      <h2 class="panel-title">Data</h2>
+      <h2 class="panel-title">Backup and export</h2>
+      {@render row('Last backup', 'When the server last saved a snapshot of your data.', lastBackupText)}
+      {#snippet lastBackupText()}<span>{lastBackup}</span>{/snippet}
       {#snippet exportControl()}
         <Button disabled={exporting} onclick={exportAll}>Export everything</Button>
       {/snippet}
       {@render row('Export', 'Download every item as a zip of JSON. Keep it as a backup.', exportControl)}
-      {#if exportMsg}<p role="status" class="mt-2 text-muted">{exportMsg}</p>{/if}
+      {#if exportMsg}<p role="status" class="mt-2 {exportOk ? 'text-muted' : 'text-warn-text'}">{exportMsg}</p>{/if}
     </section>
 
     <section id="about" class="panel scroll-mt-4">

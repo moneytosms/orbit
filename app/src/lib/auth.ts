@@ -3,7 +3,14 @@
 import { req, tx } from './db'
 import { sync } from './sync'
 
-export type Device = { id: string; name: string; platform: string; created: number; last_seen: number; current: boolean }
+export type Device = {
+  id: string
+  name: string
+  platform: string
+  created: number
+  last_seen: number
+  current: boolean
+}
 
 /** Calls the server; throws its error code (e.g. `totp`, `credentials`, `rate_limited`) or the HTTP status. */
 export async function api<T = void>(method: string, path: string, body?: unknown): Promise<T> {
@@ -39,6 +46,9 @@ export const deviceId = () => tx(['meta'], (s) => req<string | undefined>(s('met
 export const needsSetup = () => api<{ setup: boolean }>('GET', '/auth').then((r) => r.setup)
 
 export const devices = () => api<Device[]>('GET', '/devices')
+/** When the server last took a backup (ms since epoch), or null if never. */
+export const backupStatus = () =>
+  api<{ last_backup_ms: number | null }>('GET', '/backup/status').then((r) => r.last_backup_ms)
 export const revoke = (id: string) => api('DELETE', `/devices/${id}`)
 export const createToken = (name: string) => api<{ device: string; token: string }>('POST', '/devices', { name })
 export const changePassword = (current: string, next: string, signOutOthers: boolean) =>
