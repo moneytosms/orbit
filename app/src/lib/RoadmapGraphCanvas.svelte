@@ -402,7 +402,8 @@
     addMenu = false
     const title = DEFAULT_TITLE[kind] ?? ''
     const ref = kind === 'task' ? await createTask(title) : null
-    const nodeId = await place(kind, title, ref, at)
+    // A task node shows its task's title, so the node itself stores none.
+    const nodeId = await place(kind, ref ? '' : title, ref, at)
     const made = nodeById.get(nodeId)
     if (made) startEdit(made)
   }
@@ -422,8 +423,10 @@
     editing = null
     const title = draftTitle.trim()
     if (!node || !title || title === node.title) return
-    if (node.ref_id) await updateTask(node.ref_id, { title })
-    else await updateGraphNode(node.id, { title })
+    if (node.ref_id) {
+      await updateTask(node.ref_id, { title })
+      await updateGraphNode(node.id, { title: '' })
+    } else await updateGraphNode(node.id, { title })
     await load()
     onchange()
   }
