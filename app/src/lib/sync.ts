@@ -380,11 +380,14 @@ const clock = async (meta: IDBObjectStore): Promise<Hlc> =>
 
 const allRows = () => tx(['rows'], (s) => req<Row[]>(s('rows').getAll()))
 /** Rows that are not trashed, archived or under such a row. */
-const visibleRows = async () => {
-  const rows = await allRows()
-  const hidden = new Set<string>(hidden_ids(JSON.stringify(rows)))
-  return rows.filter((r) => !hidden.has(r.id))
-}
+let visibleInFlight: Promise<Row[]> | undefined
+// Same-tick getters share one scan; cleared on settle so a later write is never masked.
+const visibleRows = () =>
+  (visibleInFlight ??= (async () => {
+    const rows = await allRows()
+    const hidden = new Set<string>(hidden_ids(JSON.stringify(rows)))
+    return rows.filter((r) => !hidden.has(r.id))
+  })().finally(() => (visibleInFlight = undefined)))
 
 /** Areas except the Inbox, each with its Projects, both in display order. */
 export async function tree(): Promise<{ area: Area; projects: Project[] }[]> {
