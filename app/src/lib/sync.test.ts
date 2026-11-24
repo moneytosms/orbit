@@ -20,6 +20,10 @@ import {
   archived,
   archiveItem,
   deleteItem,
+  deleteSection,
+  createSection,
+  sectionsOf,
+  updateSection,
   restoreItem,
   trashed,
   unarchiveItem,
@@ -1207,3 +1211,31 @@ test('a Mermaid flowchart imports undated Tasks with links', async () => {
   expect(sketch.links).toEqual([build.id])
   expect((await getTask(sketch.id))?.due ?? null).toBeNull()
 })
+
+for (const owner of ['area', 'project'] as const) {
+  test(`sections in an ${owner} can be created, renamed, reordered and deleted, and deleting keeps their tasks`, async () => {
+    await createArea(`Sections ${owner}`)
+    const area = (await tree()).find((x) => x.area.name === `Sections ${owner}`)!.area
+    let parent = area.id
+    if (owner === 'project') {
+      await createProject(area.id, 'Plan')
+      parent = (await tree()).find((x) => x.area.id === area.id)!.projects[0].id
+    }
+    await createSection(parent, 'One')
+    await createSection(parent, 'Two')
+    const one = (await sectionsOf(parent))[0].id
+    expect((await sectionsOf(parent)).map((s) => s.name)).toEqual(['One', 'Two'])
+
+    await updateSection(one, { name: 'Uno' })
+    const [first, second] = await sectionsOf(parent)
+    await moveItem(second.id, parent, orderBetween(undefined, first.order))
+    expect((await sectionsOf(parent)).map((s) => s.name)).toEqual(['Two', 'Uno'])
+
+    const task = await createTask('Keep me', one)
+    await moveItem(task, one, orderBetween())
+    expect((await tasksIn(one)).map((t) => t.task.title)).toEqual(['Keep me'])
+    await deleteSection(one)
+    expect((await sectionsOf(parent)).map((s) => s.name)).toEqual(['Two'])
+    expect((await getTask(task))?.parent_id).toBe(parent)
+  })
+}
