@@ -139,3 +139,62 @@ async fn completing_ten_tasks_writes_synced_awards_and_never_repeats_them() {
     let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
     assert_eq!(awards(&snap).len(), 3);
 }
+
+#[tokio::test]
+async fn ops_that_cannot_affect_badges_skip_the_check_but_task_ops_still_award() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let creates: Vec<Value> = (0..10)
+        .map(|n| {
+            let id = task_id(n);
+            [
+                cmd(
+                    &cmd_id(n),
+                    "task.create",
+                    json!({ "id": id, "title": "T" }),
+                    1000 + n,
+                ),
+                cmd(
+                    &cmd_id(100 + n),
+                    "task.complete",
+                    json!({ "id": id }),
+                    2000 + n,
+                ),
+            ]
+        })
+        .flatten()
+        .collect();
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": creates })).await;
+    assert!(!awards(&res).is_empty());
+
+    // Drop the Award rows, so any badge check that runs would write them again.
+    let conn = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    conn.execute(
+        "DELETE FROM rows WHERE json_extract(data, '$.kind') = 'award'",
+        [],
+    )
+    .unwrap();
+
+    let label = cmd(
+        &cmd_id(300),
+        "label.create",
+        json!({ "id": task_id(60), "name": "L" }),
+        4000,
+    );
+    let (_, res) = sync(&app, json!({ "v": 1, "commands": [label] })).await;
+    assert!(awards(&res).iter().all(|a| a["earned_at"] != 4000));
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [] })).await;
+    assert!(awards(&snap).is_empty(), "label.create skipped the check");
+
+    let task = cmd(
+        &cmd_id(301),
+        "task.create",
+        json!({ "id": task_id(61), "title": "N" }),
+        4001,
+    );
+    let (_, snap) = sync(&app, json!({ "v": 1, "commands": [task] })).await;
+    assert!(
+        !awards(&snap).is_empty(),
+        "task.create still runs the check"
+    );
+}

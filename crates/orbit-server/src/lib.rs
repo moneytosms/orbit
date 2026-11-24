@@ -1171,7 +1171,21 @@ fn open_inbox(rows: &[Row]) -> usize {
 
 /// Writes the Awards `cmd` newly earns. The server has no time zone, so days are UTC.
 fn award_badges(conn: &Connection, cmd: &Command, now: i64) -> rusqlite::Result<()> {
-    if matches!(cmd.op, Op::AwardGrant { .. }) {
+    // Ops that touch no `badge::earned` input (tasks, goals, milestones, checkins, roadmaps,
+    // graph, placements, awards) skip the full-table load.
+    if matches!(
+        cmd.op,
+        Op::AwardGrant { .. }
+            | Op::LabelCreate { .. }
+            | Op::SettingsUpdate { .. }
+            | Op::PageCreate { .. }
+            | Op::PageRename { .. }
+            | Op::PageEditBody { .. }
+            | Op::ViewCreate { .. }
+            | Op::ViewUpdate { .. }
+            | Op::ViewReset { .. }
+            | Op::ViewDelete { .. }
+    ) {
         return Ok(());
     }
     let rows = all_rows(conn)?;
