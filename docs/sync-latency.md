@@ -3,7 +3,7 @@
 **Measured:** CLI and Web on 2026-11-22; Desktop ↔ CLI on 2026-11-23  
 **Product commit:** `ab38d06` (each run prints its `source_commit`)  
 **Servers measured:** a local loopback server, and an isolated Cloudflare Quick Tunnel created for each invocation (shown here as `<quick-tunnel>`)  
-**Status:** provisional. The 4 s verdict below is not measured.
+**Status:** measured pairs below; the interval verdict is derived from measured floors, not from an end-to-end run at the new interval.
 
 CLI and Web rows use a disposable SQLite server, fresh CLI profiles, and a temporary synthetic account. No live Orbit hostname or reusable credentials were accessed. Probe tasks were placed in a dedicated Area and explicitly trashed; the Area, database, profiles, scratch `HOME`, and tunnel process were removed.
 
@@ -76,7 +76,7 @@ Native Desktop build with the opt-in `native_sync_trace` hook, using the app's n
 
 Both rows are ms. The p95 values sit near the 60 s timer, which is the same pattern as the Web rows.
 
-## Native coverage and verdict
+## Native coverage
 
 Measured: CLI, raw HTTP, Chromium Web, and Desktop ↔ CLI, on the local and Quick Tunnel endpoints, as above.
 
@@ -90,9 +90,24 @@ Not yet measured (no numbers in this document):
 - Desktop ↔ Web. The webview script (`scripts/latency-native-webview.mjs`) has `desktopPeer` code, but `scripts/latency-native.py` has no flag that supplies it, so this pair is not runnable from the harness yet.
 - The 4 s interval itself, and native timer behavior under real network variation.
 
-Verdict (provisional): against a 5 s p95 target, a 60 s poll interval cannot meet the target, because poll wait can approach 60 s. Desktop ↔ CLI at 56.8 s p95 (loopback) and 57.6 s p95 (Quick Tunnel) confirms that the timer dominates. A 4 s interval is a candidate: under uniform phase it implies about 3.8 s p95 poll wait. That candidate has not been measured, so it is not a recommendation yet.
+## Re-run at current commit (2026-11-24, `f4dc385`)
 
-Request volume for one continuously visible client: 60 s polling is 1,440 requests/day, 5 s is 17,280, and 4 s is 21,600 (15× the current count). Estimated incremental Tunnel plan charge is $0 within the first 1,000 tunnels; origin compute, network transfer, and other products are excluded. See [Cloudflare Tunnel](cloudflare-tunnel.md#request-volume-and-tunnel-cost) for the cost section.
+`scripts/latency.sh --endpoint local` (100 samples per variant, 50/50 directions) was repeated on a disposable loopback server. It exited 0 and cleaned up (200 probe tasks trashed, dedicated Area, database and profiles removed). Cells are p50 / p95 / max in ms; they match the baseline above within noise.
+
+| Pair | Server applied → fetch | Upload → observed |
+|---|---:|---:|
+| Local CLI ↔ CLI (b→a shown) | 129 / 227 / 239 | 130 / 229 / 241 |
+| Local CLI ↔ raw HTTP poll | 121 / 237 / 248 | 123 / 239 / 249 |
+
+Not re-run at this commit: Quick Tunnel, Web, Desktop (Xvfb is not installed on this machine, and `latency-native.py` needs it). Their numbers above are from `ab38d06`.
+
+## Verdict
+
+- Upload plus server time is small: 3-5 ms plus 1-3 ms apply on loopback, about 170-225 ms extra through a tunnel. The cost is the receiver's poll wait.
+- 60 s polling does not meet a ~5 s p95: Web and Desktop receivers measure 27-59 s at max and 56-58 s p95 (Desktop), so end-to-end p95 is about the timer length.
+- Smallest change that reaches p95 under 5 s: a 4 s poll interval. Poll wait is uniform on `[0, interval)`, so p95 is about 3.8 s, plus the measured floor (under 0.3 s through a tunnel) gives about 4.1 s. This is arithmetic from measured floors, not a measurement of a 4 s client. Alternatives (cheap `ETag`/`If-None-Match` polls, a 25 s long-poll hold, push) cut request cost or latency further but need server work; open them as follow-up issues.
+- Cost of 4 s: 21,600 requests/day per visible client versus 1,440 (15x). Tunnel plan charge stays $0 within the first 1,000 tunnels; origin CPU and transfer are not priced. See [Cloudflare Tunnel](cloudflare-tunnel.md#request-volume-and-tunnel-cost).
+- Android background is throttled by WorkManager (15 min), so no interval change helps it.
 
 ## Re-run
 
