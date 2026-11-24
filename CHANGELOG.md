@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0 - 2026-11-24
+
+### Bug fixes
+
+- Fill the strip under the Android bottom nav with the nav colour
+- Reparent tasks locally when a section is deleted
+- End guide redirects with a slash
+
+### Documentation
+
+- Restructure the guide into five sections with a page-shape lint
+- Add current-commit latency rerun and measured verdict
+
+### Features
+
+- Build a Windows installer in the release workflow
+- Toggle area on name click
+- Move area and project menus to page headers, redesign glance widget
+- Finish roadmap canvas bands, headings, code prompt and round-trip tests
+
 ## 0.3.0 - 2026-11-23
 
 ### Bug fixes
