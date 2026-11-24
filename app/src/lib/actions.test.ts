@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 const sync = vi.hoisted(() => ({
   lastTask: null,
   tree: vi.fn(async (): Promise<unknown[]> => []),
-  views: vi.fn(async () => []),
+  views: vi.fn(async (): Promise<unknown[]> => []),
   sync: vi.fn(),
 }))
 vi.mock('./sync', () => sync)
