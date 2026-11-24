@@ -1978,3 +1978,36 @@ async fn startup_migrates_stored_placements_once_and_keeps_the_legacy_rows() {
             .any(|r| r["kind"] == "graph_node" || r["kind"] == "graph_edge")
     );
 }
+
+#[tokio::test]
+async fn purge_runs_at_most_once_per_maintenance_interval() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path()).await;
+    let now = real_now();
+    // The first sync runs maintenance.
+    let old = now - 31 * DAY;
+    let t0 = tree(&app, old).await;
+    // Trashed 31 days ago (all clocks are back then), so a purge pass would tombstone it; this sync is inside the interval.
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": t0, "commands": [
+            cmd(&c(0xe5), "item.delete", json!({ "id": PROJECT }), old + 10),
+        ]}),
+    )
+    .await;
+    assert_eq!(row(&res, PROJECT)["trashed_at"], old + 10);
+
+    // Make maintenance due again (as if the interval had passed).
+    let conn = rusqlite::Connection::open(dir.path().join("orbit.db")).unwrap();
+    conn.execute(
+        "UPDATE meta SET value = 0 WHERE key = 'last_maintenance'",
+        [],
+    )
+    .unwrap();
+    let (_, res) = sync(
+        &app,
+        json!({ "v": 1, "token": res["token"].clone(), "commands": [] }),
+    )
+    .await;
+    assert_eq!(row(&res, PROJECT)["kind"], "purged");
+}

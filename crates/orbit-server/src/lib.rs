@@ -22,6 +22,8 @@ use std::{
 
 /// How long a command uuid's status is kept for replays.
 const KEEP_PROCESSED_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+/// Minimum gap between `purge` + blob gc passes; both scan every row.
+const MAINTENANCE_INTERVAL_MS: i64 = 5 * 60 * 1000;
 const GRAPH_CAPABILITY: &str = "x-orbit-graph";
 const GRAPH_CURSOR: &str = "x-orbit-graph-cursor";
 const GRAPH_CURSOR_V1: &str = "v1:";
@@ -398,9 +400,22 @@ fn run(
         }
         statuses.insert(cmd.uuid, status);
     }
-    purge(conn, now)?;
-    // shortcut: walks the blobs dir on every sync, move to a timed task if blob counts grow large
-    blobs::gc(conn, data, now)?;
+    let last: Option<i64> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'last_maintenance'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    // A clock that went backwards (`now < last`) counts as due.
+    if last.is_none_or(|l| now < l || now - l >= MAINTENANCE_INTERVAL_MS) {
+        purge(conn, now)?;
+        blobs::gc(conn, data, now)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_maintenance', ?1)",
+            [now],
+        )?;
+    }
     let purge_seq = purge_seq(conn)?;
     let max = max_seq(conn)?;
     // A token from before a data reset, or from before purged tombstones were dropped, can't be
