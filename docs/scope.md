@@ -62,7 +62,7 @@ A Routine can optionally **count toward** a Goal (gym → "get fit"), but stays 
 ## Phase 2 (deferred, not built in v1)
 
 - **Server push:** daily summary and missed-routine alerts via self-hosted ntfy.
-- **Google Calendar:** read-only events on the Dashboard and the Calendar view, with integration health in Settings.
+- **Google Calendar:** read-only events on the Dashboard and the Calendar view, with integration health in Settings. Built in 0.6 via a secret iCal feed URL (no OAuth); the server polls it, see `crates/orbit-server/src/calendar.rs`.
 
 ## Removed
 

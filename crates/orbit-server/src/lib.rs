@@ -47,8 +47,11 @@ const UPGRADE_URL: &str = "https://github.com/moneytosms/orbit/releases/latest";
 mod auth;
 pub mod backup;
 mod blobs;
+mod calendar;
+mod ical;
 mod todoist;
 pub use auth::reset_password;
+pub use calendar::Fetcher;
 
 pub(crate) struct Shared {
     // shortcut: one connection behind a mutex, queries run on the async thread; move to spawn_blocking/pool when load matters.
@@ -65,6 +68,8 @@ pub(crate) struct Shared {
     jobs: Mutex<HashMap<String, todoist::Job>>,
     /// Adds `Secure` to the web session cookie (`ORBIT_SECURE_COOKIE`).
     secure_cookie: bool,
+    /// Fetches the iCal feed; tests swap in a fake.
+    fetcher: calendar::Fetcher,
 }
 type St = Arc<Shared>;
 
@@ -96,12 +101,20 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
     app_with(data_dir, todoist::BASE)
 }
 
+/// `app` fetching the calendar feed with `fetcher` instead of the network. For tests.
+pub fn app_with_fetcher(
+    data_dir: &Path,
+    fetcher: Fetcher,
+) -> rusqlite::Result<(Router, Option<String>)> {
+    build(data_dir, todoist::BASE, false, fetcher)
+}
+
 /// `app` with the web session cookie marked `Secure` or not, instead of reading `ORBIT_SECURE_COOKIE`. For tests.
 pub fn app_secure_cookie(
     data_dir: &Path,
     secure: bool,
 ) -> rusqlite::Result<(Router, Option<String>)> {
-    build(data_dir, todoist::BASE, secure)
+    build(data_dir, todoist::BASE, secure, calendar::real_fetcher())
 }
 
 /// `app` reading Todoist at `todoist_base` instead of the real API. For tests.
@@ -110,17 +123,19 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
         std::env::var("ORBIT_SECURE_COOKIE").as_deref(),
         Ok("1" | "true")
     );
-    build(data_dir, todoist_base, secure)
+    build(data_dir, todoist_base, secure, calendar::real_fetcher())
 }
 
 fn build(
     data_dir: &Path,
     todoist_base: &str,
     secure_cookie: bool,
+    fetcher: Fetcher,
 ) -> rusqlite::Result<(Router, Option<String>)> {
     let mut conn = open(data_dir)?;
     auth::migrate(&conn)?;
     todoist::migrate(&conn)?;
+    calendar::migrate(&conn)?;
     // `clocks` is the row's per-field last-writer HLCs (JSON); it never leaves the server.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rows (id TEXT PRIMARY KEY, data TEXT NOT NULL, clocks TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -156,13 +171,25 @@ fn build(
         todoist: todoist_base.into(),
         jobs: Mutex::default(),
         secure_cookie,
+        fetcher,
     };
+    let shared = Arc::new(shared);
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        rt.spawn(calendar::poll(shared.clone()));
+    }
     let router = Router::new()
         .route("/version", get(version))
         .route("/sync", post(sync))
         .route("/export", get(export))
         .route("/disk", get(disk))
         .route("/backup/status", get(backup_status))
+        .route("/calendar/events", get(calendar::events))
+        .route(
+            "/calendar/feed",
+            get(calendar::feed)
+                .put(calendar::set_feed)
+                .delete(calendar::clear_feed),
+        )
         .route("/auth", get(auth::state))
         .route("/auth/setup", post(auth::setup))
         .route("/auth/login", post(auth::login))
@@ -184,7 +211,7 @@ fn build(
             shared.secure_cookie,
             auth::refresh_cookie,
         ))
-        .with_state(Arc::new(shared));
+        .with_state(shared);
     Ok((router, setup))
 }
 

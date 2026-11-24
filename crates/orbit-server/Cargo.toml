@@ -19,6 +19,10 @@ tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "t
 tower-http = { version = "0.6.11", features = ["fs", "set-header"] }
 totp-rs = { version = "6.0.0", features = ["otpauth"] }
 zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
+rrule = "0.14"
+chrono-tz = "0.10"
+chrono = { version = "0.4", default-features = false }
+url = "2"
 
 [dev-dependencies]
 rusqlite = "0.43.0"

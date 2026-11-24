@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addMinutes, minutesBetween, toEvents } from './calendar'
+import { addMinutes, feedToEvents, minutesBetween, toEvents } from './calendar'
 import type { Task } from './sync'
 
 const task = (p: Partial<Task>): Task =>
@@ -78,5 +78,18 @@ describe('toEvents', () => {
 describe('minutes', () => {
   it('round-trips', () => {
     expect(minutesBetween('2026-03-05T14:00', addMinutes('2026-03-05T14:00', 45))).toBe(45)
+  })
+})
+
+describe('feedToEvents', () => {
+  it('maps all-day events to UTC dates and timed ones to instants, read-only', () => {
+    const [d, t] = feedToEvents([
+      { uid: 'a', summary: 'Holiday', start_ms: Date.UTC(2026, 2, 5), end_ms: Date.UTC(2026, 2, 7), all_day: true },
+      { uid: 'b', summary: '', start_ms: Date.UTC(2026, 2, 5, 14), end_ms: Date.UTC(2026, 2, 5, 15), all_day: false },
+    ])
+    expect(d).toMatchObject({ start: '2026-03-05', end: '2026-03-07', allDay: true, editable: false })
+    expect(t).toMatchObject({ start: '2026-03-05T14:00:00.000Z', title: '(no title)', allDay: false })
+    expect(d.classNames).toEqual(['cal-ical'])
+    expect(d.extendedProps).toEqual({ kind: 'ical', id: 'a' })
   })
 })

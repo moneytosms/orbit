@@ -1,3 +1,4 @@
+import type { FeedEvent } from './auth'
 import type { CheckState, Goal, Milestone, Routine, Task } from './sync'
 
 /** Minutes a timed Task takes on the grid when it has no `duration_min`. */
@@ -12,7 +13,7 @@ export type CalEvent = {
   editable: boolean
   durationEditable?: boolean
   classNames: string[]
-  extendedProps: { kind: 'task' | 'deadline' | 'routine' | 'goal' | 'milestone'; id: string }
+  extendedProps: { kind: 'task' | 'deadline' | 'routine' | 'goal' | 'milestone' | 'ical'; id: string }
 }
 export type RoutineDays = {
   routine: Pick<Routine, 'id' | 'name' | 'time'>
@@ -117,4 +118,18 @@ export function toEvents(
     })
   }
   return out
+}
+
+/** Read-only FullCalendar events for iCal feed events: all-day by UTC date, timed as instants. */
+export function feedToEvents(feed: FeedEvent[]): CalEvent[] {
+  return feed.map((e) => ({
+    id: `ical:${e.uid}:${e.start_ms}`,
+    title: e.summary || '(no title)',
+    start: e.all_day ? new Date(e.start_ms).toISOString().slice(0, 10) : new Date(e.start_ms).toISOString(),
+    end: e.all_day ? new Date(e.end_ms).toISOString().slice(0, 10) : new Date(e.end_ms).toISOString(),
+    allDay: e.all_day,
+    editable: false,
+    classNames: ['cal-ical'],
+    extendedProps: { kind: 'ical', id: e.uid },
+  }))
 }
