@@ -19,7 +19,7 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     // The content root, not the WebView: a WebView ignores its own padding, so pages drew under the bars.
-    findViewById<View>(android.R.id.content).padForSystemBars()
+    findViewById<View>(android.R.id.content).padForSystemBars(behindNavBar = true)
     Link.set(intent)
     Sync.schedule(this)
     WidgetRefresh.schedule(this)

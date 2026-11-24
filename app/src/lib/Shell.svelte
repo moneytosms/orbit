@@ -240,8 +240,8 @@
     await createProject(areaId, name)
     newProject[areaId] = ''
   }
-  const areaIsExpanded = (a: AreaItem) =>
-    (screen.name === 'area' && screen.id === a.id) || (areaExpansion[a.id] ?? a.projects.length > 0)
+  // Only the chevron changes this; the saved choice always wins, so collapsing the current area sticks.
+  const areaIsExpanded = (a: AreaItem) => areaExpansion[a.id] ?? a.projects.length > 0
   function toggleArea(a: AreaItem) {
     areaExpansion = { ...areaExpansion, [a.id]: !areaIsExpanded(a) }
     try {
@@ -315,7 +315,7 @@
             >
               <a
                 href="#/area/{a.id}"
-                onclick={() => toggleArea(a)}
+                onclick={() => (drawer = false)}
                 aria-current={screen.name === 'area' && screen.id === a.id ? 'page' : undefined}
                 class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 font-medium"
               >

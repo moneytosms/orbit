@@ -120,13 +120,21 @@ class SyncWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
     }
 }
 
-/** Pads a view by the system bars, cutout and keyboard so edge-to-edge content stays clear of them. */
-fun View.padForSystemBars() {
+/**
+ * Pads a view by the system bars, cutout and keyboard so edge-to-edge content stays clear of them.
+ * `behindNavBar` lets the content draw under the bottom navigation bar (the page pads itself with
+ * `env(safe-area-inset-bottom)`); only the keyboard still lifts it.
+ */
+fun View.padForSystemBars(behindNavBar: Boolean = false) {
     setOnApplyWindowInsetsListener { v, insets ->
         val b = insets.getInsets(
             WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime()
         )
-        v.setPadding(b.left, b.top, b.right, b.bottom)
+        val bottom = if (!behindNavBar) b.bottom else {
+            val nav = insets.getInsets(WindowInsets.Type.systemBars()).bottom
+            if (b.bottom > nav) b.bottom else 0
+        }
+        v.setPadding(b.left, b.top, b.right, bottom)
         insets
     }
     requestApplyInsets()
