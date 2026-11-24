@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-11-24
+
+### Bug fixes
+
+- Web black bar; profile page, badge icons, 30-day chart, breadcrumbs
+- Task nodes show their task title and rename it
+- Reload canvas after import; wrap tool dock on narrow screens
+
+### Features
+
+- Clearer roadmap canvas with help tips, convert kinds, full size
+- Roadmap tool dock, border-touching arrows, tidy directions, richer import prompt
+
 ## 0.4.3 - 2026-11-24
 
 ### Bug fixes
