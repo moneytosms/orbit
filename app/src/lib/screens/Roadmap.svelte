@@ -42,6 +42,8 @@
   let today = $state('')
   let building = $state(false)
   let importing = $state(false)
+  /** Bumped after an import so the canvas, which holds its own copy of the graph, reloads it. */
+  let reload = $state(0)
   let loaded = $state(false)
   let newName = $state('')
   let newPhase = $state('')
@@ -93,11 +95,13 @@
     if (!id) return
     await importMermaid(id, plan)
     importing = false
+    reload++
     onchange()
     await load()
   }
   async function runCodeImport() {
     importing = false
+    reload++
     onchange()
     await load()
   }
@@ -155,7 +159,7 @@
   </div>
 
   {#if mode === 'canvas'}
-    <RoadmapGraphCanvas {id} onchange={load} onimport={() => (importing = true)} />
+    <RoadmapGraphCanvas {id} {reload} onchange={load} onimport={() => (importing = true)} />
   {/if}
 
   {#if mode === 'timeline'}

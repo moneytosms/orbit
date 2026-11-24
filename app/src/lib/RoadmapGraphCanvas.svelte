@@ -54,7 +54,12 @@
     type GraphNodeKind,
   } from '$lib/sync'
 
-  let { id, onchange, onimport }: { id: string; onchange: () => void; onimport?: () => void } = $props()
+  let {
+    id,
+    reload = 0,
+    onchange,
+    onimport,
+  }: { id: string; reload?: number; onchange: () => void; onimport?: () => void } = $props()
   let nodes = $state<GraphNode[]>([])
   let edges = $state<GraphEdge[]>([])
   let bands = $state<import('$lib/sync').Phase[]>([])
@@ -187,6 +192,7 @@
   }
   $effect(() => {
     void id
+    void reload
     load()
   })
 
@@ -1115,7 +1121,7 @@
       aria-label="Roadmap tools"
       tabindex="-1"
       onkeydown={toolKey}
-      class="absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl border border-line bg-surface/95 p-1 shadow-2"
+      class="absolute inset-x-2 bottom-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-0.5 rounded-2xl border border-line bg-surface/95 p-1 shadow-2"
     >
       {#each TOOLS as t (t.id)}
         {#if t.gap}<span class="mx-0.5 h-6 w-px shrink-0 bg-line" aria-hidden="true"></span>{/if}
