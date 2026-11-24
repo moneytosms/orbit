@@ -1,6 +1,8 @@
 // Appearance, painted on <html>: an Orbit theme or a Monkeytype palette (inline tokens), plus accent,
 // density, text size, typeface, line spacing and motion. Everything is kept per browser in localStorage. Theme and accent also sync
 // through the Settings row: local changes go to `onAppearanceChange`, remote ones come in via `applyRemote`.
+import { invoke } from '@tauri-apps/api/core'
+import { isAndroidTauri } from './platform'
 import init, { theme_list, theme_tokens } from '../../wasm/orbit_wasm'
 
 export type Theme = 'light' | 'dark' | 'system'
@@ -104,6 +106,11 @@ function applyAccent(style: CSSStyleDeclaration) {
   style.setProperty('--accent-line', `color-mix(in srgb, ${accent} 45%, var(--bg))`)
 }
 
+/** Android: status/nav bar icons follow the page theme. An older shell lacks the command; ignored. */
+const barIcons = (dark: boolean) => {
+  if (isAndroidTauri()) void invoke('set_bar_theme', { dark }).catch(() => {})
+}
+
 function paint() {
   const root = globalThis.document?.documentElement
   if (!root) return
@@ -120,6 +127,7 @@ function paint() {
     clearTokens(style)
     const dark = current === 'dark' || (current === 'system' && (media?.matches ?? false))
     root.dataset.theme = dark ? 'dark' : 'light'
+    barIcons(dark)
     applyAccent(style)
     return
   }
@@ -133,6 +141,7 @@ function paint() {
     clearTokens(style)
     for (const [key, value] of Object.entries(tokens)) style.setProperty(`--${key}`, value)
     root.dataset.theme = luminance(tokens.bg) <= 0.18 ? 'dark' : 'light'
+    barIcons(root.dataset.theme === 'dark')
     applyAccent(style)
   })
 }

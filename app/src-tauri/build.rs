@@ -25,6 +25,7 @@ fn main() {
             "clear_upgrade_required",
             "take_link",
             "shell_version",
+            "set_bar_theme",
             "capture_task",
             "get_capture_shortcut",
             "set_capture_shortcut",

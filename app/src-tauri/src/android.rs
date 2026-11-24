@@ -74,6 +74,14 @@ async fn take_link(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Strin
     )
 }
 
+/// Status and navigation bar icon contrast for the page theme (`dark` page: light icons).
+#[tauri::command]
+async fn set_bar_theme(app: tauri::AppHandle, window: tauri::WebviewWindow, dark: bool) {
+    if trusted(&app, &window).is_ok() {
+        let _ = call(&app, "setBarTheme", json!({ "dark": dark }));
+    }
+}
+
 /// The installed Android shell version, which can differ from the server-loaded UI.
 #[tauri::command]
 async fn shell_version(app: tauri::AppHandle, window: tauri::WebviewWindow) -> String {
@@ -147,7 +155,8 @@ pub fn builder() -> tauri::Builder<Wry> {
             has_token,
             set_server,
             take_link,
-            shell_version
+            shell_version,
+            set_bar_theme
         ])
         // The bundled index.html is only a launcher: once it has loaded, send the window to the saved
         // server, or to the server-URL page. A navigation sooner than this is dropped.

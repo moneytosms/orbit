@@ -9,6 +9,7 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 @InvokeArg class TokenArgs { lateinit var server: String; lateinit var device: String; lateinit var token: String }
+@InvokeArg class BarArgs { var dark: Boolean = false }
 @InvokeArg class ServerArgs { lateinit var server: String }
 
 /** Called from Rust (android.rs): token and server storage for the webview's Tauri commands. */
@@ -37,6 +38,16 @@ class OrbitPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun takeLink(invoke: Invoke) = invoke.resolve(JSObject().put("link", Link.take()))
+
+    @Command
+    fun setBarTheme(invoke: Invoke) {
+        val dark = invoke.parseArgs(BarArgs::class.java).dark
+        // Dark page: light icons (appearance flags cleared); light page: dark icons.
+        val flags = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        activity.runOnUiThread { activity.window.insetsController?.setSystemBarsAppearance(if (dark) 0 else flags, flags) }
+        invoke.resolve()
+    }
 
     @Command
     fun shellVersion(invoke: Invoke) = invoke.resolve(JSObject().put(
