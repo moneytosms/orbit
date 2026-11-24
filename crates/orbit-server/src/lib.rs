@@ -179,6 +179,10 @@ fn build(
                 .get(blobs::get)
                 .layer(axum::extract::DefaultBodyLimit::max(max_blob)),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            shared.secure_cookie,
+            auth::refresh_cookie,
+        ))
         .with_state(Arc::new(shared));
     Ok((router, setup))
 }

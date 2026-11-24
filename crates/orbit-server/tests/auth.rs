@@ -203,10 +203,19 @@ async fn web_logins_get_an_http_only_cookie_and_no_token_in_the_body() {
         .unwrap();
     req.extensions_mut()
         .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1))));
-    assert_eq!(
-        app.clone().oneshot(req).await.unwrap().status(),
-        StatusCode::OK
-    );
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    // Thirty-day sliding session: the login cookie and every cookie-authenticated reply carry it.
+    assert!(cookie.contains("Max-Age=2592000"), "{cookie}");
+    assert_eq!(res.headers()[header::SET_COOKIE].to_str().unwrap(), cookie);
+}
+
+#[tokio::test]
+async fn bearer_requests_do_not_get_a_cookie() {
+    let (app, token, _dir) = setup().await;
+    let (s, headers, _) = call(&app, Method::POST, "/sync", sync_body(), Some(&token)).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(!headers.contains_key(header::SET_COOKIE));
 }
 
 #[tokio::test]

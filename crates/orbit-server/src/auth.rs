@@ -22,6 +22,38 @@ use std::{
 use totp_rs::{Builder, Secret, Totp};
 
 const COOKIE: &str = "orbit";
+/// Web session cookie lifetime; every authenticated request renews it (see `refresh_cookie`).
+const COOKIE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
+
+fn session_cookie(token: &str, secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!(
+        "{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={COOKIE_MAX_AGE_SECS}{secure}"
+    )
+}
+
+/// Sliding session: a request authenticated by cookie gets the cookie re-issued, so only a browser
+/// idle for 30 days is signed out. The device token itself never expires.
+pub(crate) async fn refresh_cookie(
+    State(secure): State<bool>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let had_cookie = presented(req.headers()).filter(|_| {
+        !req.headers()
+            .get(header::AUTHORIZATION)
+            .is_some_and(|v| v.as_bytes().starts_with(b"Bearer "))
+    });
+    let mut res = next.run(req).await;
+    if let Some(token) = had_cookie
+        && res.status().is_success()
+        && !res.headers().contains_key(header::SET_COOKIE)
+        && let Ok(v) = header::HeaderValue::from_str(&session_cookie(&token, secure))
+    {
+        res.headers_mut().insert(header::SET_COOKIE, v);
+    }
+    res
+}
 const MIN_PASSWORD: usize = 8;
 
 pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
@@ -319,11 +351,7 @@ fn issue(db: &Connection, name: &str, platform: &str, secure: bool) -> Res {
         (&id, name, platform, now, sha256(&token)),
     )?;
     if platform == "web" {
-        // No expiry: the cookie lives as long as the Device (ten years).
-        let secure = if secure { "; Secure" } else { "" };
-        let cookie = format!(
-            "{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=315360000{secure}"
-        );
+        let cookie = session_cookie(&token, secure);
         Ok((
             [(header::SET_COOKIE, cookie)],
             Json(json!({ "device": id })),
