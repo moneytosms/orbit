@@ -750,7 +750,6 @@ export const updateView = (id: string, patch: ViewPatch & { kind?: View['entity'
   enqueue('view.update', { id, ...patch })
 /** Puts a built-in View back to its defaults. */
 export const resetView = (id: string) => enqueue('view.reset', { id })
-export const deleteView = (id: string) => enqueue('view.delete', { id })
 /** Pinned, visible Views in order, for the sidebar. */
 export async function pinnedViews(): Promise<View[]> {
   return (await views()).filter((v) => v.pinned && !v.hidden)
@@ -1238,13 +1237,6 @@ export async function routineStats(id: string, today?: string): Promise<RoutineS
   const rows = (await allRows()).filter((r) => r.id === id || (r.kind === 'checkin' && r.routine_id === id))
   return JSON.parse(routine_stats(JSON.stringify(rows), id, today ?? (await localDay())))
 }
-/** Check-in state per date for a Routine, cleared ones left out. */
-export async function checkinsOf(id: string): Promise<Map<string, CheckState>> {
-  const m = new Map<string, CheckState>()
-  for (const r of await allRows()) if (r.kind === 'checkin' && r.routine_id === id && !r.cleared) m.set(r.date, r.state)
-  return m
-}
-
 /** Visible Roadmaps (not archived or trashed), in display order. */
 export async function roadmaps(): Promise<Roadmap[]> {
   return (await visibleRows()).filter((r): r is Roadmap => r.kind === 'roadmap').sort(byOrder)
