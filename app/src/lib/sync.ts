@@ -1175,7 +1175,19 @@ export const routineIcon = (routine: Pick<Routine, 'id' | 'icon'>) => {
 }
 /** Moves Routines past their length to Archived, history kept; already archived ones are not listed. */
 async function archiveEndedRoutines() {
-  for (const r of await routines()) if ((await routineStats(r.id)).ended) await archiveItem(r.id)
+  const ours = await routines()
+  if (!ours.length) return
+  const rows = await allRows()
+  const today = await localDay()
+  const byRoutine = new Map<string, Row[]>()
+  for (const r of rows) {
+    const key = r.kind === 'checkin' ? r.routine_id : r.id
+    byRoutine.set(key, [...(byRoutine.get(key) ?? []), r])
+  }
+  for (const r of ours) {
+    const stats: RoutineStats = JSON.parse(routine_stats(JSON.stringify(byRoutine.get(r.id) ?? []), r.id, today))
+    if (stats.ended) await archiveItem(r.id)
+  }
 }
 /** Archived Routines, history kept. */
 export async function archivedRoutines(): Promise<Routine[]> {
