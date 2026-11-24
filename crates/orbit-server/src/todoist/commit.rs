@@ -704,3 +704,97 @@ pub fn run(
     }
     Ok(r)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::todoist::api::File;
+    use serde_json::json;
+
+    fn file(image: bool, blob: Option<&str>) -> File {
+        File {
+            name: "shot.png".into(),
+            image,
+            url: "https://x/shot.png".into(),
+            blob: blob.map(String::from),
+        }
+    }
+
+    #[test]
+    fn md_link_embeds_images_only_once_downloaded() {
+        assert_eq!(md_link(&file(true, Some("ab"))), "![shot.png](blob:ab)");
+        assert_eq!(md_link(&file(false, Some("ab"))), "[shot.png](blob:ab)");
+        assert_eq!(md_link(&file(true, None)), "[shot.png](https://x/shot.png)");
+    }
+
+    #[test]
+    fn md_comment_has_the_date_then_text_then_attachment() {
+        let c = |content: &str, file| Comment {
+            date: "2026-03-01".into(),
+            content: content.into(),
+            file,
+        };
+        assert_eq!(md_comment(&c("hi", None)), "**2026-03-01**: hi");
+        assert_eq!(md_comment(&c("", None)), "**2026-03-01**");
+        assert_eq!(
+            md_comment(&c("hi", Some(file(false, None)))),
+            "**2026-03-01**: hi\n\n[shot.png](https://x/shot.png)"
+        );
+    }
+
+    fn titles(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT json_extract(data, '$.title') FROM rows
+                 WHERE json_extract(data, '$.kind') = 'task' ORDER BY 1",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    /// A rejected task mid-run (a blank title) is reported and not remembered, so a re-run
+    /// creates just that task once its content is fixed and never duplicates the others.
+    #[test]
+    fn a_rejected_task_mid_run_is_retried_without_duplicating_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let _app = crate::app(dir.path()).unwrap();
+        let mut conn = crate::open(dir.path()).unwrap();
+        let task = |id: &str, content: &str, order: i64| json!({ "id": id, "project_id": "pi", "content": content, "child_order": order });
+        let mut snap = Snapshot {
+            projects: serde_json::from_value(
+                json!([{ "id": "pi", "name": "Inbox", "inbox_project": true }]),
+            )
+            .unwrap(),
+            tasks: serde_json::from_value(json!([
+                task("a", "A", 1),
+                task("b", "  ", 2),
+                task("c", "C", 3)
+            ]))
+            .unwrap(),
+            ..Default::default()
+        };
+
+        let first = run(&mut conn, dir.path(), &snap, &[]).unwrap();
+        assert_eq!((first.tasks, first.existing_tasks), (2, 0));
+        assert_eq!(first.issues.len(), 1, "{:?}", first.issues);
+        assert!(
+            first.issues[0].contains("was rejected"),
+            "{:?}",
+            first.issues
+        );
+        assert_eq!(titles(&conn), ["A", "C"]);
+
+        snap.tasks[1].content = "B".into();
+        let second = run(&mut conn, dir.path(), &snap, &[]).unwrap();
+        assert_eq!((second.tasks, second.existing_tasks), (1, 2));
+        assert!(second.issues.is_empty(), "{:?}", second.issues);
+        assert_eq!(titles(&conn), ["A", "B", "C"]);
+
+        let third = run(&mut conn, dir.path(), &snap, &[]).unwrap();
+        assert_eq!((third.tasks, third.existing_tasks), (0, 3));
+        assert_eq!(titles(&conn), ["A", "B", "C"]);
+    }
+}
