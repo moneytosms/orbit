@@ -129,7 +129,9 @@
             <div class="min-w-0" class:opacity-60={b.count === 0}>
               <p class="truncate font-medium">{b.name}{b.repeatable && b.count > 0 ? ` x ${b.count}` : ''}</p>
               <p class="text-xs text-muted">{b.tier} · {b.points.toLocaleString()} Stardust</p>
-              {#if b.count === 0}<p class="text-xs text-muted">{b.condition}</p>{/if}
+              {#if b.count === 0}<p class="text-xs text-muted">
+                  {b.condition} · {b.progress.toLocaleString()} / {b.need.toLocaleString()}
+                </p>{/if}
             </div>
           </li>
         {/each}

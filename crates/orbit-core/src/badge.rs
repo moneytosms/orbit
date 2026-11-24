@@ -332,6 +332,90 @@ fn award_id(key: &str) -> Uuid {
     Builder::from_random_bytes(h.to_be_bytes()).into_uuid()
 }
 
+/// Current counts behind every Badge metric, so awards and shelf progress agree.
+struct Counts {
+    tasks: u64,
+    checkins: u64,
+    streak: u64,
+    milestones: u64,
+    goals: u64,
+    patches: u64,
+    stardust: u64,
+    /// Tasks completed per local day.
+    per_day: std::collections::HashMap<String, u32>,
+    today: String,
+}
+
+impl Counts {
+    fn new(rows: &[Row], utc_offset_min: i32, day_start: &str, today: &str) -> Counts {
+        let (tasks, per_day) = stardust::task_counts(rows, utc_offset_min, day_start);
+        let n = |f: &dyn Fn(&Row) -> bool| rows.iter().filter(|r| f(r)).count() as u64;
+        let streak = rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Routine(rt) if rt.trashed_at.is_none() => Some(rt),
+                _ => None,
+            })
+            .map(|rt| {
+                let cks: Vec<Checkin> = rows
+                    .iter()
+                    .filter_map(|x| match x {
+                        Row::Checkin(c) if c.routine_id == rt.id => Some(c.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                stats(rt, &cks, today).best_streak as u64
+            })
+            .max()
+            .unwrap_or(0);
+        Counts {
+            tasks: tasks as u64,
+            checkins: n(
+                &|r| matches!(r, Row::Checkin(c) if c.state == CheckState::Done && !c.cleared),
+            ),
+            streak,
+            milestones: n(&|r| matches!(r, Row::Milestone(m) if m.done)),
+            goals: n(&|r| matches!(r, Row::Goal(g) if g.completed_at.is_some())),
+            patches: n(&|r| matches!(r, Row::Award(a) if a.badge == PATCH)),
+            stardust: stardust::total(rows, utc_offset_min, day_start),
+            per_day,
+            today: today.to_string(),
+        }
+    }
+
+    /// Value of a counting metric; `BusyDay` is today's completions, `InboxZero` is not counted here.
+    fn of(&self, m: Metric) -> u64 {
+        match m {
+            Tasks => self.tasks,
+            Checkins => self.checkins,
+            Streak => self.streak,
+            Milestones => self.milestones,
+            Goals => self.goals,
+            Patches => self.patches,
+            Stardust => self.stardust,
+            BusyDay => self.per_day.get(&self.today).copied().unwrap_or(0) as u64,
+            InboxZero => 0,
+        }
+    }
+}
+
+/// Inbox Tasks completed since the last award of Badge `id`.
+fn inbox_done(rows: &[Row], id: &str) -> u64 {
+    let last = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Award(a) if a.badge == id => Some(a.earned_at),
+            _ => None,
+        })
+        .max();
+    rows.iter()
+        .filter(|r| {
+            matches!(r, Row::Task(t) if t.parent_id == crate::INBOX
+                && t.completed_at.is_some_and(|c| last.is_none_or(|l| c > l)))
+        })
+        .count() as u64
+}
+
 /// Awards newly earned by `rows` that have no row yet. `today` is `YYYY-MM-DD` for Check-in
 /// streaks; `emptied` is the command id of a Task completion that left no open Inbox Tasks.
 pub fn earned(
@@ -392,46 +476,11 @@ pub fn earned(
         }
     }
 
-    let (tasks, per_day) = stardust::task_counts(rows, utc_offset_min, day_start);
-    let checkins = rows
-        .iter()
-        .filter(|r| matches!(r, Row::Checkin(c) if c.state == CheckState::Done && !c.cleared))
-        .count() as u64;
-    let streak = rows
-        .iter()
-        .filter_map(|r| match r {
-            Row::Routine(rt) if rt.trashed_at.is_none() => Some(rt),
-            _ => None,
-        })
-        .map(|rt| {
-            let cks: Vec<Checkin> = rows
-                .iter()
-                .filter_map(|x| match x {
-                    Row::Checkin(c) if c.routine_id == rt.id => Some(c.clone()),
-                    _ => None,
-                })
-                .collect();
-            stats(rt, &cks, today).best_streak as u64
-        })
-        .max()
-        .unwrap_or(0);
-    let milestones = rows
-        .iter()
-        .filter(|r| matches!(r, Row::Milestone(m) if m.done))
-        .count() as u64;
-    let goals = rows
-        .iter()
-        .filter(|r| matches!(r, Row::Goal(g) if g.completed_at.is_some()))
-        .count() as u64;
-    let patches_before = rows
-        .iter()
-        .filter(|r| matches!(r, Row::Award(a) if a.badge == PATCH))
-        .count();
-
+    let c = Counts::new(rows, utc_offset_min, day_start, today);
     for b in CATALOG.iter() {
         match b.metric {
             BusyDay => {
-                for (day, n) in &per_day {
+                for (day, n) in &c.per_day {
                     if *n as u64 >= b.need {
                         grant(&mut out, b.id, format!("{}@{day}", b.id), b.tier.points());
                     }
@@ -439,21 +488,7 @@ pub fn earned(
             }
             InboxZero => {
                 if let Some(cmd) = emptied {
-                    // Inbox Tasks completed since the last award of this Badge.
-                    let last = rows
-                        .iter()
-                        .filter_map(|r| match r {
-                            Row::Award(a) if a.badge == b.id => Some(a.earned_at),
-                            _ => None,
-                        })
-                        .max();
-                    let done = rows
-                        .iter()
-                        .filter(|r| {
-                            matches!(r, Row::Task(t) if t.parent_id == crate::INBOX
-                                && t.completed_at.is_some_and(|c| last.is_none_or(|l| c > l)))
-                        })
-                        .count() as u64;
+                    let done = inbox_done(rows, b.id);
                     if done >= b.need {
                         grant(&mut out, b.id, format!("{}@{cmd}", b.id), b.tier.points());
                     }
@@ -461,19 +496,9 @@ pub fn earned(
             }
             metric => {
                 let have_n = match metric {
-                    Tasks => tasks as u64,
-                    Checkins => checkins,
-                    Streak => streak,
-                    Milestones => milestones,
-                    Goals => goals,
-                    Patches => {
-                        (patches_before + out.iter().filter(|a| a.badge == PATCH).count()) as u64
-                    }
-                    Stardust => {
-                        stardust::total(rows, utc_offset_min, day_start)
-                            + out.iter().map(|a| a.points as u64).sum::<u64>()
-                    }
-                    BusyDay | InboxZero => unreachable!(),
+                    Patches => c.patches + out.iter().filter(|a| a.badge == PATCH).count() as u64,
+                    Stardust => c.stardust + out.iter().map(|a| a.points as u64).sum::<u64>(),
+                    m => c.of(m),
                 };
                 if have_n >= b.need {
                     grant(&mut out, b.id, b.id.to_string(), b.tier.points());
@@ -507,6 +532,9 @@ pub struct ShelfItem {
     pub repeatable: bool,
     pub condition: &'static str,
     pub count: u32,
+    /// Progress toward `need`, capped at it (today's Tasks for repeatable busy-day Badges).
+    pub progress: u64,
+    pub need: u64,
 }
 
 /// The Badge shelf over `rows`: every catalog Badge with its count, and the Patches earned.
@@ -516,7 +544,8 @@ pub struct Shelf {
     pub patches: u32,
 }
 
-pub fn shelf(rows: &[Row]) -> Shelf {
+pub fn shelf(rows: &[Row], utc_offset_min: i32, day_start: &str, today: &str) -> Shelf {
+    let c = Counts::new(rows, utc_offset_min, day_start, today);
     let badges = CATALOG
         .iter()
         .map(|b| ShelfItem {
@@ -530,6 +559,12 @@ pub fn shelf(rows: &[Row]) -> Shelf {
                 .iter()
                 .filter(|r| matches!(r, Row::Award(a) if a.badge == b.id))
                 .count() as u32,
+            progress: match b.metric {
+                InboxZero => inbox_done(rows, b.id),
+                m => c.of(m),
+            }
+            .min(b.need),
+            need: b.need,
         })
         .collect();
     let patches = rows
@@ -571,7 +606,7 @@ mod tests {
                 points: 50,
             }),
         ];
-        let shelf = shelf(&rows);
+        let shelf = shelf(&rows, 0, "00:00", "2026-11-24");
         assert_eq!(shelf.badges.len(), 24);
         assert_eq!(shelf.patches, 0);
         let busy = shelf.badges.iter().find(|b| b.id == "busy-10").unwrap();
@@ -596,5 +631,86 @@ mod tests {
             award_id("busy-10@2026-11-20"),
             award_id("busy-10@2026-11-21")
         );
+    }
+
+    const AT: u64 = 1_700_000_000_000; // 2023-11-14 22:13 UTC
+    const TODAY: &str = "2023-11-14";
+
+    fn rows(v: serde_json::Value) -> Vec<Row> {
+        serde_json::from_value(v).unwrap()
+    }
+
+    fn uid(n: u128) -> String {
+        Uuid::from_u128(n).to_string()
+    }
+
+    fn progress(rows: &[Row], id: &str) -> (u64, u64) {
+        let b = shelf(rows, 0, "00:00", TODAY);
+        let b = b.badges.into_iter().find(|b| b.id == id).unwrap();
+        (b.progress, b.need)
+    }
+
+    fn done_tasks(n: u128) -> Vec<Row> {
+        rows(serde_json::Value::Array(
+            (0..n)
+                .map(|i| serde_json::json!({"kind":"completion","id":uid(100 + i),"item_id":uid(1000 + i),"at":AT,"points":15}))
+                .collect(),
+        ))
+    }
+
+    #[test]
+    fn progress_tasks_and_busy_day_count_completions_and_cap_at_need() {
+        assert_eq!(progress(&done_tasks(6), "tasks-10"), (6, 10));
+        assert_eq!(progress(&done_tasks(6), "busy-10"), (6, 10));
+        assert_eq!(progress(&done_tasks(12), "tasks-10"), (10, 10));
+        // Busy day is today's tasks: completions on another day do not count.
+        assert_eq!(progress(&done_tasks(6), "busy-10").0, 6);
+        let b = shelf(&done_tasks(6), 0, "00:00", "2023-11-15");
+        assert_eq!(
+            b.badges
+                .iter()
+                .find(|b| b.id == "busy-10")
+                .unwrap()
+                .progress,
+            0
+        );
+    }
+
+    #[test]
+    fn progress_checkins_and_streak() {
+        let mut v = vec![
+            serde_json::json!({"kind":"routine","id":uid(1),"parent_id":uid(2),"name":"R",
+            "schedule":{"kind":"daily"},"start":"2023-11-01"}),
+        ];
+        for d in 12..=14 {
+            v.push(
+                serde_json::json!({"kind":"checkin","id":uid(10 + d),"routine_id":uid(1),
+                "date":format!("2023-11-{d}"),"state":"done"}),
+            );
+        }
+        let r = rows(serde_json::Value::Array(v));
+        assert_eq!(progress(&r, "checkins-10"), (3, 10));
+        assert_eq!(progress(&r, "streak-7"), (3, 7));
+    }
+
+    #[test]
+    fn progress_milestones_goals_patches() {
+        let r = rows(serde_json::json!([
+            {"kind":"milestone","id":uid(1),"goal_id":uid(9),"title":"M","done":true},
+            {"kind":"milestone","id":uid(2),"goal_id":uid(9),"title":"M","done":false},
+            {"kind":"goal","id":uid(3),"parent_id":uid(8),"name":"G","progress":{"kind":"count"},"completed_at":AT},
+            {"kind":"award","id":uid(4),"badge":"patch","key":"patch:x","earned_at":AT,"points":700},
+        ]));
+        assert_eq!(progress(&r, "milestones-10"), (1, 10));
+        assert_eq!(progress(&r, "goals-5"), (1, 5));
+        assert_eq!(progress(&r, "patches-5"), (1, 5));
+        assert_eq!(progress(&[], "patches-5"), (0, 5));
+    }
+
+    #[test]
+    fn progress_stardust_and_inbox_zero() {
+        let (p, need) = progress(&done_tasks(2), "universe");
+        assert_eq!((p, need), (30, 229400));
+        assert_eq!(progress(&[], "inbox-zero"), (0, INBOX_MIN as u64));
     }
 }
