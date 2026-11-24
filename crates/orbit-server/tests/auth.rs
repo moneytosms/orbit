@@ -438,3 +438,35 @@ async fn loopback_peers_get_one_lockout_bucket_per_forwarded_client() {
     .await;
     assert_eq!(junk, StatusCode::TOO_MANY_REQUESTS);
 }
+
+#[tokio::test]
+async fn bearer_wins_over_the_cookie_and_other_schemes_are_rejected() {
+    let (app, token, _dir) = setup().await;
+    let cookie = format!("orbit={token}");
+    let bearer = format!("Bearer {token}");
+    let basic = format!("Basic {token}");
+    let lower = format!("bearer {token}");
+    async fn sync(app: &Router, h: &[(&str, &str)]) -> StatusCode {
+        from(app, [127, 0, 0, 1], "/sync", sync_body(), h).await
+    }
+    let auth = "authorization";
+    assert_eq!(sync(&app, &[(auth, &bearer)]).await, StatusCode::OK);
+    assert_eq!(sync(&app, &[("cookie", &cookie)]).await, StatusCode::OK);
+    // Not a `Bearer ` scheme: ignored, so no credential unless a cookie is present.
+    assert_eq!(
+        sync(&app, &[(auth, &basic)]).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        sync(&app, &[(auth, &lower)]).await,
+        StatusCode::UNAUTHORIZED
+    );
+    // Both present: the Bearer token is used and the cookie is never consulted, either way round.
+    let both = [(auth, bearer.as_str()), ("cookie", "orbit=bogus")];
+    assert_eq!(sync(&app, &both).await, StatusCode::OK);
+    let both = [(auth, "Bearer bogus"), ("cookie", cookie.as_str())];
+    assert_eq!(sync(&app, &both).await, StatusCode::UNAUTHORIZED);
+    // A non-Bearer scheme falls through to the cookie.
+    let both = [(auth, "Basic xxx"), ("cookie", cookie.as_str())];
+    assert_eq!(sync(&app, &both).await, StatusCode::OK);
+}
