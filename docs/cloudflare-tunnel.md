@@ -28,7 +28,7 @@ These come from the server and client code, so they decide how the route has to 
 | --- | --- |
 | The web UI uses absolute paths (`/sync`, `/auth`, `/blobs/...`) and ships a root-scoped PWA and service worker | Use a **subdomain root** such as `https://orbit.example.com`. A subpath such as `example.com/orbit` does not work without rebuilding the app. |
 | The Linux and Android apps load the UI **from the server** (`app/src-tauri/src/desktop.rs`, `android.rs`), and the release APK has `usesCleartextTraffic="false"` | The server must serve the built web app (`ORBIT_WEB`, already `/web` in the Docker image) and must be reached over real HTTPS. The Docker image covers the first part. |
-| Login rate limiting keys on the socket peer address (`ConnectInfo<SocketAddr>` in `crates/orbit-server/src/auth.rs`), and the server does not read `X-Forwarded-For` | Behind a tunnel every request arrives from `127.0.0.1`, so the limit becomes one bucket shared by all clients. See [The tunnel and the login lockout](#the-tunnel-and-the-login-lockout). |
+| Login rate limiting keys on the client address: the socket peer, or `CF-Connecting-IP` (else the first `X-Forwarded-For` entry) when the peer is loopback | Behind a tunnel on the same host the peer is `127.0.0.1`, so each real client gets its own bucket. The header is ignored from any non-loopback peer, so it cannot be spoofed from the network. See [The tunnel and the login lockout](#the-tunnel-and-the-login-lockout). |
 | The session cookie is `HttpOnly; SameSite=Strict` with no `Secure` flag | Fine behind an HTTPS tunnel. Keep the UI and the API on the same origin, which a single hostname already does. |
 | The clients sync with `POST /sync` every 60 seconds while visible, plus a 2 second debounce after an edit | No websockets and no long polling, so the Cloudflare free plan is enough and the 100 second origin timeout is not a risk. |
 | Attachment uploads are limited by `ORBIT_MAX_BLOB_MB`, default 25 | Below Cloudflare's 100 MB request ceiling. Leave the default. |
@@ -222,13 +222,14 @@ entries or dashboard hostnames point at `orbit:8080`, not `localhost:8080`.
 
 ## The tunnel and the login lockout
 
-The server counts failed sign-ins per peer address, in memory (`failed` and `limited` in
+The server counts failed sign-ins per client address, in memory (`failed` and `limited` in
 `crates/orbit-server/src/auth.rs`). Five failures block that address for a minute, and each further
-failure doubles the wait up to about 64 minutes. Behind a tunnel every request arrives from
-`127.0.0.1`, so that block applies to everyone at once: a stranger guessing passwords can lock you out of
-your own server.
+failure doubles the wait up to about 64 minutes. A tunnel connects from `127.0.0.1`, so the server
+honors `CF-Connecting-IP` (else the first `X-Forwarded-For` entry) for loopback peers only, and each
+real client has its own count. If your proxy sends neither header, every request shares one bucket and a
+stranger guessing passwords can lock you out of your own server.
 
-Three things fix that in practice:
+Things that help in practice:
 
 1. Keep TOTP on. A wrong password plus a missing code is still a failure, but the password alone no
    longer gets anyone in.

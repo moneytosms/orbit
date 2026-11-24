@@ -322,3 +322,119 @@ async fn reset_password_sets_a_new_one_and_revokes_every_device() {
         StatusCode::OK
     );
 }
+
+/// One request from `peer` with extra headers.
+async fn from(
+    app: &Router,
+    peer: [u8; 4],
+    path: &str,
+    body: Value,
+    headers: &[(&str, &str)],
+) -> StatusCode {
+    let mut req = Request::post(path).header(header::CONTENT_TYPE, "application/json");
+    for (k, v) in headers {
+        req = req.header(*k, *v);
+    }
+    let mut req = req.body(Body::from(body.to_string())).unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from((peer, 1))));
+    app.clone().oneshot(req).await.unwrap().status()
+}
+
+fn bad_login() -> Value {
+    json!({ "password": "wrong password", "name": "Phone", "platform": "android" })
+}
+
+#[tokio::test]
+async fn forwarded_ip_headers_are_ignored_from_non_loopback_peers() {
+    let (app, _, _dir) = setup().await;
+    let lan = [10, 0, 0, 5];
+    // If the header were trusted these would be five different buckets and never lock.
+    for n in 1..=5 {
+        let ip = format!("9.9.9.{n}");
+        let s = from(
+            &app,
+            lan,
+            "/auth/login",
+            bad_login(),
+            &[("cf-connecting-ip", &ip)],
+        )
+        .await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+    }
+    let s = from(
+        &app,
+        lan,
+        "/auth/login",
+        login(None),
+        &[("cf-connecting-ip", "8.8.8.8")],
+    )
+    .await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn loopback_peers_get_one_lockout_bucket_per_forwarded_client() {
+    let (app, _, _dir) = setup().await;
+    let lo = [127, 0, 0, 1];
+    for _ in 0..5 {
+        let s = from(
+            &app,
+            lo,
+            "/auth/login",
+            bad_login(),
+            &[("cf-connecting-ip", "1.1.1.1")],
+        )
+        .await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+    }
+    let locked = from(
+        &app,
+        lo,
+        "/auth/login",
+        login(None),
+        &[("cf-connecting-ip", "1.1.1.1")],
+    )
+    .await;
+    assert_eq!(locked, StatusCode::TOO_MANY_REQUESTS);
+    // Another client behind the same tunnel, via CF-Connecting-IP or X-Forwarded-For, is not locked.
+    let other = from(
+        &app,
+        lo,
+        "/auth/login",
+        login(None),
+        &[("cf-connecting-ip", "2.2.2.2")],
+    )
+    .await;
+    assert_eq!(other, StatusCode::OK);
+    let xff = from(
+        &app,
+        lo,
+        "/auth/login",
+        login(None),
+        &[("x-forwarded-for", "3.3.3.3, 127.0.0.1")],
+    )
+    .await;
+    assert_eq!(xff, StatusCode::OK);
+    // No header: falls back to the peer address, which has its own bucket.
+    for _ in 0..5 {
+        assert_eq!(
+            from(&app, lo, "/auth/login", bad_login(), &[]).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        from(&app, lo, "/auth/login", login(None), &[]).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // An unparsable header also falls back to the peer address.
+    let junk = from(
+        &app,
+        lo,
+        "/auth/login",
+        login(None),
+        &[("cf-connecting-ip", "nope")],
+    )
+    .await;
+    assert_eq!(junk, StatusCode::TOO_MANY_REQUESTS);
+}

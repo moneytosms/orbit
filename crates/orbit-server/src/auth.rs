@@ -135,9 +135,10 @@ pub(crate) struct Setup {
 pub(crate) async fn setup(
     State(st): State<St>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(b): Json<Setup>,
 ) -> Res {
-    let ip = addr.ip();
+    let ip = client_ip(addr, &headers);
     limited(&st, ip)?;
     let mut code = lock(&st.setup);
     if code.as_deref() != Some(b.code.trim()) {
@@ -165,9 +166,10 @@ pub(crate) struct Login {
 pub(crate) async fn login(
     State(st): State<St>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(b): Json<Login>,
 ) -> Res {
-    let ip = addr.ip();
+    let ip = client_ip(addr, &headers);
     limited(&st, ip)?;
     let (hash, secret) = user(&st)?;
     if !verify_password(&b.password, &hash) {
@@ -200,9 +202,15 @@ pub(crate) async fn password(
     State(st): State<St>,
     Device(me): Device,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(b): Json<Password>,
 ) -> Res {
-    reauth(&st, addr.ip(), &b.current, "password change")?;
+    reauth(
+        &st,
+        client_ip(addr, &headers),
+        &b.current,
+        "password change",
+    )?;
     check_strength(&b.new)?;
     let hashed = hash_password(&b.new);
     let db = lock(&st.db);
@@ -224,9 +232,15 @@ pub(crate) async fn totp_start(
     State(st): State<St>,
     _: Device,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(b): Json<Reauth>,
 ) -> Res {
-    reauth(&st, addr.ip(), &b.password, "totp enrollment")?;
+    reauth(
+        &st,
+        client_ip(addr, &headers),
+        &b.password,
+        "totp enrollment",
+    )?;
     let secret = Secret::from(random::<20>()).to_base32();
     lock(&st.db).execute("UPDATE user SET totp_pending = ?", [&secret])?;
     let url = totp(&secret).to_url().map_err(|e| {
@@ -378,6 +392,22 @@ fn random<const N: usize>() -> [u8; N] {
     let mut b = [0; N];
     getrandom::fill(&mut b).expect("OS randomness");
     b
+}
+
+/// The address the limiter keys on. Behind a same-host proxy or tunnel every peer is loopback, so
+/// there (and only there; elsewhere the header is spoofable) trust `CF-Connecting-IP`, else the
+/// first `X-Forwarded-For` entry.
+fn client_ip(peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
+    if peer.ip().is_loopback() {
+        let named = |name: &str| headers.get(name)?.to_str().ok();
+        let forwarded = named("cf-connecting-ip")
+            .or_else(|| named("x-forwarded-for")?.split(',').next())
+            .and_then(|v| v.trim().parse().ok());
+        if let Some(ip) = forwarded {
+            return ip;
+        }
+    }
+    peer.ip()
 }
 
 /// Failed attempts from one IP: the 5th locks it out for 1 min, each later one twice as long.

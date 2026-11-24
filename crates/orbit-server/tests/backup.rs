@@ -97,7 +97,7 @@ fn snapshot_includes_blobs_and_restore_brings_them_back() {
 #[test]
 fn server_database_runs_in_wal_mode() {
     let tmp = tempfile::tempdir().unwrap();
-    orbit_server::app(tmp.path()).unwrap();
+    let _app = orbit_server::app(tmp.path()).unwrap();
     let conn = Connection::open(tmp.path().join("orbit.db")).unwrap();
     let mode: String = conn
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
