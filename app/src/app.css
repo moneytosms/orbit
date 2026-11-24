@@ -273,11 +273,23 @@
 }
 
 @keyframes completion-spark-rise {
-  from { opacity: 0; transform: translateY(5px) scale(0.7); }
-  45% { opacity: 1; transform: translateY(-2px) scale(1.15); }
-  to { opacity: 0.85; transform: translateY(-4px) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.7);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.15);
+  }
+  to {
+    opacity: 0.85;
+    transform: translateY(-4px) scale(1);
+  }
 }
-.completion-spark { animation: completion-spark-rise 280ms ease-out both; margin-right: 0.5rem; }
+.completion-spark {
+  animation: completion-spark-rise 280ms ease-out both;
+  margin-right: 0.5rem;
+}
 
 /* FullCalendar (Calendar layout): the classic theme's palette mapped to the Orbit tokens. */
 .orbit-cal {
@@ -312,6 +324,12 @@
 .orbit-cal .cal-milestone {
   --fc-event-color: var(--warn);
   --fc-event-contrast-color: var(--bg);
+}
+.orbit-cal .cal-ical {
+  --fc-event-color: var(--surface);
+  --fc-event-contrast-color: var(--text);
+  border: 1px dashed var(--muted);
+  font-style: italic;
 }
 .orbit-cal .cal-routine {
   --fc-event-color: var(--sunk);

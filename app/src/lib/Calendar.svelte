@@ -12,7 +12,8 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import Composer from './Composer.svelte'
   import type { BoardRow } from '$lib/Board.svelte'
-  import { minutesBetween, toEvents } from '$lib/calendar'
+  import { feedToEvents, minutesBetween, toEvents } from '$lib/calendar'
+  import { feedEvents } from '$lib/auth'
   import { calendarData, getWeekStart, moveTask, updateTask, type Task } from '$lib/sync'
   import { inbox_id } from '../../wasm/orbit_wasm'
 
@@ -62,6 +63,7 @@
     onchange()
   }
   function clicked(kind: string, id: string) {
+    if (kind === 'ical') return
     if (kind === 'task' || kind === 'deadline') onopen(id)
     else location.hash = kind === 'routine' ? '#/routines' : '#/goals'
   }
@@ -104,9 +106,12 @@
     const t = tasks
     if (!r || !cal) return
     let stale = false
-    calendarData(r.from, r.to).then((d) => {
+    // A day of slack each side covers timezone offsets; no feed or offline just means no feed events.
+    const from = Date.parse(`${r.from}T00:00:00Z`) - 86_400_000
+    const to = Date.parse(`${r.to}T00:00:00Z`) + 86_400_000
+    Promise.all([calendarData(r.from, r.to), feedEvents(from, to).catch(() => [])]).then(([d, feed]) => {
       if (stale) return
-      cal?.setOption('events', toEvents(t, d.routines, d.goals, d.milestones))
+      cal?.setOption('events', [...toEvents(t, d.routines, d.goals, d.milestones), ...feedToEvents(feed)])
     })
     return () => (stale = true)
   })

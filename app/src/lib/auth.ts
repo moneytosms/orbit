@@ -49,6 +49,22 @@ export const devices = () => api<Device[]>('GET', '/devices')
 /** When the server last took a backup (ms since epoch), or null if never. */
 export const backupStatus = () =>
   api<{ last_backup_ms: number | null }>('GET', '/backup/status').then((r) => r.last_backup_ms)
+
+/** A read-only event from the Google Calendar iCal feed. All-day events start/end at UTC midnight of their dates. */
+export type FeedEvent = { uid: string; summary: string; start_ms: number; end_ms: number; all_day: boolean }
+export type FeedHealth = {
+  configured: boolean
+  /** `https://host/…`; the server never sends the full URL. */
+  url_masked: string | null
+  last_sync_ms: number | null
+  last_error: string | null
+  event_count: number
+}
+export const feedHealth = () => api<FeedHealth>('GET', '/calendar/feed')
+export const setFeed = (url: string) => api<FeedHealth>('PUT', '/calendar/feed', { url })
+export const clearFeed = () => api<FeedHealth>('DELETE', '/calendar/feed')
+export const feedEvents = (from: number, to: number) =>
+  api<FeedEvent[]>('GET', `/calendar/events?from=${from}&to=${to}`)
 export const revoke = (id: string) => api('DELETE', `/devices/${id}`)
 export const createToken = (name: string) => api<{ device: string; token: string }>('POST', '/devices', { name })
 export const changePassword = (current: string, next: string, signOutOthers: boolean) =>

@@ -13,6 +13,7 @@
   import NextList from '$lib/widgets/NextList.svelte'
   import RoutineTicks from '$lib/widgets/RoutineTicks.svelte'
   import Streaks from '$lib/widgets/Streaks.svelte'
+  import TodayEvents from '$lib/widgets/TodayEvents.svelte'
   import Upcoming from '$lib/widgets/Upcoming.svelte'
   import ViewList from '$lib/widgets/ViewList.svelte'
 
@@ -244,6 +245,7 @@
         {#if w.kind === 'glance'}
           <Glance {version} />
         {:else if w.kind === 'next'}
+          <TodayEvents {version} />
           <NextList {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'routines'}
           <RoutineTicks {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />

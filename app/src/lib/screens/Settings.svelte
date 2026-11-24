@@ -14,6 +14,7 @@
   import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
   import { isAndroidTauri, isDesktopTauri } from '$lib/platform'
   import * as auth from '$lib/auth'
+  import CalendarFeed from '$lib/CalendarFeed.svelte'
   import TodoistImport from '$lib/TodoistImport.svelte'
   import ProfileEditor from '$lib/ProfileEditor.svelte'
 
@@ -260,6 +261,7 @@
     ['profile', 'Profile'],
     ['account', 'Account and devices'],
     ['targets', 'Productivity'],
+    ['calendar', 'Google Calendar'],
     ['data', 'Data'],
     ['about', 'About'],
     ['advanced', 'Advanced'],
@@ -824,6 +826,11 @@
         {@render row('Days off', 'Days that never break the streak.', offControl)}
         {@render row('Vacation', 'Pause the target streak until you turn this off.', vacationControl)}
       {/if}
+    </section>
+
+    <section id="calendar" class="panel scroll-mt-4">
+      <h2 class="panel-title">Google Calendar</h2>
+      <CalendarFeed />
     </section>
 
     <section id="data" class="panel scroll-mt-4">
