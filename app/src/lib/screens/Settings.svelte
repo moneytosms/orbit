@@ -14,7 +14,7 @@
   import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
   import { isAndroidTauri, isDesktopTauri } from '$lib/platform'
   import * as auth from '$lib/auth'
-  import CalendarFeed from '$lib/CalendarFeed.svelte'
+  import CalendarFeeds from '$lib/CalendarFeeds.svelte'
   import TodoistImport from '$lib/TodoistImport.svelte'
   import ProfileEditor from '$lib/ProfileEditor.svelte'
 
@@ -829,8 +829,8 @@
     </section>
 
     <section id="calendar" class="panel scroll-mt-4">
-      <h2 class="panel-title">Google Calendar</h2>
-      <CalendarFeed />
+      <h2 class="panel-title">Calendars</h2>
+      <CalendarFeeds />
     </section>
 
     <section id="data" class="panel scroll-mt-4">

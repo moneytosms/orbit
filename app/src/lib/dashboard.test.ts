@@ -1,5 +1,15 @@
 import { expect, test } from 'vitest'
-import { defaultLayout, doneShare, move, phoneOrder, place, resize, taskIsUpcoming, type Widget } from './dashboard'
+import {
+  defaultLayout,
+  doneShare,
+  move,
+  phoneOrder,
+  place,
+  resize,
+  taskIsUpcoming,
+  withCalendar,
+  type Widget,
+} from './dashboard'
 
 const w = (id: string, x: number, y: number, ww: number, h: number, hidden = false): Widget => ({
   id,
@@ -22,7 +32,7 @@ const overlaps = (ws: Widget[]) =>
 
 test('the default layout has no overlaps and fits 12 columns', () => {
   const d = defaultLayout()
-  expect(d).toHaveLength(6)
+  expect(d).toHaveLength(7)
   expect(overlaps(d)).toBe(false)
   expect(d.every((x) => x.x + x.w <= 12)).toBe(true)
 })
@@ -77,4 +87,15 @@ test('doneShare is done over all of today and 1 on an empty day', () => {
   expect(doneShare(3, 1)).toBe(0.75)
   expect(doneShare(0, 4)).toBe(0)
   expect(doneShare(0, 0)).toBe(1)
+})
+
+test('a layout saved before the Calendar widget gets it appended once, without moving the rest', () => {
+  const saved = [w('glance', 0, 0, 12, 2), w('next', 0, 2, 6, 4)]
+  const out = withCalendar(saved)
+  expect(out.slice(0, 2)).toEqual(saved)
+  expect(out[2]).toMatchObject({ kind: 'calendar', x: 0, y: 6, hidden: false })
+  expect(overlaps(out)).toBe(false)
+  expect(withCalendar(out)).toEqual(out)
+  const hid = [...saved, { ...w('calendar', 0, 6, 6, 2), hidden: true }]
+  expect(withCalendar(hid)).toEqual(hid)
 })

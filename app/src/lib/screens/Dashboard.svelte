@@ -4,7 +4,18 @@
   import MoveDiagonal2 from '@lucide/svelte/icons/move-diagonal-2'
   import Plus from '@lucide/svelte/icons/plus'
   import { Button } from '$lib/components/ui/button'
-  import { COLS, KINDS, ROW_PX, move, phoneOrder, place, resize, titleOf, type Widget } from '$lib/dashboard'
+  import {
+    COLS,
+    KINDS,
+    ROW_PX,
+    move,
+    phoneOrder,
+    place,
+    resize,
+    titleOf,
+    withCalendar,
+    type Widget,
+  } from '$lib/dashboard'
   import Checklist from '$lib/Checklist.svelte'
   import { checklistDismissed, dismissChecklist, showChecklist } from '$lib/onboarding'
   import { getDashboard, setDashboard, tree, views, visibleSnapshot, type View } from '$lib/sync'
@@ -13,7 +24,7 @@
   import NextList from '$lib/widgets/NextList.svelte'
   import RoutineTicks from '$lib/widgets/RoutineTicks.svelte'
   import Streaks from '$lib/widgets/Streaks.svelte'
-  import TodayEvents from '$lib/widgets/TodayEvents.svelte'
+  import CalendarEvents from '$lib/widgets/CalendarEvents.svelte'
   import Upcoming from '$lib/widgets/Upcoming.svelte'
   import ViewList from '$lib/widgets/ViewList.svelte'
 
@@ -25,13 +36,14 @@
   let adding = $state(false)
   let viewChoices = $state<View[]>([])
   let summaries = $state<Record<string, string>>({})
+  let calendarShown = $state(false)
   let dragging = false
   let grid: HTMLDivElement | undefined = $state()
 
   $effect(() => {
     void version
     if (dragging) return
-    getDashboard().then((w) => (layout = w as Widget[]))
+    getDashboard().then((w) => (layout = withCalendar(w as Widget[])))
   })
 
   const shown = $derived(phoneOrder(layout))
@@ -220,7 +232,11 @@
       class="panel relative flex min-h-24 min-w-0 flex-col overflow-hidden desk:min-h-0 desk:[grid-column:var(--c)] desk:[grid-row:var(--r)] {editing
         ? 'outline-dashed outline-1 outline-line-strong focus-visible:outline-2 focus-visible:outline-accent'
         : ''}"
-      style="--c: {w.x + 1} / span {w.w}; --r: {w.y + 1} / span {w.h}"
+      style="--c: {w.x + 1} / span {w.w}; --r: {w.y + 1} / span {w.h}{w.kind === 'calendar' &&
+      !calendarShown &&
+      !editing
+        ? '; display: none'
+        : ''}"
     >
       <header class="mb-2 flex min-w-0 items-start gap-2">
         {#if editing}
@@ -245,8 +261,9 @@
         {#if w.kind === 'glance'}
           <Glance {version} />
         {:else if w.kind === 'next'}
-          <TodayEvents {version} />
           <NextList {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
+        {:else if w.kind === 'calendar'}
+          <CalendarEvents {version} onshown={(v) => (calendarShown = v)} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'routines'}
           <RoutineTicks {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
         {:else if w.kind === 'upcoming'}

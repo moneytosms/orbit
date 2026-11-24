@@ -21,6 +21,7 @@ export const KINDS: { kind: string; title: string; w: number; h: number }[] = [
   { kind: 'upcoming', title: 'Upcoming', w: 6, h: 3 },
   { kind: 'goals', title: 'Goal progress', w: 6, h: 3 },
   { kind: 'streaks', title: 'Routine streaks', w: 6, h: 2 },
+  { kind: 'calendar', title: 'Calendar', w: 6, h: 2 },
 ]
 export const titleOf = (kind: string) => KINDS.find((k) => k.kind === kind)?.title ?? 'View'
 
@@ -37,7 +38,12 @@ export const defaultLayout = (): Widget[] => [
   at('upcoming', 6, 4),
   at('goals', 0, 6),
   at('streaks', 6, 7),
+  at('calendar', 0, 9),
 ]
+
+/** Layouts saved before the Calendar widget existed get it appended at the bottom; the widget hides itself when empty. */
+export const withCalendar = (widgets: Widget[]): Widget[] =>
+  widgets.some((w) => w.kind === 'calendar') ? widgets : place(widgets, at('calendar', 0, 0))
 
 const hit = (a: Widget, b: Widget) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 

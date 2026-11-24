@@ -50,19 +50,40 @@ export const devices = () => api<Device[]>('GET', '/devices')
 export const backupStatus = () =>
   api<{ last_backup_ms: number | null }>('GET', '/backup/status').then((r) => r.last_backup_ms)
 
-/** A read-only event from the Google Calendar iCal feed. All-day events start/end at UTC midnight of their dates. */
-export type FeedEvent = { uid: string; summary: string; start_ms: number; end_ms: number; all_day: boolean }
-export type FeedHealth = {
-  configured: boolean
+/** Design-token names a calendar can be colored with (app.css `--<name>`). */
+export const FEED_COLORS = ['college', 'career', 'learning', 'home', 'accent', 'ok'] as const
+export type FeedColor = (typeof FEED_COLORS)[number]
+/** A read-only event from a calendar feed. All-day events carry plain `start_date`/`end_date` (exclusive) and no zone. */
+export type FeedEvent = {
+  uid: string
+  summary: string
+  start_ms: number
+  end_ms: number
+  all_day: boolean
+  start_date: string | null
+  end_date: string | null
+  feed_id: number
+  feed_name: string
+  color: FeedColor
+}
+export type Feed = {
+  id: number
+  name: string
   /** `https://host/…`; the server never sends the full URL. */
-  url_masked: string | null
+  url_masked: string
+  color: FeedColor
+  visible: boolean
   last_sync_ms: number | null
   last_error: string | null
   event_count: number
 }
-export const feedHealth = () => api<FeedHealth>('GET', '/calendar/feed')
-export const setFeed = (url: string) => api<FeedHealth>('PUT', '/calendar/feed', { url })
-export const clearFeed = () => api<FeedHealth>('DELETE', '/calendar/feed')
+export const feeds = () => api<Feed[]>('GET', '/calendar/feeds')
+export const addFeed = (name: string, url: string, color?: FeedColor) =>
+  api<Feed>('POST', '/calendar/feeds', { name, url, color })
+export const updateFeed = (id: number, patch: Partial<Pick<Feed, 'name' | 'color' | 'visible'>>) =>
+  api<Feed>('PATCH', `/calendar/feeds/${id}`, patch)
+export const removeFeed = (id: number) => api('DELETE', `/calendar/feeds/${id}`)
+/** Events of visible feeds; all-day ones match on UTC-midnight keys, so pad the window a day and filter locally. */
 export const feedEvents = (from: number, to: number) =>
   api<FeedEvent[]>('GET', `/calendar/events?from=${from}&to=${to}`)
 export const revoke = (id: string) => api('DELETE', `/devices/${id}`)

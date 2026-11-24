@@ -120,16 +120,38 @@ export function toEvents(
   return out
 }
 
-/** Read-only FullCalendar events for iCal feed events: all-day by UTC date, timed as instants. */
+/** Read-only FullCalendar events for iCal feed events, colored by feed. All-day events use their plain dates, never a zone. */
 export function feedToEvents(feed: FeedEvent[]): CalEvent[] {
   return feed.map((e) => ({
-    id: `ical:${e.uid}:${e.start_ms}`,
+    id: `ical:${e.feed_id}:${e.uid}:${e.start_ms}`,
     title: e.summary || '(no title)',
-    start: e.all_day ? new Date(e.start_ms).toISOString().slice(0, 10) : new Date(e.start_ms).toISOString(),
-    end: e.all_day ? new Date(e.end_ms).toISOString().slice(0, 10) : new Date(e.end_ms).toISOString(),
+    start: e.all_day ? (e.start_date ?? '') : new Date(e.start_ms).toISOString(),
+    end: e.all_day ? (e.end_date ?? '') : new Date(e.end_ms).toISOString(),
     allDay: e.all_day,
     editable: false,
-    classNames: ['cal-ical'],
+    classNames: ['cal-ical', `cal-feed-${e.color}`],
     extendedProps: { kind: 'ical', id: e.uid },
   }))
+}
+
+/** The viewer's local `YYYY-MM-DD`. */
+export const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+/** Feed events on the viewer's local day `day` (`YYYY-MM-DD`): all-day by date, timed by overlap with that local day. */
+export function eventsOn(events: FeedEvent[], day: string): FeedEvent[] {
+  const [y, m, d] = day.split('-').map(Number)
+  const from = new Date(y, m - 1, d).getTime()
+  const to = new Date(y, m - 1, d + 1).getTime()
+  return events.filter((e) =>
+    e.all_day
+      ? e.start_date !== null && e.end_date !== null && e.start_date <= day && day < e.end_date
+      : e.start_ms < to && Math.max(e.end_ms, e.start_ms + 1) > from,
+  )
+}
+
+/** Today's and tomorrow's feed events for the Home widget; it shows only when there are any. */
+export function soon(events: FeedEvent[], now: Date): { today: FeedEvent[]; tomorrow: FeedEvent[]; shown: boolean } {
+  const today = eventsOn(events, localDate(now))
+  const tomorrow = eventsOn(events, localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)))
+  return { today, tomorrow, shown: today.length + tomorrow.length > 0 }
 }

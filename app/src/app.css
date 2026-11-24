@@ -328,8 +328,27 @@
 .orbit-cal .cal-ical {
   --fc-event-color: var(--surface);
   --fc-event-contrast-color: var(--text);
-  border: 1px dashed var(--muted);
+  border: 1px dashed var(--feed, var(--muted));
+  border-left: 4px solid var(--feed, var(--muted));
   font-style: italic;
+}
+.orbit-cal .cal-feed-college {
+  --feed: var(--college);
+}
+.orbit-cal .cal-feed-career {
+  --feed: var(--career);
+}
+.orbit-cal .cal-feed-learning {
+  --feed: var(--learning);
+}
+.orbit-cal .cal-feed-home {
+  --feed: var(--home);
+}
+.orbit-cal .cal-feed-accent {
+  --feed: var(--accent);
+}
+.orbit-cal .cal-feed-ok {
+  --feed: var(--ok);
 }
 .orbit-cal .cal-routine {
   --fc-event-color: var(--sunk);
