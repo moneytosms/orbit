@@ -1,7 +1,7 @@
 // Repo-relative markdown path <-> guide route. Shared by the content loader
 // and the remark link rewriter so the two can never disagree.
 import cfg from "../../site.config.mjs";
-import manifest from "../../guide.manifest.mjs";
+import manifest, { redirects } from "../../guide.manifest.mjs";
 
 export const REPO_URL = cfg.repoUrl;
 export const BASE = cfg.base;
@@ -22,13 +22,14 @@ export function slugFor(repoPath) {
   return ROUTES.get(repoPath) ?? slugFromPath(repoPath);
 }
 
-export const GUIDE_REDIRECTS = Object.fromEntries(
-  manifest.flatMap((section) => section.items.flatMap((item) => {
+export const GUIDE_REDIRECTS = Object.fromEntries([
+  ...Object.entries(redirects).map(([from, to]) => [`/guide/${from}`, `${cfg.base}/guide/${to}`]),
+  ...manifest.flatMap((section) => section.items.flatMap((item) => {
     const previous = slugFromPath(item.id);
     const current = slugFor(item.id);
     return previous === current ? [] : [[`/guide/${previous}`, `${cfg.base}/guide/${current}`]];
   })),
-);
+]);
 
 /** Mirrors GUIDE_PATTERNS for a single path (supports "dir/**\/*.md", exact files and "!" excludes). */
 export function isGuidePath(repoPath) {

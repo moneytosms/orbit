@@ -1,7 +1,12 @@
 # Deploying orbit-server
 
-Run `orbit-server` for daily personal use: one process, one SQLite file, one web UI, reachable from
+For people hosting Orbit for themselves on a laptop, home server or VPS. Run `orbit-server` for daily personal use: one process, one SQLite file, one web UI, reachable from
 your laptop and phone. Commands match `crates/orbit-server/src/main.rs`.
+
+## Before you start
+
+- A machine that stays on: Docker with the Compose plugin (`docker compose version` prints a version), or a Rust toolchain for a source build. 1 GB of RAM and 2 vCPUs are enough.
+- For access from other devices, one of: a Tailscale account, a domain pointing at the machine, or a Cloudflare account.
 
 Pick your path:
 
@@ -286,6 +291,14 @@ Your data stays in `./data`, so an update never touches it. Optionally take a ma
 first (see above). To pin a version, replace `:latest` in the Compose file with a release tag such
 as `:0.1.0`.
 
+## Verify it worked
+
+```sh
+curl -sS http://127.0.0.1:8080/auth; echo
+```
+
+It prints `{"setup":false}` once your account exists (`{"setup":true}` means the server is up and still waiting for the setup code). From another device, open the same address over HTTPS and sign in.
+
 ## Troubleshooting
 
 **The setup code is lost.** While no user exists, the server generates a new setup code on every
@@ -317,3 +330,7 @@ docker compose up -d
 **Locked out after failed sign-ins (`rate_limited`, HTTP 429).** After five failed attempts from one
 address, that address is blocked for a minute, and each further failure doubles the wait. Wait it
 out, or use the reset above if you have really forgotten the password.
+
+## Next
+
+[Install your clients](install.md): the web app, desktop app, Android and CLI. Using a Cloudflare Tunnel instead? See [Deploy: Cloudflare Tunnel](cloudflare-tunnel.md).

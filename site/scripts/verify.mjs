@@ -66,6 +66,7 @@ for (const item of guideItems) {
   if (!isGuidePath(item.id)) failures.push(`Guide manifest: ${item.id} is not matched by configured guide patterns`);
   const source = readFileSync(file, "utf8");
   failures.push(...markdownSourceFailures(item.id, source));
+  if ((item.kind ?? "guide") === "guide") failures.push(...pageShapeFailures(item.id, source));
   const h1 = [...stripMarkdownCode(source).matchAll(/^\s{0,3}#\s+(.+?)\s*#*\s*$/gm)].map((match) => match[1].trim());
   if (h1.length > 1 || (h1.length === 0 && !item.title)) failures.push(`Guide manifest: ${item.id} needs exactly one H1 or a manifest title`);
   const title = (item.title ?? h1[0] ?? "").replace(/[`*_]/g, "").trim().toLowerCase();
@@ -166,6 +167,25 @@ function markdownSourceFailures(id, source) {
     if (!/^Status:/m.test(source)) problems.push(`${id}: ADR has no Status: line`);
     if (!/^Date:/m.test(source)) problems.push(`${id}: ADR has no Date: line`);
   }
+  return problems;
+}
+
+// Guide pages state their audience first, then: Before you start, Verify it worked,
+// Troubleshooting and Next, as H2 headings (a leading "1." is ignored).
+function pageShapeFailures(id, source) {
+  const plain = stripMarkdownCode(source);
+  const lines = plain.split(/\r?\n/);
+  const h1 = lines.findIndex((line) => /^\s{0,3}#\s/.test(line));
+  const first = lines.slice(h1 + 1).find((line) => line.trim());
+  const problems = [];
+  if (!first || !/^For\s/.test(first.trim())) problems.push(`${id}: first line after the H1 must state the audience ("For ...")`);
+  const h2 = lines.flatMap((line) => line.match(/^ {0,3}##\s+(?:\d+\.\s+)?(.+?)\s*#*\s*$/)?.[1].toLowerCase() ?? []);
+  for (const [name, test] of [
+    ["Before you start", (t) => t === "before you start"],
+    ["Verify it worked", (t) => t.startsWith("verify")],
+    ["Troubleshooting", (t) => t === "troubleshooting"],
+    ["Next", (t) => t === "next"],
+  ]) if (!h2.some(test)) problems.push(`${id}: missing H2 "${name}" from the page shape`);
   return problems;
 }
 

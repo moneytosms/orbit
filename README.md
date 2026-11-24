@@ -25,7 +25,7 @@ Scope and status are tracked in [docs/scope.md](docs/scope.md) (still marked dra
 - Single-user login with password, optional TOTP, and revocable Devices.
 - Todoist import (`orbit import todoist`), an MCP server (`orbit mcp`), and server backup/restore commands.
 
-Status: all v1 features listed above are built. Android is smoke-tested on an emulator and one real phone; the full real-device checklist ([docs/android-checklist.md](docs/android-checklist.md)) is still pending.
+Status: all v1 features listed above are built. Android is smoke-tested on an emulator and one real phone; the full real-device checklist ([Android app](docs/android.md#does-it-work-on-my-phone)) is still pending.
 
 ## Architecture
 
@@ -73,15 +73,15 @@ Put it behind HTTPS before exposing it. Tailscale serve, Caddy with a domain and
 
 ### Web / PWA
 
-Open the server's address in a browser; it can be installed as a PWA. Browser reminders only fire while a tab is open. Steps: [docs/install.md](docs/install.md#2-web--pwa-any-desktop-or-phone-browser).
+Open the server's address in a browser; it can be installed as a PWA. Browser reminders only fire while a tab is open. Steps: [docs/install.md](docs/install.md#web--pwa-any-desktop-or-phone-browser).
 
 ### Linux desktop
 
-Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage; an AUR package (`orbit-bin`) is prepared in `packaging/aur`. Install steps: [docs/install.md](docs/install.md#3-linux-desktop). Details and flags: [docs/linux-desktop.md](docs/linux-desktop.md).
+Tauri app `orbit-app` with tray, quick-capture hotkey and reminder notifications. Released as an AppImage; an AUR package (`orbit-bin`) is prepared in `packaging/aur`. Install steps, flags and the hotkey: [docs/linux-desktop.md](docs/linux-desktop.md).
 
 ### Android
 
-Android 12+ (minSdk 31). Download `Orbit-<version>-android.apk` from the GitHub Release and sideload it (Obtainium can track releases). On first launch the app shows a page asking for your server URL, saves it, then opens it. The release APK only talks to HTTPS servers. Install steps, widgets and battery settings: [docs/install.md](docs/install.md#4-android). The manual test plan is [docs/android-checklist.md](docs/android-checklist.md).
+Android 12+ (minSdk 31). Download `Orbit-<version>-android.apk` from the GitHub Release and sideload it (Obtainium can track releases). On first launch the app shows a page asking for your server URL, saves it, then opens it. The release APK only talks to HTTPS servers. Install steps, widgets, battery settings and the manual test plan: [docs/android.md](docs/android.md).
 
 Status: smoke-tested on an emulator and on one real phone (Android 16): launch, sign-up, quick add and sync. Only one device so far, so OEM battery behaviour, widgets on a home screen and reminder reliability are unconfirmed.
 
@@ -99,7 +99,7 @@ orbit sync
 orbit guide                              # short reference
 ```
 
-Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`. Install and MCP setup: [docs/install.md](docs/install.md#5-cli-and-mcp).
+Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`. Install and MCP setup: [docs/cli-install.md](docs/cli-install.md).
 
 ## Development
 

@@ -143,6 +143,11 @@ const itemHref = (candidate: Item) => href(candidate.slug ?? slugFor(candidate.i
   .prose :global(table) { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.92rem; }
   .prose :global(th), .prose :global(td) { border-bottom: 1px solid var(--border); padding: 0.55rem 0.8rem; text-align: left; vertical-align: top; }
   .prose :global(th) { font-weight: 700; background: var(--muted); }
+  .prose :global(.doccode) { margin: 0 0 1.1rem; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--card); box-shadow: var(--shadow-card); }
+  .prose :global(.doccode__bar) { display: flex; align-items: center; gap: 6px; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); background: var(--muted); }
+  .prose :global(.doccode__bar span) { width: 9px; height: 9px; border-radius: 50%; background: var(--input); }
+  .prose :global(.doccode__bar code) { margin-left: 0.6rem; font-size: 0.72rem; color: var(--muted-foreground); background: none; border: 0; padding: 0; }
+  .prose :global(.doccode pre) { margin: 0; padding: 1rem 1.25rem; border: 0; border-radius: 0; font-size: 0.85rem; line-height: 1.6; }
   .prose :global(hr) { border: 0; border-top: 1px solid var(--border); margin: 2.5rem 0; }
   .prose :global(img) { border-radius: var(--radius); border: 1px solid var(--border); }
   .eyebrow { color: var(--primary); font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }

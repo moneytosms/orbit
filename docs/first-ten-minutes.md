@@ -62,7 +62,7 @@ The first command prints `{"setup":false}`, which means the account exists. `orb
 
 **`orbit: command not found`.** `~/.local/bin` is not on your `PATH`. Add it to your shell profile and open a new terminal.
 
-**The task does not appear on your phone or in the web app.** Run `orbit sync` once while online. Changes made offline wait in the queue until then. See [install.md troubleshooting](install.md#8-troubleshooting).
+**The task does not appear on your phone or in the web app.** Run `orbit sync` once while online. Changes made offline wait in the queue until then. See [install.md troubleshooting](install.md#troubleshooting).
 
 ## Next
 

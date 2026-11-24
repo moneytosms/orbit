@@ -1,6 +1,6 @@
-# HTTPS with a Cloudflare Tunnel
+# Deploy: HTTPS with a Cloudflare Tunnel
 
-A Cloudflare Tunnel gives your server a real HTTPS address on your own domain without opening a single
+For people hosting Orbit on a VPS or behind NAT who want a real HTTPS address without opening ports. A Cloudflare Tunnel gives your server a real HTTPS address on your own domain without opening a single
 inbound port and without a public IP. `cloudflared` runs on the machine, dials out to Cloudflare, and
 Cloudflare forwards requests for a hostname to the server on `127.0.0.1:8080`.
 
@@ -13,7 +13,7 @@ NAT, when you do not want to open ports 80 and 443, or when you already run othe
 tunnel. Pick [Tailscale](deploy.md#3-https-with-tailscale) instead when the server must not be reachable
 from the open internet at all.
 
-What you need:
+## Before you start
 
 - A domain whose DNS is managed by Cloudflare (the zone has to be in the account that creates the
   tunnel).
@@ -155,7 +155,7 @@ cloudflared tunnel ingress rule https://orbit.example.com/sync
 sudo systemctl restart cloudflared
 ```
 
-## 5. Check it from outside
+## 5. Verify it worked
 
 ```sh
 curl -sS -o /dev/null -w 'root %{http_code}\n' https://orbit.example.com/
@@ -293,3 +293,7 @@ directory than you expect, usually because Compose ran from another directory. C
 Tunnels normally create the record themselves.
 
 **`rate_limited` with HTTP 429.** The sign-in lockout described above, not a proxy problem.
+
+## Next
+
+[Install your clients](install.md) against the new HTTPS hostname.

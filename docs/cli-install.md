@@ -1,8 +1,10 @@
 # Install and sign in to the Orbit CLI
 
-The `orbit` command runs on your own device (laptop, desktop, server shell). It signs in to your Orbit
+For people who want to use Orbit from a terminal or a script. The `orbit` command runs on your own device (laptop, desktop, server shell). It signs in to your Orbit
 server, keeps a local copy of your data and queues changes while you are offline. You do not need the
 server, a checkout of this repository or a Rust toolchain.
+
+## Before you start
 
 You need a running server and its address. Set one up with [deploy.md](deploy.md); the address is the
 `https://` URL from [Connect your clients](deploy.md#5-connect-your-clients).
@@ -102,3 +104,25 @@ Or in a project's `.mcp.json`:
   }
 }
 ```
+
+## Verify it worked
+
+```sh
+orbit status
+orbit add "cli works"
+orbit sync
+```
+
+`orbit status` shows your server address and that you are signed in, and the new task appears in the other clients after the sync.
+
+## Troubleshooting
+
+**`orbit: command not found`.** `~/.local/bin` is not on your `PATH`. Add it to your shell profile and open a new terminal.
+
+**Login is refused.** The password comes from stdin or `ORBIT_PASSWORD`. Five failed sign-ins from one address lock it out for a minute; see [Deploy, Troubleshooting](deploy.md#troubleshooting).
+
+**Changes seem stuck.** The CLI queues changes offline. Run `orbit sync` while online; `orbit status` shows how many are waiting.
+
+## Next
+
+[CLI: reference](cli.md): every command and option.
