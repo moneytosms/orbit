@@ -30,6 +30,16 @@ async fn serves_the_web_app_without_shadowing_the_api() {
     assert_eq!(get(&app, "/server.html").await.1, "<p>server</p>");
     assert_eq!(get(&app, "/some/route").await.1, "<p>index</p>");
     assert_eq!(get(&app, "/auth").await.1, r#"{"setup":true}"#);
+
+    let res = app
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let h = res.headers();
+    assert_eq!(h[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert_eq!(h[header::REFERRER_POLICY], "same-origin");
+    let csp = h[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(csp.contains("frame-ancestors 'none'") && csp.contains("object-src 'none'"));
 }
 
 #[tokio::test]

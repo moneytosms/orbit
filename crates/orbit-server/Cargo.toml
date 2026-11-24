@@ -16,7 +16,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "time"] }
-tower-http = { version = "0.6.11", features = ["fs"] }
+tower-http = { version = "0.6.11", features = ["fs", "set-header"] }
 totp-rs = { version = "6.0.0", features = ["otpauth"] }
 zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
 

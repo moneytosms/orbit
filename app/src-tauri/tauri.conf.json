@@ -9,7 +9,7 @@
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
   },
-  "app": { "windows": [
+  "app": { "security": { "csp": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" }, "windows": [
     { "label": "main", "title": "Orbit", "visible": false },
     { "label": "capture", "title": "Quick capture", "url": "index.html", "width": 640, "height": 180, "center": true, "visible": false, "decorations": false, "transparent": true, "shadow": true, "alwaysOnTop": true, "skipTaskbar": true, "resizable": false, "focus": true }
   ] },

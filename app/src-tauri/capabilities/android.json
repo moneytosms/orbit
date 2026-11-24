@@ -17,7 +17,6 @@
   "permissions": [
     "core:default",
     "allow-set-token",
-    "allow-clear-token",
     "allow-has-token",
     "allow-set-server",
     "allow-take-link",

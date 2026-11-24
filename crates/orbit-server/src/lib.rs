@@ -176,9 +176,24 @@ async fn version() -> impl IntoResponse {
 
 /// Serves the built web app from `dir` for every path the API does not claim; unknown paths get
 /// `index.html` so client-side routes load. The Android app loads the UI from the server.
+/// Every response gets baseline security headers.
+// shortcut: CSP has no `default-src`/`script-src` yet, so it blocks framing and plugins only; tighten after checking the web build for violations.
 pub fn with_web(router: Router, dir: &Path) -> Router {
-    use tower_http::services::{ServeDir, ServeFile};
-    router.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
+    use tower_http::{
+        services::{ServeDir, ServeFile},
+        set_header::SetResponseHeaderLayer,
+    };
+    let fixed = |name, value| {
+        SetResponseHeaderLayer::overriding(name, header::HeaderValue::from_static(value))
+    };
+    router
+        .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))))
+        .layer(fixed(header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
+        .layer(fixed(
+            header::CONTENT_SECURITY_POLICY,
+            "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+        ))
+        .layer(fixed(header::REFERRER_POLICY, "same-origin"))
 }
 
 async fn sync(
