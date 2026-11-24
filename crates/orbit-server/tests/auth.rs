@@ -470,3 +470,21 @@ async fn bearer_wins_over_the_cookie_and_other_schemes_are_rejected() {
     let both = [(auth, "Basic xxx"), ("cookie", cookie.as_str())];
     assert_eq!(sync(&app, &both).await, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn the_web_cookie_is_secure_only_when_the_flag_is_set() {
+    for secure in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, code) = orbit_server::app_secure_cookie(dir.path(), secure).unwrap();
+        let setup =
+            json!({ "code": code.unwrap(), "password": PW, "name": "Laptop", "platform": "cli" });
+        assert_eq!(
+            post(&app, "/auth/setup", setup, None).await.0,
+            StatusCode::OK
+        );
+        let body = json!({ "password": PW, "name": "Firefox", "platform": "web" });
+        let (_, headers, _) = call(&app, Method::POST, "/auth/login", body, None).await;
+        let cookie = headers[header::SET_COOKIE].to_str().unwrap();
+        assert_eq!(cookie.contains("; Secure"), secure, "{cookie}");
+    }
+}

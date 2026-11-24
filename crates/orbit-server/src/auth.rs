@@ -152,7 +152,7 @@ pub(crate) async fn setup(
     db.execute("INSERT INTO user (id, password) VALUES (1, ?)", [hashed])?;
     *code = None;
     succeeded(&st, ip);
-    issue(&db, &b.name, &b.platform)
+    issue(&db, &b.name, &b.platform, st.secure_cookie)
 }
 
 #[derive(Deserialize)]
@@ -187,7 +187,7 @@ pub(crate) async fn login(
         }
     }
     succeeded(&st, ip);
-    issue(&lock(&st.db), &b.name, &b.platform)
+    issue(&lock(&st.db), &b.name, &b.platform, st.secure_cookie)
 }
 
 #[derive(Deserialize)]
@@ -295,7 +295,7 @@ pub(crate) struct Named {
 
 /// "Create token": a named Device for scripts, without logging in on it.
 pub(crate) async fn create_token(State(st): State<St>, _: Device, Json(b): Json<Named>) -> Res {
-    issue(&lock(&st.db), &b.name, "script")
+    issue(&lock(&st.db), &b.name, "script", st.secure_cookie)
 }
 
 pub(crate) async fn revoke(State(st): State<St>, _: Device, Path(id): Path<String>) -> Res {
@@ -306,7 +306,7 @@ pub(crate) async fn revoke(State(st): State<St>, _: Device, Path(id): Path<Strin
 }
 
 /// Creates a Device. Its id is the HLC device id. Web gets the token as a cookie only.
-fn issue(db: &Connection, name: &str, platform: &str) -> Res {
+fn issue(db: &Connection, name: &str, platform: &str, secure: bool) -> Res {
     let name = name.trim();
     if name.is_empty() || name.len() > 100 || platform.is_empty() || platform.len() > 20 {
         return Err(fail(StatusCode::BAD_REQUEST, "device_name"));
@@ -320,8 +320,10 @@ fn issue(db: &Connection, name: &str, platform: &str) -> Res {
     )?;
     if platform == "web" {
         // No expiry: the cookie lives as long as the Device (ten years).
-        let cookie =
-            format!("{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=315360000");
+        let secure = if secure { "; Secure" } else { "" };
+        let cookie = format!(
+            "{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=315360000{secure}"
+        );
         Ok((
             [(header::SET_COOKIE, cookie)],
             Json(json!({ "device": id })),

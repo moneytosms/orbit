@@ -63,6 +63,8 @@ pub(crate) struct Shared {
     /// The Todoist API v1 base URL.
     todoist: String,
     jobs: Mutex<HashMap<String, todoist::Job>>,
+    /// Adds `Secure` to the web session cookie (`ORBIT_SECURE_COOKIE`).
+    secure_cookie: bool,
 }
 type St = Arc<Shared>;
 
@@ -94,8 +96,28 @@ pub fn app(data_dir: &Path) -> rusqlite::Result<(Router, Option<String>)> {
     app_with(data_dir, todoist::BASE)
 }
 
+/// `app` with the web session cookie marked `Secure` or not, instead of reading `ORBIT_SECURE_COOKIE`. For tests.
+pub fn app_secure_cookie(
+    data_dir: &Path,
+    secure: bool,
+) -> rusqlite::Result<(Router, Option<String>)> {
+    build(data_dir, todoist::BASE, secure)
+}
+
 /// `app` reading Todoist at `todoist_base` instead of the real API. For tests.
 pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router, Option<String>)> {
+    let secure = matches!(
+        std::env::var("ORBIT_SECURE_COOKIE").as_deref(),
+        Ok("1" | "true")
+    );
+    build(data_dir, todoist_base, secure)
+}
+
+fn build(
+    data_dir: &Path,
+    todoist_base: &str,
+    secure_cookie: bool,
+) -> rusqlite::Result<(Router, Option<String>)> {
     let mut conn = open(data_dir)?;
     auth::migrate(&conn)?;
     todoist::migrate(&conn)?;
@@ -133,6 +155,7 @@ pub fn app_with(data_dir: &Path, todoist_base: &str) -> rusqlite::Result<(Router
         limits: Mutex::default(),
         todoist: todoist_base.into(),
         jobs: Mutex::default(),
+        secure_cookie,
     };
     let router = Router::new()
         .route("/version", get(version))
