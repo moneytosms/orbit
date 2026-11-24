@@ -1070,7 +1070,7 @@ async function flush() {
       ) as string[],
       prior,
     )
-    changed()
+    if (commands.length || body.delta.length || body.full) changed()
     // A partly answered batch would be resent as-is: stop rather than loop.
     const remainingGraph = graphSupported && queued.some(isGraphCommand)
     if ((commands.length < 100 && !remainingGraph) || answered < commands.length) return
