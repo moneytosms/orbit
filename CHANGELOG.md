@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0 - 2026-11-25
+
+### Features
+
+- Quick add reads relative times, at-times and day parts: in 5 minutes, in half an hour, today at 10pm, tomorrow morning, tonight, at noon
+- Quick add reads richer dates: next fri, this weekend, end of month, mid jan, the 27th, dec 5th 2027, 27/1 (day/month)
+- Deadline and duration in quick add: by friday, {dec 5}, for 2h, 3-4pm
+- Recurrence: every other fri, every quarter, every 2nd wed, every last fri, every first workday, plus starting, until and for N weeks
+- Reminder shortcuts: !later, !morning, !evening, !tonight; reminders take the same date phrases
+- Visual option bar under every capture input (destination, date calendar, deadline, duration, priority, labels, goal, reminder)
+- Overdue banner with bulk reschedule, postpone actions on tasks and one-step undo
+- Duplicate task, copy task link, Completed screen and sidebar favorites
+- Group and sort menus on Inbox, Area and Project lists; future occurrences of recurring tasks on the calendar
+- Multi-line paste adds one task per line, with subtasks from indentation
+- Filter text: overdue, no date, no time, recurring, subtask, created:, search: with wildcards, #label* patterns, view all
+- Settings: turn date recognition off, choose what next week and weekend mean, several default reminders, due-count badge on the web app icon
+- Usage guide in Settings with a live try-it box, and a quick add cheat sheet on the website
+- CLI: orbit add - and --lines for many tasks, postpone, reschedule, snooze, overdue and export --md
+
+### Bug fixes
+
+- Keep the personal rebuild record out of the public guide
+- A bare time that already passed today now means tomorrow
+
 ## 0.6.1 - 2026-11-24
 
 ### Bug fixes
