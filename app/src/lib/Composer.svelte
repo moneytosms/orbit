@@ -14,6 +14,7 @@
   } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import CaptureBar from './CaptureBar.svelte'
+  import { pasteLines, type PasteLine } from './pasteLines'
 
   let {
     prefill = '',
@@ -103,6 +104,47 @@
     return 'kept in title'
   }
 
+  // Multi-line paste: offer one task per line instead of one long title.
+  let pasted: PasteLine[] | null = $state(null)
+  const parseLine = (text: string): Parsed =>
+    JSON.parse(
+      parse_quick_add(
+        text,
+        localNow(),
+        JSON.stringify({ areas: known.areas, goals: known.goals, pages: known.pages, labels: known.labels }),
+      ),
+    )
+  function onpaste(e: ClipboardEvent) {
+    const lines = pasteLines(e.clipboardData?.getData('text') ?? '')
+    if (lines.length < 2) return
+    e.preventDefault()
+    pasted = lines
+  }
+  async function addPasted(split: boolean) {
+    const lines = pasted
+    pasted = null
+    if (!lines) return
+    if (!split) {
+      draft = lines.map((l) => l.text).join(' ')
+      caret = draft.length
+      await edited()
+      return
+    }
+    const chain: string[] = []
+    for (const l of lines) {
+      const p = parseLine(l.text)
+      if (!quickTitle(p).trim()) continue
+      const parent = l.depth > 0 ? chain[Math.min(l.depth, chain.length) - 1] : undefined
+      const id = await quickAdd(p, parent ?? parentId, forceParent || !!parent)
+      chain.length = l.depth
+      chain[l.depth] = id
+    }
+    await loadKnown()
+    onsaved?.()
+    await tick()
+    inputEl?.focus()
+  }
+
   async function save(e: SubmitEvent) {
     e.preventDefault()
     if (!quickTitle(parsed).trim()) return
@@ -125,6 +167,14 @@
       bind:this={inputEl}
       bind:value={draft}
       oninput={track}
+      {onpaste}
+      onkeydown={(e) => {
+        if (e.key === 'Escape' && pasted) {
+          e.preventDefault()
+          e.stopPropagation()
+          pasted = null
+        }
+      }}
       onkeyup={track}
       onclick={track}
       onfocus={() => (focused = true)}
@@ -134,6 +184,15 @@
     />
     <Button type="submit" variant="primary" disabled={!quickTitle(parsed).trim()}>Add</Button>
   </div>
+
+  {#if pasted}
+    <div role="group" aria-label="Add pasted lines" class="flex flex-wrap items-center gap-2 pb-1 text-sm">
+      <span>Add {pasted.length} tasks?</span>
+      <Button type="button" variant="ghost" onclick={() => (pasted = null)}>Cancel</Button>
+      <Button type="button" onclick={() => addPasted(false)}>Add 1 task</Button>
+      <Button type="button" variant="primary" onclick={() => addPasted(true)}>Add {pasted.length} tasks</Button>
+    </div>
+  {/if}
 
   {#if focused || draft}
     <div class="pb-1">

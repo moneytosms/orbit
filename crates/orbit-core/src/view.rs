@@ -452,7 +452,7 @@ pub(crate) fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCo
 
 type ById<'a> = BTreeMap<Uuid, &'a Row>;
 
-const FIELDS: [&str; 11] = [
+const FIELDS: [&str; 13] = [
     "title",
     "name",
     "priority",
@@ -464,6 +464,8 @@ const FIELDS: [&str; 11] = [
     "touched_at",
     "kind",
     "parent",
+    "recurring",
+    "due_time",
 ];
 
 fn kind_name(row: &Row) -> &'static str {
@@ -516,6 +518,12 @@ fn own(row: &Row, field: &str) -> Option<Value> {
         ("due", Row::Task(t)) => t.due.as_ref().map_or(Value::Null, |d| json!(d.date)),
         ("due", Row::Goal(g)) => opt(&g.target_date),
         ("deadline", Row::Task(t)) => opt(&t.deadline),
+        ("due_time", Row::Task(t)) => t
+            .due
+            .as_ref()
+            .and_then(|d| d.time.as_ref())
+            .map_or(Value::Null, |t| json!(t)),
+        ("recurring", Row::Task(t)) => json!(t.recurrence.is_some()),
         ("label", Row::Task(t)) => json!(
             t.label_ids
                 .iter()
@@ -559,6 +567,23 @@ fn hop<'a>(row: &Row, kind: &str, rows: &[Row], by_id: &ById<'a>) -> Option<&'a 
 
 /// The value at `path`: an own field, or one hop out as `project.<f>`, `area.<f>`, `goal.<f>`.
 fn value_at(row: &Row, path: &str, rows: &[Row], by_id: &ById) -> Option<Value> {
+    match path {
+        // A Task whose parent is another Task.
+        "subtask" => {
+            return Some(json!(match row {
+                Row::Task(t) => matches!(by_id.get(&t.parent_id), Some(Row::Task(_))),
+                _ => false,
+            }));
+        }
+        // Title and description, for `search:`.
+        "search" => {
+            return Some(match row {
+                Row::Task(t) => json!(format!("{}\n{}", t.title, t.description)),
+                _ => own(row, "title")?,
+            });
+        }
+        _ => {}
+    }
     match path.split_once('.') {
         None => own(row, path),
         Some((kind @ ("project" | "area" | "goal"), field)) => match hop(row, kind, rows, by_id) {
@@ -594,6 +619,22 @@ pub fn resolve_date(s: &str, today: i64) -> Option<i64> {
         _ => return None,
     };
     Some(today + sign * n * mult)
+}
+
+/// `search:` matching: every word of `query` occurs in `text`, in any order; `*` in a word
+/// stands for any run of characters.
+fn search_match(text: &str, query: &str) -> bool {
+    let text = text.to_lowercase();
+    query.to_lowercase().split_whitespace().all(|word| {
+        let mut at = 0;
+        word.split('*').all(|part| match text[at..].find(part) {
+            Some(i) => {
+                at += i + part.len();
+                true
+            }
+            None => false,
+        })
+    })
 }
 
 /// A field value as a day: a date string, or a Unix ms timestamp by its UTC date.
@@ -700,6 +741,16 @@ fn eval(node: &Node, row: &Row, cx: &Ctx) -> bool {
                 CondOp::IsNot => !values.iter().any(hit),
                 CondOp::Is => values.iter().any(hit),
                 _ => values.iter().any(|v| eval_cond(v, *op, value, cx.today)),
+            }
+        }
+        Node::Cond { path, op, value } if path == "search" => {
+            let hit = match (value_at(row, path, cx.rows, &cx.by_id), value.as_str()) {
+                (Some(Value::String(text)), Some(q)) => search_match(&text, q),
+                _ => false,
+            };
+            match op {
+                CondOp::IsNot => !hit,
+                _ => hit,
             }
         }
         Node::Cond { path, op, value } => value_at(row, path, cx.rows, &cx.by_id)

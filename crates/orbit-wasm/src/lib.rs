@@ -119,6 +119,29 @@ pub fn parse_quick_add(input: &str, now: &str, known_json: &str) -> Result<Strin
     ))?)
 }
 
+/// The next `n` due dates after `due` under `recurrence_json`, as a JSON array of Due. Empty for an unreadable rule.
+#[wasm_bindgen]
+pub fn recur_occurrences(
+    recurrence_json: &str,
+    due_json: &str,
+    n: u32,
+) -> Result<String, JsError> {
+    let mut rec: orbit_core::recur::Recurrence = serde_json::from_str(recurrence_json)?;
+    // Project the rule forward from the due date, so `every!` chains like `every`.
+    rec.from_completion = false;
+    let mut due: orbit_core::Due = serde_json::from_str(due_json)?;
+    let mut out = Vec::new();
+    for _ in 0..n.min(366) {
+        let next = orbit_core::recur::next(&rec, &due, &due.date);
+        if next == due {
+            break;
+        }
+        out.push(next.clone());
+        due = next;
+    }
+    Ok(serde_json::to_string(&out)?)
+}
+
 /// Every bundled palette as a JSON array: name, grade, offered strategies, featured flag and swatch colours.
 #[wasm_bindgen]
 pub fn theme_list() -> String {
