@@ -8,7 +8,7 @@
     sortOptions,
     type Display,
   } from '$lib/listDisplay'
-  import { tick } from 'svelte'
+  import { tick, untrack } from 'svelte'
   import Check from '@lucide/svelte/icons/check'
   import Inbox from '@lucide/svelte/icons/inbox'
   import { dndzone, TRIGGERS, type DndEvent } from 'svelte-dnd-action'
@@ -128,7 +128,7 @@
       boardGroups = out
     })
   })
-  let display = $state<Display>(loadDisplay(parentId))
+  let display = $state<Display>(untrack(() => loadDisplay(parentId)))
   $effect(() => {
     display = loadDisplay(parentId)
   })
@@ -136,8 +136,6 @@
     display = { ...display, ...patch }
     saveDisplay(parentId, display)
   }
-  // Grouped or re-sorted lists are flat views of the Tasks; the manual list keeps sections and dragging.
-  const displaySections = $derived(groupItems(groups, display, today(), names))
 
   let sorts = $state<Sort[]>([])
   const sortValue = (t: Task, f: string, cx: CellCtx): string | number => {
@@ -218,6 +216,8 @@
     }
     return out
   })
+  // Grouped or re-sorted lists are flat views of the Tasks; the manual list keeps sections and dragging.
+  const displaySections = $derived(groupItems(groups, display, today(), names))
   function taskConsider(target: string, e: CustomEvent<DndEvent<Group>>) {
     if (target) sectionItems = new Map(sectionItems).set(target, e.detail.items)
     else unsectionedItems = e.detail.items

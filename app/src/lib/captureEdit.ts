@@ -91,7 +91,7 @@ export const reminderQuick = [
 ] as const
 
 /** `2026-11-20` and `18:00` as a short label like `Fri 20 Nov, 18:00`. */
-export function dueLabel(due: { date: string; time: string | null }): string {
+export function dueLabel(due: { date: string; time?: string | null }): string {
   const [y, m, d] = due.date.split('-').map(Number)
   const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', {
     weekday: 'short',

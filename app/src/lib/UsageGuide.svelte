@@ -43,7 +43,7 @@
     if (parsed.labels.length) out.push(['Labels', parsed.labels.map((l) => `#${l}`).join(' ')])
     if (parsed.recurrence)
       out.push(['Repeats', `${parsed.recurrence.from_completion ? 'after completion: ' : ''}${parsed.recurrence.rule}`])
-    if (parsed.reminders.length) out.push(['Reminders', String(parsed.reminders.length)])
+    if (parsed.reminders?.length) out.push(['Reminders', String(parsed.reminders.length)])
     return out
   })
   // `code` spans in the guide text become <code>.

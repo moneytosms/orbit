@@ -141,8 +141,8 @@ export async function actions(): Promise<Action[]> {
     },
     'task',
   )
-  add('task.duplicate', 'Duplicate task', 'Task', () => (here ? duplicateTask(here.id) : undefined), 'task')
-  add('task.copylink', 'Copy task link', 'Task', () => (here ? copyTaskLink(here.id) : undefined), 'task')
+  add('task.duplicate', 'Duplicate task', 'Task', () => (here ? void duplicateTask(here.id) : undefined), 'task')
+  add('task.copylink', 'Copy task link', 'Task', () => (here ? void copyTaskLink(here.id) : undefined), 'task')
   add('item.inbox', 'Move to Inbox', 'Task', () => (here ? moveTo(here.id, inbox_id()) : undefined), 'task')
   for (const a of areas) {
     for (const p of a.projects) {

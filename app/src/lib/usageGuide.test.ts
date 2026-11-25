@@ -28,7 +28,7 @@ for (const group of guide) {
         const r = p.recurrence
         expect(r ? `${r.rule}${r.end ? ' end ' + r.end : ''}` : null).toBe(e.recurrence)
       }
-      if (e.reminders !== undefined) expect(p.reminders.length).toBe(e.reminders)
+      if (e.reminders !== undefined) expect(p.reminders?.length).toBe(e.reminders)
     })
   }
 }

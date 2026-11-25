@@ -32,7 +32,7 @@ import { req, tx } from './db'
 import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
 import { defaultLayout } from './dashboard'
-import { duplicatePlan } from './duplicate'
+import { duplicatePlan, type PlanRow } from './duplicate'
 import { clearUpgrade, setUpgrade, type UpgradeRequired } from './updates'
 
 export type Due = { date: string; time?: string | null }
@@ -516,7 +516,7 @@ export const reopenTask = (id: string) => enqueue('task.uncomplete', { id })
  * The copy is open and has no completion history; see duplicatePlan for what is carried over.
  */
 export async function duplicateTask(id: string): Promise<string | null> {
-  const plan = duplicatePlan(await rowsSnapshot(), id, newId, orderBetween)
+  const plan = duplicatePlan((await rowsSnapshot()) as PlanRow[], id, newId, orderBetween)
   for (const op of plan) {
     // The Inbox is the default parent, so a Task under it is sent without a parent, as createTask does.
     await enqueue('task.create', {
