@@ -4,3 +4,5 @@ dist/
 test-results/
 .capture-tmp/
 public/demo
+film/assets/
+film/out/
