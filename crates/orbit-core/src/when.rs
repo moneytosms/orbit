@@ -436,3 +436,160 @@ fn month_end(today: i64) -> i64 {
     let (y, m, _) = civil_from_days(today);
     days_from_civil(y, m, days_in_month(y, m))
 }
+
+/// Like [`when`] but only phrases that name a day (`friday`, `dec 5`, `in 3 days`, `end of
+/// month`), never a bare time: used by `by <date>` and `{<date>}` deadlines.
+pub(crate) fn when_date(w: &[String], today: i64, now_min: u32) -> Option<When> {
+    relative(w, today, now_min).or_else(|| dated(w, today))
+}
+
+/// Longest quick-add duration, like Todoist.
+pub const DURATION_MAX_MIN: u32 = 24 * 60;
+
+/// A length of time at the start of `w` (the words after `for`): `1h`, `30 min`, `1h15m`,
+/// `an hour`, `half an hour`, `90 minutes`, `1.5 hours`. Minutes (1 to 24h) and words used.
+/// Day, week and longer units never match.
+pub(crate) fn duration(w: &[String]) -> Option<(u32, usize)> {
+    let mut d = Dur::default();
+    let mut i = 0;
+    let mut parts = 0;
+    while let Some((last, used)) = component(w, i, &mut d) {
+        i += used;
+        parts += 1;
+        if last == Unit::Hour && (s(w, i), s(w, i + 1), s(w, i + 2)) == ("and", "a", "half") {
+            d.mins += 30;
+            i += 3;
+            break;
+        }
+        let j = i + usize::from(s(w, i) == "and");
+        if component(w, j, &mut Dur::default()).is_none() {
+            break;
+        }
+        i = j;
+    }
+    if parts == 0 || !d.timed || d.days != 0 || d.months != 0 {
+        return None;
+    }
+    let mins = u32::try_from(d.mins).ok()?;
+    (1..=DURATION_MAX_MIN).contains(&mins).then_some((mins, i))
+}
+
+/// A time range used as a duration: start `HH:MM`, length in minutes, words used.
+pub(crate) struct Range {
+    pub start: String,
+    pub mins: u32,
+    pub used: usize,
+}
+
+struct Clock {
+    h: u32,
+    m: u32,
+    /// `Some(true)` for pm.
+    meridiem: Option<bool>,
+    /// Has a colon or am/pm.
+    explicit: bool,
+}
+
+/// `9`, `9:30`, `3pm`, `15:00`; the optional `am`/`pm` may be the next word.
+fn clock_at(w: &[String], i: usize, split_meridiem: bool) -> Option<(Clock, usize)> {
+    let word = s(w, i);
+    let mut used = 1;
+    let mut text = word.to_string();
+    if split_meridiem
+        && matches!(s(w, i + 1), "am" | "pm")
+        && !word.ends_with("am")
+        && !word.ends_with("pm")
+    {
+        text.push_str(s(w, i + 1));
+        used = 2;
+    }
+    let (body, meridiem) = if let Some(b) = text.strip_suffix("am") {
+        (b, Some(false))
+    } else if let Some(b) = text.strip_suffix("pm") {
+        (b, Some(true))
+    } else {
+        (text.as_str(), None)
+    };
+    let (h, m, colon) = match body.split_once(':') {
+        Some((h, m)) if m.len() == 2 => (h, m, true),
+        Some(_) => return None,
+        None => (body, "00", false),
+    };
+    if h.is_empty() || h.len() > 2 || !h.bytes().chain(m.bytes()).all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    let valid = m <= 59
+        && match meridiem {
+            Some(_) => (1..=12).contains(&h),
+            None => h <= 23,
+        };
+    valid.then_some((
+        Clock {
+            h,
+            m,
+            meridiem,
+            explicit: colon || meridiem.is_some(),
+        },
+        used,
+    ))
+}
+
+/// Minutes since midnight of `c` read as pm or am (12-hour clocks only).
+fn at_meridiem(c: &Clock, pm: bool) -> Option<u32> {
+    (1..=12)
+        .contains(&c.h)
+        .then(|| (c.h % 12 + if pm { 12 } else { 0 }) * 60 + c.m)
+}
+
+fn resolve(a: &Clock, b: &Clock) -> Option<(u32, u32)> {
+    let plain = |c: &Clock| c.h * 60 + c.m;
+    let (s, e) = match (a.meridiem, b.meridiem) {
+        (Some(pa), Some(pb)) => (at_meridiem(a, pa)?, at_meridiem(b, pb)?),
+        (None, Some(pb)) => {
+            let e = at_meridiem(b, pb)?;
+            let same = at_meridiem(a, pb)?;
+            (if same < e { same } else { at_meridiem(a, !pb)? }, e)
+        }
+        (Some(pa), None) => {
+            let s = at_meridiem(a, pa)?;
+            let same = at_meridiem(b, pa)?;
+            (s, if same > s { same } else { at_meridiem(b, !pa)? })
+        }
+        (None, None) => (plain(a), plain(b)),
+    };
+    (e > s && e - s <= DURATION_MAX_MIN).then_some((s, e - s))
+}
+
+fn range_from(a: &Clock, b: &Clock, used: usize) -> Option<Range> {
+    let (start, mins) = resolve(a, b)?;
+    Some(Range {
+        start: format!("{:02}:{:02}", start / 60, start % 60),
+        mins,
+        used,
+    })
+}
+
+/// `3-4pm`, `9:30-10:00`, `9am-10am`, `from 9 to 10:30`. The dash form needs a colon or am/pm
+/// on both sides (or an am/pm on either) so `9-10` stays plain text. The end must be after the
+/// start; ranges across midnight are not read.
+pub(crate) fn range(w: &[String]) -> Option<Range> {
+    let first = s(w, 0);
+    if first == "from" {
+        let (a, n) = clock_at(w, 1, true)?;
+        let to = 1 + n;
+        if !matches!(s(w, to), "to" | "until" | "till" | "-") {
+            return None;
+        }
+        let (b, m) = clock_at(w, to + 1, true)?;
+        return range_from(&a, &b, to + 1 + m);
+    }
+    let (l, r) = first.split_once(['-', '–'])?;
+    let (a, _) = clock_at(&[l.to_string()], 0, false)?;
+    let (b, _) = clock_at(&[r.to_string()], 0, false)?;
+    let ok = (a.explicit && b.explicit) || a.meridiem.is_some() || b.meridiem.is_some();
+    if !ok {
+        return None;
+    }
+    range_from(&a, &b, 1)
+}

@@ -8,13 +8,19 @@
 //! - `p1`..`p4` priority; `#Label` (`#"Deep work"`); `$Goal` (goal name); `completed`, `open`.
 //! - `project: Name`, `area: Name`, `goal: Name` (`##Project` is not used); `search: text` or
 //!   bare words: title contains. Quote names with specials: `project: "A & B"`.
+//! - `overdue` (or `od`): due before today. `recurring`, `subtask` (`!` flips them). `no date`
+//!   (= `no due`), `no time`, `no labels`; `no priority` is `p4`. `view all` is a condition
+//!   that matches everything.
+//! - `search: words`: every word occurs in the title or description, in any order, `*` is a
+//!   wildcard inside a word. `title: text` is the title-only phrase match that bare words mean.
+//!   `#work*` / `#*work` match every label by a name pattern.
 //! - `due: D`, `due before: D`, `due after: D`, `due within: D to D`; the same for `deadline`,
 //!   `created`, `touched`. `no due`, `no label`, ... : is empty.
 //! - `where <path> <op> <value>`: any condition at all (the fallback the printer uses for what
 //!   has no sugar). Ops are the snake_case names; strings are quoted; `true`/`false`/`null`/numbers
 //!   are bare. `within` takes `<from> to <to>`.
 //! - Dates stay relative, as view.rs stores them: `today`, `tomorrow`, `yesterday`, `+3d`, `-2w`,
-//!   `YYYY-MM-DD`. `next week` is `+1w` (a week from today, not quick-add's next Monday),
+//!   `YYYY-MM-DD`; `-7 days`, `+2 weeks` and `7 days ago` are `-7d`, `+2w`, `-7d`. `next week` is `+1w` (a week from today, not quick-add's next Monday),
 //!   `in 3 days` is `+3d`, a weekday is `+Nd` to its next occurrence, `dec 5` an absolute date.
 //!   Printing uses `next week` for `+1w`; other values print as stored.
 //!
@@ -156,18 +162,19 @@ fn tok_span(t: &Tok) -> Span {
 
 // ---- Parsing ----
 
-const DATE_FIELDS: [(&str, &str); 4] = [
+const DATE_FIELDS: [(&str, &str); 5] = [
     ("due", "due"),
     ("deadline", "deadline"),
     ("created", "created_at"),
     ("touched", "touched_at"),
+    ("date", "due"),
 ];
 const PLACE_FIELDS: [(&str, &str); 3] = [
     ("project", "project.name"),
     ("area", "area.name"),
     ("goal", "goal.name"),
 ];
-const NO_FIELDS: [(&str, &str); 11] = [
+const NO_FIELDS: [(&str, &str); 14] = [
     ("due", "due"),
     ("deadline", "deadline"),
     ("label", "label"),
@@ -179,6 +186,9 @@ const NO_FIELDS: [(&str, &str); 11] = [
     ("area", "area.name"),
     ("goal", "goal.name"),
     ("parent", "parent"),
+    ("date", "due"),
+    ("time", "due_time"),
+    ("labels", "label"),
 ];
 const OPS: [(&str, CondOp); 7] = [
     ("is", CondOp::Is),
@@ -229,8 +239,33 @@ fn negate(n: Node, span: Span) -> Result<Node, FilterError> {
             op: CondOp::IsNot,
             value,
         } => Ok(cond(&path, CondOp::Is, value)),
+        Node::Cond {
+            path,
+            op: CondOp::Contains,
+            value,
+        } if path == "search" => Ok(cond(&path, CondOp::IsNot, value)),
         _ => err(span, "this can't be negated"),
     }
+}
+
+/// Does `name` match `pattern`, where `*` is any run of characters? Case-insensitive.
+fn glob(pattern: &str, name: &str) -> bool {
+    let (pat, name) = (pattern.to_lowercase(), name.to_lowercase());
+    let parts: Vec<&str> = pat.split('*').collect();
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if parts.len() == 1 {
+        return name == first;
+    }
+    let Some(mut rest) = name.strip_prefix(first) else {
+        return false;
+    };
+    for part in &parts[1..parts.len() - 1] {
+        match rest.find(part) {
+            Some(i) => rest = &rest[i + part.len()..],
+            None => return false,
+        }
+    }
+    rest.ends_with(last)
 }
 
 struct P<'a> {
@@ -326,6 +361,9 @@ impl P<'_> {
         if resolve_date(l0, 0).is_some() {
             return Ok((l0.into(), 1));
         }
+        if let Some(rel) = relative(&lower) {
+            return Ok(rel);
+        }
         if l0 == "next" && lower.get(1).map(String::as_str) == Some("week") {
             return Ok(("+1w".into(), 2));
         }
@@ -351,6 +389,20 @@ impl P<'_> {
     }
 
     fn label(&self, name: &str, span: Span) -> Result<Node, FilterError> {
+        if name.contains('*') {
+            let mut hits: Vec<Node> = self
+                .known
+                .labels
+                .iter()
+                .filter(|l| glob(name, &l.name))
+                .map(|l| cond("label", CondOp::Is, json!(l.id)))
+                .collect();
+            return match hits.len() {
+                0 => err(span, "no label matches"),
+                1 => Ok(hits.remove(0)),
+                _ => Ok(group(false, hits)),
+            };
+        }
         let lower = name.to_lowercase();
         let id = self
             .known
@@ -384,6 +436,18 @@ impl P<'_> {
                 self.only(ws, 1)?;
                 return Ok(cond("completed", CondOp::Is, json!(false)));
             }
+            "overdue" | "od" => {
+                self.only(ws, 1)?;
+                return Ok(cond("due", CondOp::Before, json!("today")));
+            }
+            "recurring" | "subtask" => {
+                self.only(ws, 1)?;
+                return Ok(cond(&l0, CondOp::Is, json!(true)));
+            }
+            "view" if ws.len() >= 2 && ws[1].text.eq_ignore_ascii_case("all") => {
+                self.only(ws, 2)?;
+                return Ok(group(true, vec![]));
+            }
             _ => {}
         }
         let sigil = w0.text.chars().next();
@@ -400,12 +464,13 @@ impl P<'_> {
             let glued: String = w0.text.chars().skip(key.chars().count() + 1).collect();
             let _ = after;
             let rest = join(ws, Some(glued));
-            if key == "search" || lookup(&PLACE_FIELDS, key).is_some() {
+            if key == "search" || key == "title" || lookup(&PLACE_FIELDS, key).is_some() {
                 if rest.is_empty() {
                     return err(wspan(w0), "expected a name");
                 }
                 return Ok(match lookup(&PLACE_FIELDS, key) {
                     Some(path) => cond(path, CondOp::Is, json!(rest)),
+                    None if key == "search" => cond("search", CondOp::Contains, json!(rest)),
                     None => search(rest),
                 });
             }
@@ -415,6 +480,10 @@ impl P<'_> {
                 return err(wspan(ws[1]), "not a field");
             };
             self.only(ws, 2)?;
+            // Priority is never empty: none set is the default, p4.
+            if path == "priority" {
+                return Ok(cond("priority", CondOp::Is, json!(4)));
+            }
             return Ok(cond(path, CondOp::IsEmpty, Value::Null));
         }
         if l0 == "where" && ws.len() >= 2 {
@@ -527,6 +596,29 @@ fn join(ws: &[&Word], glued: Option<String>) -> String {
     parts.join(" ")
 }
 
+/// `-7 days`, `+2 weeks`, `7 days ago`: the stored form (`-7d`) and the words used.
+fn relative(w: &[String]) -> Option<(String, usize)> {
+    let first = w[0].as_str();
+    let (sign, digits) = match first.strip_prefix('-') {
+        Some(d) => ('-', d),
+        None => match first.strip_prefix('+') {
+            Some(d) => ('+', d),
+            None => ('+', first),
+        },
+    };
+    let n: u32 = digits.parse().ok().filter(|n| (0..=9999).contains(n))?;
+    let unit = match w.get(1)?.as_str() {
+        "day" | "days" => 'd',
+        "week" | "weeks" => 'w',
+        _ => return None,
+    };
+    let ago = w.get(2).map(String::as_str) == Some("ago");
+    if first.starts_with(['+', '-']) {
+        return Some((format!("{sign}{n}{unit}"), 2));
+    }
+    ago.then(|| (format!("-{n}{unit}"), 3))
+}
+
 /// Parses typed filter `text` to a filter tree. `today` is the caller's local `YYYY-MM-DD`.
 pub fn parse(text: &str, known: &Known, today: &str) -> Result<Node, FilterError> {
     let Some(today) = parse_ymd(today) else {
@@ -615,7 +707,16 @@ fn sugar(path: &str, op: CondOp, v: &Value, known: &Known) -> Option<String> {
         }
         "title" if op == CondOp::Contains => {
             let s = v.as_str().filter(|s| !s.is_empty())?;
-            Some(format!("search: {}", text(s)))
+            Some(format!("title: {}", text(s)))
+        }
+        "search" if matches!(op, CondOp::Contains | CondOp::IsNot) => {
+            let s = v.as_str().filter(|s| !s.is_empty())?;
+            let bang = if op == CondOp::IsNot { "!" } else { "" };
+            Some(format!("{bang}search: {}", text(s)))
+        }
+        "recurring" | "subtask" if is => {
+            let on = v.as_bool()? == (op == CondOp::Is);
+            Some(format!("{}{path}", if on { "" } else { "!" }))
         }
         _ => {
             let key = DATE_FIELDS.iter().find(|(_, p)| *p == path)?.0;
@@ -783,6 +884,21 @@ mod tests {
             "where label contains \"id\"",
             "where \"my path\" is null",
             "p1 & (p2 | (p3 & p4))",
+            "overdue & recurring",
+            "!recurring & subtask",
+            "!subtask",
+            "no date & no time & no labels",
+            "created before: -7 days",
+            "created after: 7 days ago",
+            "created: today",
+            "date before: +2 weeks",
+            "date after: tomorrow",
+            "title: fix bug",
+            "!search: fix bug",
+            "search: fix* bug",
+            "#career | view all",
+            "p1 & view all",
+            "deadline before: in 3 days",
         ];
         for t in table {
             let n = p(t);
@@ -957,5 +1073,117 @@ mod tests {
         assert_eq!(depth(&ok), 3);
         assert!(parse("p1", &known(), "nope").is_err());
         assert_eq!(e("p1 & #Nope").message, "unknown label");
+    }
+
+    fn one(t: &str) -> Node {
+        match p(t) {
+            Node::Group { mut children, .. } if children.len() == 1 => children.remove(0),
+            n => n,
+        }
+    }
+
+    #[test]
+    fn todoist_terms() {
+        let c = |path: &str, op, v: Value| cond(path, op, v);
+        assert_eq!(one("overdue"), c("due", CondOp::Before, json!("today")));
+        assert_eq!(one("OD"), one("overdue"));
+        assert_eq!(one("recurring"), c("recurring", CondOp::Is, json!(true)));
+        assert_eq!(
+            one("!recurring"),
+            c("recurring", CondOp::IsNot, json!(true))
+        );
+        assert_eq!(one("subtask"), c("subtask", CondOp::Is, json!(true)));
+        assert_eq!(one("!subtask"), c("subtask", CondOp::IsNot, json!(true)));
+        assert_eq!(one("no date"), one("no due"));
+        assert_eq!(one("no time"), c("due_time", CondOp::IsEmpty, Value::Null));
+        assert_eq!(one("no labels"), one("no label"));
+        assert_eq!(one("no priority"), c("priority", CondOp::Is, json!(4)));
+        assert_eq!(one("date before: today"), one("due before: today"));
+        assert_eq!(one("date: tomorrow"), one("due: tomorrow"));
+        assert_eq!(
+            one("created before: -7 days"),
+            c("created_at", CondOp::Before, json!("-7d"))
+        );
+        assert_eq!(one("created after: -7d"), one("created after: -7 days"));
+        assert_eq!(
+            one("created after: 2 weeks ago"),
+            c("created_at", CondOp::After, json!("-2w"))
+        );
+        assert_eq!(
+            one("due before: +3 days"),
+            c("due", CondOp::Before, json!("+3d"))
+        );
+        assert_eq!(
+            one("created: today"),
+            c("created_at", CondOp::Is, json!("today"))
+        );
+        assert_eq!(p("view all"), group(true, vec![group(true, vec![])]));
+        assert_eq!(
+            one("search: Fix Bug*"),
+            c("search", CondOp::Contains, json!("Fix Bug*"))
+        );
+        assert_eq!(one("!search: x"), c("search", CondOp::IsNot, json!("x")));
+        assert_eq!(
+            one("title: fix bug"),
+            c("title", CondOp::Contains, json!("fix bug"))
+        );
+        assert_eq!(one("fix bug"), one("title: fix bug"));
+        // Print/parse of the old title sugar still agrees.
+        assert_eq!(print(&one("fix bug"), &known()), "title: fix bug");
+    }
+
+    #[test]
+    fn label_wildcards() {
+        let id = |n: u8| json!(format!("0190b2c0-0000-7000-8000-00000000000{n}"));
+        let is = |n: u8| cond("label", CondOp::Is, id(n));
+        assert_eq!(one("#car*"), is(1));
+        assert_eq!(one("#*REER"), is(1));
+        assert_eq!(one("#c*r"), is(1));
+        assert_eq!(one("#*"), group(false, vec![is(1), is(2), is(3)]));
+        assert_eq!(one("#*e*"), group(false, vec![is(1), is(2)]));
+        assert_eq!(
+            one("!#*e*"),
+            group(
+                true,
+                vec![
+                    cond("label", CondOp::IsNot, id(1)),
+                    cond("label", CondOp::IsNot, id(2))
+                ]
+            )
+        );
+        let back = print(&p("#*e*"), &known());
+        assert_eq!(back, "(#Career | #\"Deep work\")");
+        assert_eq!(p(&back), p("#*e*"));
+    }
+
+    #[test]
+    fn todoist_term_errors() {
+        let at = |t: &str, bad: &str| {
+            let err = parse(t, &known(), TODAY).unwrap_err();
+            let got: String = t
+                .chars()
+                .skip(err.start)
+                .take(err.end - err.start)
+                .collect();
+            assert_eq!(got, bad, "{t}: {}", err.message);
+            err.message
+        };
+        assert_eq!(at("#zz*", "#zz*"), "no label matches");
+        assert_eq!(at("overdue extra", "extra"), "unexpected word");
+        assert_eq!(at("recurring now", "now"), "unexpected word");
+        assert_eq!(at("view all today", "today"), "unexpected word");
+        assert_eq!(at("no time zone", "zone"), "unexpected word");
+        assert_eq!(at("no priority x", "x"), "unexpected word");
+        assert_eq!(at("search:", "search:"), "expected a name");
+        assert_eq!(at("title:", "title:"), "expected a name");
+        assert_eq!(at("created before: -7 fortnights", "-7"), "not a date");
+        assert_eq!(at("created before: 7 days", "7"), "not a date");
+        assert_eq!(at("created before:", "before:"), "expected a date");
+        assert_eq!(
+            at("date sometime: today", "sometime:"),
+            "expected before:, after: or within:"
+        );
+        assert_eq!(at("!overdue", "!"), "this can't be negated");
+        assert_eq!(at("!view all", "!"), "this can't be negated");
     }
 }

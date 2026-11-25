@@ -18,6 +18,47 @@ use std::sync::{
 const HOUR: u64 = 3_600_000;
 
 #[test]
+fn capture_sets_deadline_and_duration_without_changing_due() {
+    let mut c = replica("http://127.0.0.1:1");
+    let (id, title) = c
+        .capture(
+            "Write report by friday for 1h30m",
+            None,
+            "2026-11-19T10:00",
+            1000,
+        )
+        .unwrap();
+    assert_eq!(title, "Write report");
+    let t = c.task(id).unwrap().unwrap();
+    assert_eq!(t.deadline.as_deref(), Some("2026-11-20"));
+    assert_eq!(t.duration_min, Some(90));
+    assert_eq!(t.due, None);
+
+    let (id, _) = c
+        .capture(
+            "Standup tomorrow 3-4pm {dec 5} p2",
+            None,
+            "2026-11-19T10:00",
+            2000,
+        )
+        .unwrap();
+    let t = c.task(id).unwrap().unwrap();
+    assert_eq!(t.deadline.as_deref(), Some("2026-12-05"));
+    assert_eq!(t.duration_min, Some(60));
+    let due = t.due.unwrap();
+    assert_eq!(due.date, "2026-11-20");
+    assert_eq!(due.time.as_deref(), Some("15:00"));
+    assert_eq!(t.priority, 2);
+
+    let (id, title) = c
+        .capture("gift for Anna written by Tom", None, "2026-11-19T10:00", 3000)
+        .unwrap();
+    assert_eq!(title, "gift for Anna written by Tom");
+    let t = c.task(id).unwrap().unwrap();
+    assert_eq!((t.deadline, t.duration_min), (None, None));
+}
+
+#[test]
 fn native_undo_does_not_restore_due_after_a_newer_same_value_edit() {
     let mut c = replica("http://127.0.0.1:1");
     let id = c.create_task("Recurring task", 1000).unwrap();

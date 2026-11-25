@@ -180,6 +180,12 @@ impl Client {
                 serde_json::json!({ "date": d.date, "time": d.time }),
             );
         }
+        if let Some(d) = &parsed.deadline {
+            patch.insert("deadline".into(), serde_json::json!(d));
+        }
+        if let Some(m) = parsed.duration_min {
+            patch.insert("duration_min".into(), serde_json::json!(m));
+        }
         if let Some(p) = parsed.priority {
             patch.insert("priority".into(), serde_json::json!(p));
         }

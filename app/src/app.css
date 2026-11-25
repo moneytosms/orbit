@@ -320,6 +320,10 @@
   --fc-event-color: var(--danger);
   --fc-event-contrast-color: var(--bg);
 }
+.orbit-cal .cal-occurrence {
+  opacity: 0.55;
+  border-style: dashed;
+}
 .orbit-cal .cal-goal,
 .orbit-cal .cal-milestone {
   --fc-event-color: var(--warn);

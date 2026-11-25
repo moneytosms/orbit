@@ -513,10 +513,7 @@ mod tests {
     #[test]
     fn recurring_occurrences_each_count() {
         let mut t = task(10, 2, false);
-        t.recurrence = Some(crate::recur::Recurrence {
-            rule: "day".into(),
-            from_completion: false,
-        });
+        t.recurrence = Some(crate::recur::Recurrence::new("day", false));
         let rows = vec![
             Row::Task(t),
             comp(20, 10, NOON, None),
@@ -528,10 +525,7 @@ mod tests {
     #[test]
     fn removing_an_undone_recurring_task_completion_reverses_its_stardust() {
         let mut t = task(2, 4, false);
-        t.recurrence = Some(crate::recur::Recurrence {
-            rule: "week".into(),
-            from_completion: false,
-        });
+        t.recurrence = Some(crate::recur::Recurrence::new("week", false));
         let completion = comp(3, 2, NOON, Some(100));
         let rows = vec![Row::Task(t), completion.clone()];
         assert_eq!(total(&rows, 0, "04:00"), task_points(4) as u64);

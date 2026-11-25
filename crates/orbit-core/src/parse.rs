@@ -3,7 +3,7 @@
 //! `may` and a bare `5` as dates, and never rolls past dates forward, so it was dropped.
 use crate::recur::{self, Recurrence};
 use crate::reminder::{Anchor, Trigger};
-use crate::when::when;
+use crate::when::{duration, range, when, when_date};
 use serde::{Deserialize, Serialize};
 
 pub const TITLE_MAX: usize = 120;
@@ -31,6 +31,10 @@ pub enum Kind {
     Priority,
     Date,
     Reminder,
+    /// `{march 30}` or `by friday`.
+    Deadline,
+    /// `for 1h`, or a time range such as `3-4pm`.
+    Duration,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -38,7 +42,8 @@ pub struct Token {
     pub kind: Kind,
     /// As typed, including the sigil.
     pub text: String,
-    /// The name, "1".."4", or `YYYY-MM-DD` (`YYYY-MM-DDTHH:MM` when a time was given).
+    /// The name, "1".."4", `YYYY-MM-DD` (`YYYY-MM-DDTHH:MM` when a time was given; always a
+    /// bare `YYYY-MM-DD` for a deadline) or, for a duration, the minutes ("90").
     pub value: String,
     /// Byte offsets in the input.
     pub start: usize,
@@ -69,6 +74,12 @@ pub struct Parsed {
     /// From `!` tokens; the app gives each an id.
     #[serde(default)]
     pub reminders: Vec<Trigger>,
+    /// `YYYY-MM-DD`, from `{<date>}` or `by <date>`. Never sets the due date.
+    #[serde(default)]
+    pub deadline: Option<String>,
+    /// Minutes (1 to 1440), from `for <duration>` or a time range.
+    #[serde(default)]
+    pub duration_min: Option<u32>,
 }
 
 /// Capture-only title cleanup. Existing stored task titles are never passed through this.
@@ -427,6 +438,59 @@ pub(crate) fn date_phrase(w: &[String], today: i64) -> Option<(i64, usize)> {
     None
 }
 
+#[derive(Clone, Copy)]
+enum SpanUnit {
+    Days,
+    Weeks,
+    Months,
+    Years,
+}
+
+/// The bounds that may follow a recurrence rule, in any order: `starting|from <date>`,
+/// `until|ending|till|through <date>` and `for <n> days|weeks|months|years`. Sets them on `rec`
+/// (or `span`, resolved once the first due is known) and returns the words used.
+fn recurrence_bounds(
+    w: &[String],
+    today: i64,
+    rec: &mut Recurrence,
+    span: &mut Option<(i64, SpanUnit)>,
+) -> usize {
+    let mut used = 0;
+    while let Some(word) = w.get(used) {
+        let rest = &w[used + 1..];
+        match word.as_str() {
+            "starting" | "from" | "until" | "ending" | "till" | "through" if !rest.is_empty() => {
+                let Some((day, n)) = date_phrase(rest, today) else {
+                    break;
+                };
+                let date = fmt_date(day);
+                if matches!(word.as_str(), "starting" | "from") {
+                    rec.start = Some(date);
+                } else {
+                    rec.end = Some(date);
+                }
+                used += 1 + n;
+            }
+            "for" if rest.len() >= 2 => {
+                let unit = match rest[1].as_str() {
+                    "day" | "days" => SpanUnit::Days,
+                    "week" | "weeks" => SpanUnit::Weeks,
+                    "month" | "months" => SpanUnit::Months,
+                    "year" | "years" => SpanUnit::Years,
+                    _ => break,
+                };
+                let Some(n) = rest[0].parse::<i64>().ok().filter(|n| (1..=999).contains(n)) else {
+                    break;
+                };
+                *span = Some((n, unit));
+                used += 3;
+            }
+            _ => break,
+        }
+    }
+    used
+}
+
 /// `6pm`, `6:30pm`, `18:00` as `HH:MM`.
 pub(crate) fn time_word(w: &str) -> Option<String> {
     let (body, meridiem) = if let Some(b) = w.strip_suffix("am") {
@@ -520,6 +584,58 @@ fn now_minutes(now: &str) -> u32 {
     h.zip(m).map_or(0, |(h, m)| h.min(23) * 60 + m.min(59))
 }
 
+/// A `{<date>}` / `by <date>` deadline or a `for <duration>` / time range duration at word `i`:
+/// the kind, token value and words used. Only the first of each is read, and `by`/`for` count
+/// only when what follows really parses, so `written by Tom` and `for the team` stay title text.
+/// A range also remembers its start in `range_start` for the due time.
+fn deadline_or_duration(
+    input: &str,
+    ws: &[Word],
+    lower: &[String],
+    i: usize,
+    (today, now_min): (Option<i64>, u32),
+    (want_deadline, want_duration): (bool, bool),
+    range_start: &mut Option<String>,
+) -> Option<(Kind, String, usize)> {
+    let day = |d: i64| fmt_date(d);
+    let w = lower[i].as_str();
+    if want_deadline && let Some(today) = today {
+        if w.starts_with('{')
+            && let Some(j) = (i..ws.len().min(i + 8)).find(|&j| ws[j].text.ends_with('}'))
+        {
+            let inner = input[ws[i].start + 1..ws[j].end - 1].to_lowercase();
+            let words: Vec<String> = inner.split_whitespace().map(str::to_string).collect();
+            if !words.is_empty()
+                && let Some(f) = when_date(&words, today, now_min)
+                && f.used == words.len()
+            {
+                return Some((Kind::Deadline, day(f.day), j + 1 - i));
+            }
+        }
+        if w == "by"
+            && i + 1 < lower.len()
+            && let Some(f) = when_date(&lower[i + 1..], today, now_min)
+        {
+            return Some((Kind::Deadline, day(f.day), 1 + f.used));
+        }
+    }
+    if want_duration {
+        if w == "for"
+            && i + 1 < lower.len()
+            && let Some((mins, used)) = duration(&lower[i + 1..])
+        {
+            return Some((Kind::Duration, mins.to_string(), 1 + used));
+        }
+        if range_start.is_none()
+            && let Some(r) = range(&lower[i..])
+        {
+            *range_start = Some(r.start);
+            return Some((Kind::Duration, r.mins.to_string(), r.used));
+        }
+    }
+    None
+}
+
 pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     let ws = words(input);
     let lower: Vec<String> = ws.iter().map(|w| w.text.to_lowercase()).collect();
@@ -537,8 +653,12 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         labels: Vec::new(),
         recurrence: None,
         reminders: Vec::new(),
+        deadline: None,
+        duration_min: None,
     };
+    let mut range_start: Option<String> = None;
     let mut rec_time: Option<String> = None;
+    let mut rec_span: Option<(i64, SpanUnit)> = None;
     let mut title: Vec<String> = Vec::new();
     // Words after `every`/`every!` never become a due date.
     let mut recurring = false;
@@ -633,17 +753,43 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
             i += 1;
             continue;
         }
+        if let Some((kind, value, used)) = deadline_or_duration(
+            input,
+            &ws,
+            &lower,
+            i,
+            (today, now_min),
+            (out.deadline.is_none(), out.duration_min.is_none()),
+            &mut range_start,
+        ) {
+            let end = ws[i + used - 1].end;
+            out.tokens.push(Token {
+                kind,
+                text: input[w.start..end].to_string(),
+                value: value.clone(),
+                start: w.start,
+                end,
+                known: true,
+            });
+            match kind {
+                Kind::Deadline => out.deadline = Some(value),
+                _ => out.duration_min = value.parse().ok(),
+            }
+            i += used;
+            continue;
+        }
         if matches!(lower[i].as_str(), "every" | "every!") {
             recurring = true;
             if out.recurrence.is_none()
                 && let Some((rule, time, used)) = recur::parse_rule(&lower[i + 1..])
             {
-                out.recurrence = Some(Recurrence {
-                    rule,
-                    from_completion: lower[i] == "every!",
-                });
-                rec_time = time;
+                let mut rec = Recurrence::new(rule, lower[i] == "every!");
                 i += 1 + used;
+                if let Some(today) = today {
+                    i += recurrence_bounds(&lower[i..], today, &mut rec, &mut rec_span);
+                }
+                out.recurrence = Some(rec);
+                rec_time = time;
                 continue;
             }
         }
@@ -681,16 +827,43 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     let (normalized, description) = normalize_capture(&title.join(" "), "");
     out.title = normalized;
     out.description = description;
-    if let (Some(rec), Some(today)) = (&out.recurrence, today) {
+    if let (Some(rec), Some(today)) = (&mut out.recurrence, today) {
+        // A series starting later first lands on or after its start.
+        let from = rec.start.as_deref().and_then(parse_ymd).map_or(today, |s| s.max(today));
         match &mut out.due {
             Some(due) => due.time = due.time.take().or(rec_time),
             None => {
-                if let Some(day) = recur::first_day(&rec.rule, today) {
+                if let Some(day) = recur::first_day(&rec.rule, from) {
                     out.due = Some(Due {
                         date: fmt_date(day),
                         time: rec_time,
                     });
                 }
+            }
+        }
+        // `for 3 weeks` counts from the first occurrence.
+        if let Some((n, unit)) = rec_span {
+            let first = out.due.as_ref().and_then(|d| parse_ymd(&d.date)).unwrap_or(from);
+            let end = match unit {
+                SpanUnit::Days => first + n,
+                SpanUnit::Weeks => first + 7 * n,
+                SpanUnit::Months => recur::add_months(first, n),
+                SpanUnit::Years => recur::add_months(first, 12 * n),
+            } - 1;
+            rec.end.get_or_insert_with(|| fmt_date(end));
+        }
+    }
+    if let (Some(start), Some(today)) = (range_start, today) {
+        match &mut out.due {
+            Some(due) => {
+                due.time.get_or_insert(start);
+            }
+            None => {
+                let at = format!("{:02}:{:02}", now_min / 60, now_min % 60);
+                out.due = Some(Due {
+                    date: fmt_date(today + i64::from(start <= at)),
+                    time: Some(start),
+                });
             }
         }
     }
@@ -1079,12 +1252,7 @@ mod tests {
                 time: None
             })
         );
-        let rec = |rule: &str, from_completion| {
-            Some(Recurrence {
-                rule: rule.into(),
-                from_completion,
-            })
-        };
+        let rec = |rule: &str, from_completion| Some(Recurrence::new(rule, from_completion));
         assert_eq!(r.recurrence, rec("day", false));
         let r = p("x every! day");
         assert_eq!(r.title, "x");
@@ -1244,5 +1412,212 @@ mod tests {
         let (title, _) = normalize_capture("[]()", "");
         assert_eq!(title, "[]()");
         assert!(!normalize_capture("https://", "").0.is_empty());
+    }
+
+    fn dl(input: &str) -> Option<String> {
+        p(input).deadline
+    }
+
+    fn dur(input: &str) -> Option<u32> {
+        p(input).duration_min
+    }
+
+    #[test]
+    fn braces_set_a_deadline_and_never_the_due_date() {
+        let r = p("file taxes {march 30} p2");
+        assert_eq!(r.title, "file taxes");
+        assert_eq!(r.deadline.as_deref(), Some("2027-03-30"));
+        assert_eq!(r.due, None);
+        assert_eq!(r.tokens[0].kind, Kind::Deadline);
+        assert_eq!(r.tokens[0].text, "{march 30}");
+        assert_eq!(r.tokens[0].value, "2027-03-30");
+        assert_eq!(dl("x {next friday}").as_deref(), Some("2026-11-27"));
+        assert_eq!(dl("x {2026-12-24}").as_deref(), Some("2026-12-24"));
+        assert_eq!(dl("x {tomorrow}").as_deref(), Some("2026-11-20"));
+        assert_eq!(dl("x {in 3 days}").as_deref(), Some("2026-11-22"));
+        assert_eq!(dl("x {end of month}").as_deref(), Some("2026-11-30"));
+        // A time is dropped: Task.deadline is a bare date.
+        assert_eq!(dl("x {friday 5pm}").as_deref(), Some("2026-11-20"));
+        // Unparsable braces stay in the title.
+        let r = p("use {foo} here");
+        assert_eq!(r.title, "use {foo} here");
+        assert_eq!(r.deadline, None);
+        assert_eq!(p("x {}").title, "x {}");
+        assert_eq!(p("x {5pm}").deadline, None);
+        assert_eq!(p("x {friday").title, "x {friday");
+        // Braces and a due date together.
+        let r = p("report tomorrow {dec 5}");
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-20"));
+        assert_eq!(r.deadline.as_deref(), Some("2026-12-05"));
+        assert_eq!(r.title, "report");
+        // Only the first deadline counts.
+        assert_eq!(dl("x {dec 5} {dec 6}").as_deref(), Some("2026-12-05"));
+    }
+
+    #[test]
+    fn by_sets_a_deadline_only_when_a_date_follows() {
+        let r = p("send report by friday");
+        assert_eq!(r.title, "send report");
+        assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
+        assert_eq!(r.due, None);
+        assert_eq!(r.tokens[0].text, "by friday");
+        assert_eq!(dl("x by dec 5").as_deref(), Some("2026-12-05"));
+        assert_eq!(dl("x by end of month").as_deref(), Some("2026-11-30"));
+        assert_eq!(dl("x by next friday").as_deref(), Some("2026-11-27"));
+        assert_eq!(dl("x by tomorrow").as_deref(), Some("2026-11-20"));
+        assert_eq!(dl("x by the 15th").as_deref(), Some("2026-12-15"));
+        assert_eq!(dl("x by 2026-12-01").as_deref(), Some("2026-12-01"));
+        assert_eq!(dl("x by in 2 days").as_deref(), Some("2026-11-21"));
+        for text in [
+            "book written by Tom",
+            "stand by me",
+            "drop by",
+            "pay by card",
+            "x by 5pm",
+            "x by may smith",
+        ] {
+            let r = p(text);
+            assert_eq!(r.deadline, None, "{text}");
+        }
+        assert_eq!(p("book written by Tom").title, "book written by Tom");
+        assert_eq!(p("stand by me").title, "stand by me");
+        // `by` plus a date, then a due date elsewhere.
+        let r = p("report by friday today");
+        assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-19"));
+        // Only the first deadline counts; the second `by` stays text.
+        let r = p("x by friday by monday");
+        assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
+        assert_eq!(r.title, "x by monday");
+    }
+
+    #[test]
+    fn for_sets_a_duration_only_when_a_length_follows() {
+        let r = p("write essay for 1h tomorrow");
+        assert_eq!(r.title, "write essay");
+        assert_eq!(r.duration_min, Some(60));
+        assert_eq!(r.tokens[0].kind, Kind::Duration);
+        assert_eq!(r.tokens[0].text, "for 1h");
+        assert_eq!(r.tokens[0].value, "60");
+        assert_eq!(dur("x for 30 min"), Some(30));
+        assert_eq!(dur("x for 30m"), Some(30));
+        assert_eq!(dur("x for 1h15m"), Some(75));
+        assert_eq!(dur("x for 1 hour 15 minutes"), Some(75));
+        assert_eq!(dur("x for 1 hour and 15 minutes"), Some(75));
+        assert_eq!(dur("x for an hour"), Some(60));
+        assert_eq!(dur("x for half an hour"), Some(30));
+        assert_eq!(dur("x for an hour and a half"), Some(90));
+        assert_eq!(dur("x for 90 minutes"), Some(90));
+        assert_eq!(dur("x for 1.5 hours"), Some(90));
+        assert_eq!(dur("x for 24h"), Some(1440));
+        assert_eq!(dur("x for 1 minute"), Some(1));
+        for text in [
+            "x for 25h",
+            "x for 0m",
+            "x for 3 days",
+            "x for 2 weeks",
+            "x for 1h and 2 days",
+            "x for the team",
+            "x for 5",
+            "x for",
+            "gift for Anna",
+        ] {
+            assert_eq!(dur(text), None, "{text}");
+        }
+        assert_eq!(p("gift for Anna").title, "gift for Anna");
+        assert_eq!(p("x for 25h").title, "x for 25h");
+        // A duration does not touch the due date.
+        let r = p("x 3pm for 45 min");
+        assert_eq!(r.due.map(|d| d.time), Some(Some("15:00".into())));
+        assert_eq!(r.duration_min, Some(45));
+        let r = p("x in 1 hour for 30 min");
+        assert_eq!(r.due.map(|d| d.time), Some(Some("11:00".into())));
+        assert_eq!(r.duration_min, Some(30));
+        // Only the first counts.
+        assert_eq!(dur("x for 1h for 2h"), Some(60));
+    }
+
+    #[test]
+    fn time_ranges_set_the_due_time_and_duration() {
+        let r = p("standup tomorrow 3-4pm");
+        assert_eq!(r.title, "standup");
+        assert_eq!(r.duration_min, Some(60));
+        let due = r.due.unwrap();
+        assert_eq!((due.date.as_str(), due.time.as_deref()), ("2026-11-20", Some("15:00")));
+        assert_eq!(r.tokens.last().unwrap().kind, Kind::Duration);
+        assert_eq!(r.tokens.last().unwrap().text, "3-4pm");
+        let range = |t: &str| {
+            let r = p(t);
+            (r.due.and_then(|d| d.time), r.duration_min)
+        };
+        let some = |t: &str, m| (Some(t.to_string()), Some(m));
+        assert_eq!(range("x 9:30-10:00"), some("09:30", 30));
+        assert_eq!(range("x 9am-10:30am"), some("09:00", 90));
+        assert_eq!(range("x 11-1pm"), some("11:00", 120));
+        assert_eq!(range("x 9-10pm"), some("21:00", 60));
+        assert_eq!(range("x 3pm-4"), some("15:00", 60));
+        assert_eq!(range("x from 9 to 10:30"), some("09:00", 90));
+        assert_eq!(range("x from 9am to 5pm"), some("09:00", 480));
+        assert_eq!(range("x from 9 am to 10 am"), some("09:00", 60));
+        assert_eq!(range("x from 14:00 until 15:15"), some("14:00", 75));
+        // Date after the range, and an explicit due time wins.
+        let r = p("x 3-4pm friday");
+        assert_eq!(r.due.as_ref().map(|d| d.date.as_str()), Some("2026-11-20"));
+        assert_eq!(r.due.and_then(|d| d.time).as_deref(), Some("15:00"));
+        let r = p("x tomorrow 9am 3-4pm");
+        assert_eq!(r.due.and_then(|d| d.time).as_deref(), Some("09:00"));
+        assert_eq!(r.duration_min, Some(60));
+        // Today when still ahead, else tomorrow.
+        let r = p("x 3-4pm");
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-19"));
+        let r = p("x 8-9am");
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-20"));
+        // Not ranges: bare numbers, backwards, across midnight, dates.
+        for text in ["x 9-10", "x 4-3pm", "x 11pm-1am", "x 2026-11-19", "x pages 3-4", "x from 9 to"] {
+            let r = p(text);
+            assert_eq!(r.duration_min, None, "{text}");
+        }
+        assert_eq!(p("x pages 3-4").title, "x pages 3-4");
+        // `for` wins over a later range; the range then stays text.
+        assert_eq!(dur("x for 1h 3-4pm"), Some(60));
+    }
+
+    #[test]
+    fn deadline_and_duration_work_with_other_sigils_and_recurrence() {
+        let r = p("review @Work p1 by friday for 1h #errand tomorrow");
+        assert_eq!(r.title, "review");
+        assert_eq!(r.place.as_deref(), Some("Work"));
+        assert_eq!(r.priority, Some(1));
+        assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
+        assert_eq!(r.duration_min, Some(60));
+        assert_eq!(r.labels, vec!["errand".to_string()]);
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-20"));
+        // Words after `every` stay recurrence-only, but `for` still reads.
+        let r = p("water plants every monday for 15 min");
+        assert_eq!(r.title, "water plants");
+        assert!(r.recurrence.is_some());
+        assert_eq!(r.duration_min, Some(15));
+        let r = p("standup every weekday 9-9:15");
+        assert!(r.recurrence.is_some());
+        assert_eq!(r.duration_min, Some(15));
+        assert_eq!(r.due.and_then(|d| d.time).as_deref(), Some("09:00"));
+        let r = p("pay rent every month by the 1st");
+        assert!(r.recurrence.is_some());
+        assert_eq!(r.deadline.as_deref(), Some("2026-12-01"));
+        // A reminder keeps its own words.
+        let r = p("call !9am friday by monday");
+        assert_eq!(r.reminders.len(), 1);
+        assert_eq!(r.deadline.as_deref(), Some("2026-11-23"));
+    }
+
+    #[test]
+    fn old_parsed_json_loads_without_deadline_or_duration() {
+        let r: Parsed = serde_json::from_str(
+            r#"{"title":"x","tokens":[],"priority":null,"due":null,"place":null,"goal":null,"page":null,"labels":[],"recurrence":null}"#,
+        )
+        .unwrap();
+        assert_eq!((r.deadline, r.duration_min), (None, None));
+        let kinds = serde_json::to_string(&[Kind::Deadline, Kind::Duration]).unwrap();
+        assert_eq!(kinds, r#"["deadline","duration"]"#);
     }
 }

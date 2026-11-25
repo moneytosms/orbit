@@ -2579,7 +2579,8 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
         expected_due,
         restore_due,
     };
-    if let Some(rec) = &t.recurrence {
+    // A series past its `end` completes like any other Task.
+    let next_due = t.recurrence.as_ref().and_then(|rec| {
         let today = match &cmd.op {
             Op::TaskComplete { today: Some(d), .. } if is_date(d) => d.clone(),
             // No local date was sent: the UTC one.
@@ -2589,7 +2590,10 @@ pub fn complete_effects(t: Task, cmd: &Command) -> (Task, Option<Completion>) {
             date: today.clone(),
             time: None,
         });
-        let due = Some(recur::next(rec, &from, &today));
+        recur::advance(rec, &from, &today)
+    });
+    if let Some(due) = next_due {
+        let due = Some(due);
         let c = log(&t, Some(due.clone()), Some(t.due.clone()));
         return (Task { due, ..t }, Some(c));
     }

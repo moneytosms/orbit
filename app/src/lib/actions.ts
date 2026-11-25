@@ -116,7 +116,15 @@ export async function actions(): Promise<Action[]> {
   })
   add('view.new', 'Create View', 'Create', async () => go(`#/view/${await createView('New view', 'task')}`))
 
-  add('task.complete', 'Complete', 'Task', () => { if (here) void completeTask(here.id) }, 'task')
+  add(
+    'task.complete',
+    'Complete',
+    'Task',
+    () => {
+      if (here) void completeTask(here.id)
+    },
+    'task',
+  )
   add('item.inbox', 'Move to Inbox', 'Task', () => (here ? moveTo(here.id, inbox_id()) : undefined), 'task')
   for (const a of areas) {
     for (const p of a.projects) {
@@ -131,6 +139,7 @@ export async function actions(): Promise<Action[]> {
   }
   add('task.today', 'Reschedule: Today', 'Task', () => (here ? setDue(here.id, dayFrom(0)) : undefined), 'task')
   add('task.tomorrow', 'Reschedule: Tomorrow', 'Task', () => (here ? setDue(here.id, dayFrom(1)) : undefined), 'task')
+  add('task.cleardate', 'Clear date', 'Task', () => (here ? setDue(here.id, null) : undefined), 'task')
   add('task.nextweek', 'Reschedule: Next week', 'Task', () => (here ? setDue(here.id, dayFrom(7)) : undefined), 'task')
   for (const n of [1, 2, 3, 4] as const) {
     add(`task.p${n}`, `Priority ${n}`, 'Task', () => (here ? pri(n)(here.id) : undefined), 'task')

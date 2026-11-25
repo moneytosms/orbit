@@ -582,6 +582,23 @@ test('URL-only capture gets a readable title and keeps the complete URL', () => 
   })
 })
 
+test('quickAdd sets deadline and duration without touching the due date', async () => {
+  const id = await quickAdd(parseLine('Write report by friday for 1h30m'), INBOX)
+  const task = (await getTask(id))!
+  expect(task).toMatchObject({ title: 'Write report', deadline: '2026-11-20', duration_min: 90 })
+  expect(task.due).toBeNull()
+})
+
+test('quickAdd reads {deadline} braces and a time range', async () => {
+  const id = await quickAdd(parseLine('Standup tomorrow 9-9:15am {dec 5}'), INBOX)
+  expect(await getTask(id)).toMatchObject({
+    title: 'Standup',
+    due: { date: '2026-11-20', time: '09:00' },
+    deadline: '2026-12-05',
+    duration_min: 15,
+  })
+})
+
 test('quickAdd turns "every 3 days" into a recurrence with a first due', async () => {
   const id = await quickAdd(parseLine('water plants every 3 days'), INBOX)
   expect(await getTask(id)).toMatchObject({

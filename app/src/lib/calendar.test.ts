@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { addMinutes, eventsOn, feedToEvents, minutesBetween, soon, toEvents } from './calendar'
+import { addMinutes, eventsOn, feedToEvents, minutesBetween, recurringEvents, soon, toEvents } from './calendar'
 import type { FeedEvent } from './auth'
 import type { Task } from './sync'
 
@@ -170,5 +170,46 @@ describe('Calendar widget visibility rule', () => {
   it('shows for an event today or tomorrow', () => {
     expect(soon([feedEvent({ start_date: '2026-03-06', end_date: '2026-03-07' })], now).shown).toBe(true)
     expect(soon([feedEvent({ start_date: '2026-03-04', end_date: '2026-03-06' })], now).shown).toBe(true)
+  })
+})
+
+describe('recurringEvents', () => {
+  const rec = task({
+    id: 'r',
+    due: { date: '2026-03-02', time: null },
+    recurrence: { rule: 'week', from_completion: false },
+  })
+  const weekly = (t: Task, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      date: addMinutes(`2026-03-${String(9 + 7 * i).padStart(2, '0')}T00:00`, 0).slice(0, 10),
+      time: t.due?.time ?? null,
+    }))
+
+  it('projects only occurrences inside the range, read-only', () => {
+    const ev = recurringEvents([rec], { from: '2026-03-01', to: '2026-03-20' }, (t) => weekly(t, 2))
+    expect(ev.map((e) => e.start)).toEqual(['2026-03-09', '2026-03-16'])
+    expect(ev.every((e) => !e.editable && e.classNames.includes('cal-occurrence'))).toBe(true)
+  })
+  it('skips non-recurring, completed and undated Tasks', () => {
+    const list = [
+      task({ due: { date: '2026-03-02', time: null } }),
+      task({ id: 'c', completed_at: 1, recurrence: rec.recurrence, due: rec.due }),
+      task({ id: 'u', recurrence: rec.recurrence }),
+    ]
+    expect(
+      recurringEvents(list, { from: '2026-03-01', to: '2026-04-01' }, () => [{ date: '2026-03-09', time: null }]),
+    ).toEqual([])
+  })
+  it('sizes timed occurrences', () => {
+    const t = task({
+      id: 't',
+      due: { date: '2026-03-02', time: '09:00' },
+      duration_min: 60,
+      recurrence: rec.recurrence,
+    })
+    const [e] = recurringEvents([t], { from: '2026-03-01', to: '2026-04-01' }, () => [
+      { date: '2026-03-09', time: '09:00' },
+    ])
+    expect(e).toMatchObject({ start: '2026-03-09T09:00', end: '2026-03-09T10:00', allDay: false })
   })
 })

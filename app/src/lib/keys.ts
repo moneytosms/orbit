@@ -15,12 +15,14 @@ export const keymap: Key[] = [
   { keys: 'j', action: 'cursor.next', label: 'Next item', group: 'List' },
   { keys: 'k', action: 'cursor.prev', label: 'Previous item', group: 'List' },
   { keys: 'Enter', action: 'cursor.open', label: 'Open item', group: 'List' },
+  { keys: 'c', action: 'cursor.open', label: 'Open task and comments', group: 'Task' },
   { keys: 'e', action: 'task.complete', label: 'Complete task', group: 'Task' },
   { keys: '1', action: 'task.p1', label: 'Priority 1', group: 'Task' },
   { keys: '2', action: 'task.p2', label: 'Priority 2', group: 'Task' },
   { keys: '3', action: 'task.p3', label: 'Priority 3', group: 'Task' },
   { keys: '4', action: 'task.p4', label: 'Priority 4', group: 'Task' },
   { keys: 't', action: 'task.today', label: 'Schedule today', group: 'Task' },
+  { keys: 'T', action: 'task.cleardate', label: 'Clear date', group: 'Task' },
   { keys: 'y', action: 'task.tomorrow', label: 'Schedule tomorrow', group: 'Task' },
   { keys: 'g h', action: 'go.home', label: 'Go to Home', group: 'Go to' },
   { keys: 'g i', action: 'go.inbox', label: 'Go to Inbox', group: 'Go to' },
@@ -88,7 +90,9 @@ export const keyLabel = (keys: string) =>
     ? keys.split(' ').join(' then ')
     : keys.startsWith('ctrl+')
       ? `Ctrl ${keys.slice(5).toUpperCase()}`
-      : keys
+      : /^[A-Z]$/.test(keys)
+        ? `Shift ${keys}`
+        : keys
 
 /** The keymap grouped for the cheat sheet, in table order. */
 export function groupedKeys(map: Key[] = keymap): { group: string; keys: Key[] }[] {

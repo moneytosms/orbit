@@ -1505,4 +1505,52 @@ mod tests {
             &vec![serde_json::from_value(c("priority", "is", json!(1))).unwrap()]
         );
     }
+
+    #[test]
+    fn todoist_style_fields() {
+        let edit = |mut row: Row, f: &dyn Fn(&mut crate::Task)| {
+            if let Row::Task(t) = &mut row {
+                f(t);
+            }
+            row
+        };
+        let parent = task(
+            1,
+            INBOX,
+            json!({"title": "Parent", "description": "plan the trip"}),
+            0,
+        );
+        let rows = vec![
+            edit(parent.clone(), &|t| {
+                t.recurrence = Some(crate::Recurrence::new("every day", false));
+                t.due = Some(crate::Due {
+                    date: TODAY.into(),
+                    time: Some("09:00".into()),
+                });
+            }),
+            edit(task(2, uid(1), json!({"title": "Book flights"}), 0), &|t| {
+                t.description = "Window seat, TRAVEL insurance".into()
+            }),
+            task(3, INBOX, json!({"title": "Travel light"}), 0),
+        ];
+        assert_eq!(run(c("recurring", "is", json!(true)), &rows), [1]);
+        assert_eq!(run(c("recurring", "is", json!(false)), &rows), [2, 3]);
+        assert_eq!(run(c("subtask", "is", json!(true)), &rows), [2]);
+        assert_eq!(run(c("subtask", "is", json!(false)), &rows), [1, 3]);
+        assert_eq!(run(c("due_time", "is_empty", Value::Null), &rows), [2, 3]);
+        // search: title and description, every word, any order, wildcards.
+        let s = |q: &str| run(c("search", "contains", json!(q)), &rows);
+        assert_eq!(s("travel"), [2, 3]);
+        assert_eq!(s("insurance seat"), [2]);
+        assert_eq!(s("trip plan"), [1]);
+        assert_eq!(s("tra*l"), [2, 3]);
+        assert_eq!(s("fl*ts book"), [2]);
+        assert_eq!(s("travel nothing"), Vec::<u128>::new());
+        assert_eq!(run(c("search", "is_not", json!("travel")), &rows), [1]);
+        // The title-only condition does not see the description.
+        assert_eq!(
+            run(c("title", "contains", json!("insurance")), &rows),
+            Vec::<u128>::new()
+        );
+    }
 }

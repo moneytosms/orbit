@@ -155,3 +155,37 @@ export function soon(events: FeedEvent[], now: Date): { today: FeedEvent[]; tomo
   const tomorrow = eventsOn(events, localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)))
   return { today, tomorrow, shown: today.length + tomorrow.length > 0 }
 }
+
+/** Most future occurrences projected per recurring Task. */
+export const MAX_OCCURRENCES = 30
+
+/**
+ * Read-only ghost events for the next occurrences of open recurring Tasks inside `[from, to)` (`YYYY-MM-DD`).
+ * `project` returns the dues after a Task's own (core's recurrence, via wasm); the Task's own due is not repeated.
+ */
+export function recurringEvents(
+  tasks: Task[],
+  range: { from: string; to: string },
+  project: (t: Task, n: number) => { date: string; time: string | null }[],
+): CalEvent[] {
+  const out: CalEvent[] = []
+  for (const t of tasks) {
+    if (!t.recurrence || !t.due || t.completed_at !== null || t.trashed_at !== null) continue
+    for (const d of project(t, MAX_OCCURRENCES)) {
+      if (d.date >= range.to) break
+      if (d.date < range.from) continue
+      const start = d.time ? `${d.date}T${d.time}` : d.date
+      out.push({
+        id: `occurrence:${t.id}:${start}`,
+        title: t.title,
+        start,
+        ...(d.time ? { end: addMinutes(start, t.duration_min ?? DEFAULT_MIN) } : {}),
+        allDay: !d.time,
+        editable: false,
+        classNames: ['cal-task', 'cal-occurrence'],
+        extendedProps: { kind: 'task', id: t.id },
+      })
+    }
+  }
+  return out
+}

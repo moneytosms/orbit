@@ -11,6 +11,14 @@ describe('keymap matcher', () => {
     expect(m.press(k('?'), 0)).toBe('help.open')
   })
 
+  it('matches Shift+T to clear the date and C to open the task', () => {
+    const m = matcher()
+    expect(m.press(k('T', { shiftKey: true }), 0)).toBe('task.cleardate')
+    expect(m.press(k('t'), 0)).toBe('task.today')
+    expect(m.press(k('c'), 0)).toBe('cursor.open')
+    expect(m.press(k('T', { typing: true }), 0)).toBeNull()
+  })
+
   it('matches g-chords within the timeout', () => {
     const m = matcher()
     expect(m.press(k('g'), 0)).toBeNull()
@@ -56,5 +64,6 @@ describe('keymap table', () => {
     expect(groupedKeys().flatMap((g) => g.keys)).toHaveLength(keymap.length)
     expect(keyLabel('g i')).toBe('g then i')
     expect(keyLabel('ctrl+k')).toBe('Ctrl K')
+    expect(keyLabel('T')).toBe('Shift T')
   })
 })

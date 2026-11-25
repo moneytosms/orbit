@@ -12,10 +12,10 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import Composer from './Composer.svelte'
   import type { BoardRow } from '$lib/Board.svelte'
-  import { feedToEvents, minutesBetween, toEvents } from '$lib/calendar'
+  import { feedToEvents, minutesBetween, recurringEvents, toEvents } from '$lib/calendar'
   import { feedEvents } from '$lib/auth'
   import { calendarData, getWeekStart, moveTask, updateTask, type Task } from '$lib/sync'
-  import { inbox_id } from '../../wasm/orbit_wasm'
+  import { inbox_id, recur_occurrences } from '../../wasm/orbit_wasm'
 
   let {
     rows,
@@ -37,6 +37,31 @@
   onMount(async () => {
     firstDay = await getWeekStart()
   })
+
+  const OCC_KEY = 'orbit.calendar.occurrences'
+  const stored = () => {
+    try {
+      return localStorage.getItem(OCC_KEY) === '1'
+    } catch {
+      return false
+    }
+  }
+  let showOccurrences = $state(stored())
+  function toggleOccurrences(on: boolean) {
+    showOccurrences = on
+    try {
+      localStorage.setItem(OCC_KEY, on ? '1' : '0')
+    } catch {
+      // Private mode: the choice lasts for this session only.
+    }
+  }
+  const project = (t: Task, n: number) => {
+    try {
+      return JSON.parse(recur_occurrences(JSON.stringify(t.recurrence), JSON.stringify(t.due), n))
+    } catch {
+      return []
+    }
+  }
 
   const day = (s: string) => s.slice(0, 10)
   const minute = (s: string) => s.slice(0, 16)
@@ -104,6 +129,7 @@
   $effect(() => {
     const r = range
     const t = tasks
+    const occ = showOccurrences
     if (!r || !cal) return
     let stale = false
     // A day of slack each side covers timezone offsets; no feed or offline just means no feed events.
@@ -111,7 +137,11 @@
     const to = Date.parse(`${r.to}T00:00:00Z`) + 86_400_000
     Promise.all([calendarData(r.from, r.to), feedEvents(from, to).catch(() => [])]).then(([d, feed]) => {
       if (stale) return
-      cal?.setOption('events', [...toEvents(t, d.routines, d.goals, d.milestones), ...feedToEvents(feed)])
+      cal?.setOption('events', [
+        ...toEvents(t, d.routines, d.goals, d.milestones),
+        ...(occ ? recurringEvents(t, r, project) : []),
+        ...feedToEvents(feed),
+      ])
     })
     return () => (stale = true)
   })
@@ -121,6 +151,11 @@
   <Dialog.Title class="sr-only">New task</Dialog.Title>
   <Composer prefill={adding ?? ''} parentId={inbox_id()} onsaved={() => ((adding = null), onchange())} />
 {/snippet}
+
+<label class="mb-2 flex items-center gap-2 text-sm text-muted">
+  <input type="checkbox" checked={showOccurrences} onchange={(e) => toggleOccurrences(e.currentTarget.checked)} />
+  Show future occurrences of recurring tasks
+</label>
 
 {#if firstDay !== null}
   <div class="orbit-cal" {@attach mount}></div>

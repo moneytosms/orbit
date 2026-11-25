@@ -768,7 +768,7 @@ export type Parsed = {
   title: string
   description: string
   tokens: {
-    kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date' | 'reminder'
+    kind: 'place' | 'goal' | 'page' | 'label' | 'priority' | 'date' | 'reminder' | 'deadline' | 'duration'
     text: string
     value: string
     start: number
@@ -783,6 +783,10 @@ export type Parsed = {
   page: string | null
   labels: string[]
   reminders?: Trigger[]
+  /** `YYYY-MM-DD` from `{date}` / `by date`; never the due date. */
+  deadline?: string | null
+  /** Minutes (1 to 1440) from `for 1h` or a time range. */
+  duration_min?: number | null
 }
 
 /** The title a quick-add line saves: the parsed title, then the text of unknown `@ $ %` names in input order. */
@@ -793,7 +797,7 @@ export const quickTitle = (p: Parsed) =>
 
 /**
  * Saves a parsed quick-add line. The Task goes under the named Area or Project, else `fallbackParentId`;
- * unknown `#labels` are created; priority, due and labels go in one `task.update`. Returns the new id.
+ * unknown `#labels` are created; priority, due, deadline, duration and labels go in one `task.update`. Returns the new id.
  */
 export async function quickAdd(p: Parsed, fallbackParentId: string, forceParent = false): Promise<string> {
   const name = p.place?.toLowerCase()
@@ -824,6 +828,8 @@ export async function quickAdd(p: Parsed, fallbackParentId: string, forceParent 
   if (p.description) patch.description = p.description
   if (p.priority != null) patch.priority = p.priority as Task['priority']
   if (p.due) patch.due = p.due
+  if (p.deadline) patch.deadline = p.deadline
+  if (p.duration_min) patch.duration_min = p.duration_min
   if (p.recurrence) patch.recurrence = p.recurrence
   if (goalId) patch.goal_id = goalId
   if (ids.size) patch.label_ids = [...ids]

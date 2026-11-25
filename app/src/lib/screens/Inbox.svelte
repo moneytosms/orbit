@@ -1,4 +1,13 @@
 <script lang="ts">
+  import {
+    groupItems,
+    groupOptions,
+    isCustom,
+    loadDisplay,
+    saveDisplay,
+    sortOptions,
+    type Display,
+  } from '$lib/listDisplay'
   import { tick } from 'svelte'
   import Check from '@lucide/svelte/icons/check'
   import Inbox from '@lucide/svelte/icons/inbox'
@@ -116,6 +125,17 @@
       boardGroups = out
     })
   })
+  let display = $state<Display>(loadDisplay(parentId))
+  $effect(() => {
+    display = loadDisplay(parentId)
+  })
+  function setDisplay(patch: Partial<Display>) {
+    display = { ...display, ...patch }
+    saveDisplay(parentId, display)
+  }
+  // Grouped or re-sorted lists are flat views of the Tasks; the manual list keeps sections and dragging.
+  const displaySections = $derived(groupItems(groups, display, today(), names))
+
   let sorts = $state<Sort[]>([])
   const sortValue = (t: Task, f: string, cx: CellCtx): string | number => {
     if (f === 'title') return t.title.toLowerCase()
@@ -296,6 +316,33 @@
   {/each}
 </div>
 
+{#if layout === 'list'}
+  <div role="group" aria-label="Display" class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">
+    <label class="flex items-center gap-1">
+      Group
+      <select
+        aria-label="Group by"
+        value={display.group}
+        onchange={(e) => setDisplay({ group: e.currentTarget.value as Display['group'] })}
+        class="h-8 rounded-md border border-line bg-surface px-2 text-text"
+      >
+        {#each groupOptions as [value, text] (value)}<option {value}>{text}</option>{/each}
+      </select>
+    </label>
+    <label class="flex items-center gap-1">
+      Sort
+      <select
+        aria-label="Sort by"
+        value={display.sort}
+        onchange={(e) => setDisplay({ sort: e.currentTarget.value as Display['sort'] })}
+        class="h-8 rounded-md border border-line bg-surface px-2 text-text"
+      >
+        {#each sortOptions as [value, text] (value)}<option {value}>{text}</option>{/each}
+      </select>
+    </label>
+  </div>
+{/if}
+
 {#if layout === 'board'}
   <Board
     groupBy="section"
@@ -309,6 +356,28 @@
   />
 {:else if layout === 'table'}
   <Table rows={tableRows as BoardRow[]} fields={[]} {sorts} onsort={(s) => (sorts = s)} onopen={openRow} />
+{:else if isCustom(display)}
+  {#if !groups.length}
+    <div class="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted">
+      <Inbox size={20} class="text-icon" />
+      <p>Nothing here. Type a task above and press Enter.</p>
+    </div>
+  {/if}
+  {#each displaySections as section (section.key)}
+    <section class="mt-2" aria-label={section.title || 'Tasks'}>
+      {#if section.title}
+        <h2 class="mb-1 px-2 py-1 text-sm font-semibold text-muted">{section.title} · {section.items.length}</h2>
+      {/if}
+      <ul>
+        {#each section.items as g (g.id)}
+          <li>
+            {@render line(g.task, 0)}
+            {#each g.subs as s (s.task.id)}{@render line(s.task, s.depth)}{/each}
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/each}
 {:else}
   {#if !groups.length && !sectionList.length}
     <div class="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted">

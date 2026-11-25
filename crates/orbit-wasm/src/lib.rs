@@ -121,11 +121,7 @@ pub fn parse_quick_add(input: &str, now: &str, known_json: &str) -> Result<Strin
 
 /// The next `n` due dates after `due` under `recurrence_json`, as a JSON array of Due. Empty for an unreadable rule.
 #[wasm_bindgen]
-pub fn recur_occurrences(
-    recurrence_json: &str,
-    due_json: &str,
-    n: u32,
-) -> Result<String, JsError> {
+pub fn recur_occurrences(recurrence_json: &str, due_json: &str, n: u32) -> Result<String, JsError> {
     let mut rec: orbit_core::recur::Recurrence = serde_json::from_str(recurrence_json)?;
     // Project the rule forward from the due date, so `every!` chains like `every`.
     rec.from_completion = false;
