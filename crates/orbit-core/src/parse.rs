@@ -479,7 +479,11 @@ fn recurrence_bounds(
                     "year" | "years" => SpanUnit::Years,
                     _ => break,
                 };
-                let Some(n) = rest[0].parse::<i64>().ok().filter(|n| (1..=999).contains(n)) else {
+                let Some(n) = rest[0]
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|n| (1..=999).contains(n))
+                else {
                     break;
                 };
                 *span = Some((n, unit));
@@ -829,7 +833,11 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     out.description = description;
     if let (Some(rec), Some(today)) = (&mut out.recurrence, today) {
         // A series starting later first lands on or after its start.
-        let from = rec.start.as_deref().and_then(parse_ymd).map_or(today, |s| s.max(today));
+        let from = rec
+            .start
+            .as_deref()
+            .and_then(parse_ymd)
+            .map_or(today, |s| s.max(today));
         match &mut out.due {
             Some(due) => due.time = due.time.take().or(rec_time),
             None => {
@@ -843,7 +851,11 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         }
         // `for 3 weeks` counts from the first occurrence.
         if let Some((n, unit)) = rec_span {
-            let first = out.due.as_ref().and_then(|d| parse_ymd(&d.date)).unwrap_or(from);
+            let first = out
+                .due
+                .as_ref()
+                .and_then(|d| parse_ymd(&d.date))
+                .unwrap_or(from);
             let end = match unit {
                 SpanUnit::Days => first + n,
                 SpanUnit::Weeks => first + 7 * n,
@@ -1133,6 +1145,99 @@ mod tests {
         assert_eq!(due("x in 1 day"), d("2026-11-20", None));
         assert_eq!(due("x in 2 weeks"), d("2026-12-03", None));
         assert_eq!(due("x in many days"), None);
+    }
+
+    #[test]
+    fn richer_recurrence_rules() {
+        let due_of = |r: &Parsed| r.due.clone().map(|x| (x.date, x.time));
+        let rule = |s: &str| p(s).recurrence.map(|r| r.rule);
+        let r = p("water every other fri");
+        assert_eq!(r.title, "water");
+        assert_eq!(
+            r.recurrence.clone().map(|r| r.rule),
+            Some("2 weeks on fri".into())
+        );
+        assert_eq!(due_of(&r), d("2026-11-20", None));
+        assert_eq!(rule("x every other day"), Some("2 days".into()));
+        assert_eq!(rule("x every quarter"), Some("3 months".into()));
+        assert_eq!(rule("x quarterly"), None);
+        assert_eq!(rule("x every 3 workdays"), Some("3 workdays".into()));
+        let r = p("x every 2nd wed");
+        assert_eq!(r.recurrence.clone().map(|r| r.rule), Some("2nd wed".into()));
+        assert_eq!(due_of(&r), d("2026-12-09", None));
+        assert_eq!(r.title, "x");
+        assert_eq!(due_of(&p("x every last fri")), d("2026-11-27", None));
+        assert_eq!(due_of(&p("x every first workday")), d("2026-12-01", None));
+        let r = p("x every last workday at 9am");
+        assert_eq!(
+            r.recurrence.clone().map(|r| r.rule),
+            Some("last workday".into())
+        );
+        assert_eq!(due_of(&r), d("2026-11-30", Some("09:00")));
+        // A plain ordinal is still the day of the month.
+        assert_eq!(rule("x every 2nd"), Some("2nd".into()));
+    }
+
+    #[test]
+    fn recurrence_start_and_end() {
+        let due_of = |r: &Parsed| r.due.clone().map(|x| (x.date, x.time));
+        let r = p("x every day until dec 25");
+        assert_eq!(r.title, "x");
+        let rec = r.recurrence.clone().unwrap();
+        assert_eq!(rec.end.as_deref(), Some("2026-12-25"));
+        assert_eq!(rec.start, None);
+        assert_eq!(due_of(&r), d("2026-11-19", None));
+
+        let r = p("x every week starting dec 1");
+        assert_eq!(
+            r.recurrence.clone().unwrap().start.as_deref(),
+            Some("2026-12-01")
+        );
+        assert_eq!(due_of(&r), d("2026-12-01", None));
+
+        let r = p("x every mon from dec 1 ending dec 31 p1");
+        let rec = r.recurrence.clone().unwrap();
+        assert_eq!(
+            (rec.start.as_deref(), rec.end.as_deref()),
+            (Some("2026-12-01"), Some("2026-12-31"))
+        );
+        assert_eq!(due_of(&r), d("2026-12-07", None));
+        assert_eq!(r.title, "x");
+        assert_eq!(r.priority, Some(1));
+
+        let r = p("x every day for 3 weeks");
+        assert_eq!(
+            r.recurrence.clone().unwrap().end.as_deref(),
+            Some("2026-12-09")
+        );
+        assert_eq!(r.title, "x");
+        let r = p("x every week for 2 months");
+        assert_eq!(
+            r.recurrence.clone().unwrap().end.as_deref(),
+            Some("2027-01-18")
+        );
+        // Month-end clamping: Jan 31 + 1 month is Feb 28, so the last day is Feb 27.
+        let r = p("x every day starting 2027-01-31 for 1 month");
+        assert_eq!(
+            r.recurrence.clone().unwrap().end.as_deref(),
+            Some("2027-02-27")
+        );
+        let r = p("x every year for 1 year");
+        assert_eq!(
+            r.recurrence.clone().unwrap().end.as_deref(),
+            Some("2027-11-18")
+        );
+
+        // Words that are not a bound stay in the title; `every` never makes a due date.
+        let r = p("x every day from home");
+        assert_eq!(r.title, "x from home");
+        assert_eq!(r.recurrence.clone().unwrap().end, None);
+        let r = p("x every day for fun");
+        assert_eq!(r.title, "x for fun");
+        let r = p("x every day until");
+        assert_eq!(r.title, "x until");
+        // Without the keyword after a rule nothing is read as a bound.
+        assert_eq!(p("x until dec 25").recurrence, None);
     }
 
     #[test]
@@ -1485,10 +1590,11 @@ mod tests {
         let r = p("report by friday today");
         assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
         assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-19"));
-        // Only the first deadline counts; the second `by` stays text.
+        // Only the first deadline counts; the second date becomes the due date.
         let r = p("x by friday by monday");
         assert_eq!(r.deadline.as_deref(), Some("2026-11-20"));
-        assert_eq!(r.title, "x by monday");
+        assert_eq!(r.title, "x by");
+        assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-23"));
     }
 
     #[test]
@@ -1543,7 +1649,10 @@ mod tests {
         assert_eq!(r.title, "standup");
         assert_eq!(r.duration_min, Some(60));
         let due = r.due.unwrap();
-        assert_eq!((due.date.as_str(), due.time.as_deref()), ("2026-11-20", Some("15:00")));
+        assert_eq!(
+            (due.date.as_str(), due.time.as_deref()),
+            ("2026-11-20", Some("15:00"))
+        );
         assert_eq!(r.tokens.last().unwrap().kind, Kind::Duration);
         assert_eq!(r.tokens.last().unwrap().text, "3-4pm");
         let range = |t: &str| {
@@ -1573,7 +1682,13 @@ mod tests {
         let r = p("x 8-9am");
         assert_eq!(r.due.map(|d| d.date).as_deref(), Some("2026-11-20"));
         // Not ranges: bare numbers, backwards, across midnight, dates.
-        for text in ["x 9-10", "x 4-3pm", "x 11pm-1am", "x 2026-11-19", "x pages 3-4", "x from 9 to"] {
+        for text in [
+            "x 9-10",
+            "x 11pm-1am",
+            "x 2026-11-19",
+            "x pages 3-4",
+            "x from 9 to",
+        ] {
             let r = p(text);
             assert_eq!(r.duration_min, None, "{text}");
         }
@@ -1597,7 +1712,7 @@ mod tests {
         assert_eq!(r.title, "water plants");
         assert!(r.recurrence.is_some());
         assert_eq!(r.duration_min, Some(15));
-        let r = p("standup every weekday 9-9:15");
+        let r = p("standup every weekday 9:00-9:15");
         assert!(r.recurrence.is_some());
         assert_eq!(r.duration_min, Some(15));
         assert_eq!(r.due.and_then(|d| d.time).as_deref(), Some("09:00"));

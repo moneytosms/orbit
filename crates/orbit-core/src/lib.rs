@@ -3005,6 +3005,38 @@ mod tests {
     }
 
     #[test]
+    fn a_series_past_its_end_completes_like_any_task() {
+        let Row::Task(mut t) = recurring("week", false, "2026-11-19") else {
+            panic!()
+        };
+        // The old wire format has no bounds.
+        assert_eq!(t.recurrence.as_ref().unwrap().end, None);
+        assert!(
+            !serde_json::to_string(&t.recurrence)
+                .unwrap()
+                .contains("end")
+        );
+        t.recurrence.as_mut().unwrap().end = Some("2026-12-03".into());
+        let wire: Recurrence =
+            serde_json::from_str(&serde_json::to_string(&t.recurrence).unwrap()).unwrap();
+        assert_eq!(Some(wire), t.recurrence);
+        // 11-19 -> 11-26 -> 12-03 are inside; the one after is not.
+        let (t, _) = complete_effects(t, &complete_on(Some("2026-11-19"), 5000));
+        assert_eq!(t.due.as_ref().unwrap().date, "2026-11-26");
+        let (t, _) = complete_effects(t, &complete_on(Some("2026-11-26"), 6000));
+        assert_eq!(t.due.as_ref().unwrap().date, "2026-12-03");
+        assert_eq!(t.completed_at, None);
+        let (done, log) = complete_effects(t, &complete_on(Some("2026-12-03"), 7000));
+        assert_eq!(done.completed_at, Some(7000));
+        assert_eq!(done.due.as_ref().unwrap().date, "2026-12-03");
+        let log = log.unwrap();
+        assert_eq!((log.expected_due, log.restore_due), (None, None));
+        // Completing it again changes and logs nothing.
+        let (again, log) = complete_effects(done.clone(), &complete_on(Some("2026-12-04"), 8000));
+        assert_eq!((again, log), (done, None));
+    }
+
+    #[test]
     fn a_missed_recurring_task_stays_due_until_it_is_completed() {
         let row = recurring("day", false, "2026-11-18");
         let Row::Task(t) = &row else { panic!() };

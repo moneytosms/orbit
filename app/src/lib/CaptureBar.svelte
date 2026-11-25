@@ -5,27 +5,32 @@
   // and anywhere else this is used.
   import Bell from '@lucide/svelte/icons/bell'
   import Calendar from '@lucide/svelte/icons/calendar'
+  import CalendarClock from '@lucide/svelte/icons/calendar-clock'
   import Flag from '@lucide/svelte/icons/flag'
+  import Hourglass from '@lucide/svelte/icons/hourglass'
   import Inbox from '@lucide/svelte/icons/inbox'
   import Tag from '@lucide/svelte/icons/tag'
   import Target from '@lucide/svelte/icons/target'
   import type { Component } from 'svelte'
-  import ChevronLeft from '@lucide/svelte/icons/chevron-left'
-  import ChevronRight from '@lucide/svelte/icons/chevron-right'
+  import MonthCalendar from './MonthCalendar.svelte'
   import {
     dateQuick,
     dateText,
+    deadlineLabel,
+    deadlineQuick,
+    deadlineText,
     dueLabel,
-    monthGrid,
+    durationLabel,
+    durationQuick,
+    durationText,
     reminderQuick,
     setToken,
-    shiftMonth,
     toggleToken,
   } from './captureEdit'
   import type { Parsed } from './sync'
 
   type Known = { areas: string[]; goals: string[]; labels: string[]; pages: string[] }
-  type Panel = 'place' | 'date' | 'priority' | 'labels' | 'goal' | 'reminder'
+  type Panel = 'place' | 'date' | 'deadline' | 'duration' | 'priority' | 'labels' | 'goal' | 'reminder'
 
   let {
     draft = $bindable(),
@@ -37,23 +42,7 @@
   let open: Panel | null = $state(null)
   let pickDate = $state('')
   let pickTime = $state('')
-  const now = new Date()
-  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  let view = $state({ y: now.getFullYear(), m: now.getMonth() + 1 })
-  const grid = $derived(monthGrid(view.y, view.m))
-  const monthTitle = $derived(
-    new Date(Date.UTC(view.y, view.m - 1, 1)).toLocaleDateString('en-GB', {
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }),
-  )
-  // Opening the date panel shows the month of the current due date, or this month.
-  $effect(() => {
-    if (open !== 'date') return
-    const d = parsed.due?.date.split('-').map(Number)
-    view = d ? { y: d[0], m: d[1] } : { y: now.getFullYear(), m: now.getMonth() + 1 }
-  })
+  let customMin = $state('')
 
   const toggle = (p: Panel) => (open = open === p ? null : p)
   // A pick edits the line; the input keeps focus so typing carries on.
@@ -84,6 +73,20 @@
       label: parsed.due ? dueLabel(parsed.due) : 'Date',
       icon: Calendar,
       active: !!parsed.due,
+      show: true,
+    },
+    {
+      id: 'deadline',
+      label: parsed.deadline ? `By ${deadlineLabel(parsed.deadline)}` : 'Deadline',
+      icon: CalendarClock,
+      active: !!parsed.deadline,
+      show: true,
+    },
+    {
+      id: 'duration',
+      label: parsed.duration_min ? durationLabel(parsed.duration_min) : 'Duration',
+      icon: Hourglass,
+      active: !!parsed.duration_min,
       show: true,
     },
     {
@@ -161,47 +164,15 @@
           <button type="button" class={optClass} onclick={() => set('date', '')}>No date</button>
         {/if}
       </div>
-      <div class="w-fit" role="group" aria-label="Calendar">
-        <div class="mb-1 flex items-center justify-between gap-2 text-[0.8125rem] font-medium">
-          <button
-            type="button"
-            class="grid size-7 place-items-center rounded-md hover:bg-hover"
-            aria-label="Previous month"
-            onclick={() => (view = shiftMonth(view.y, view.m, -1))}><ChevronLeft size={14} /></button
-          >
-          <span>{monthTitle}</span>
-          <button
-            type="button"
-            class="grid size-7 place-items-center rounded-md hover:bg-hover"
-            aria-label="Next month"
-            onclick={() => (view = shiftMonth(view.y, view.m, 1))}><ChevronRight size={14} /></button
-          >
-        </div>
-        <div class="grid grid-cols-7 gap-0.5 text-center text-xs">
-          {#each ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as d, i (i)}
-            <span class="py-0.5 text-muted" aria-hidden="true">{d}</span>
-          {/each}
-          {#each grid as c (c.date)}
-            <button
-              type="button"
-              class="grid size-7 place-items-center rounded-md hover:bg-hover {c.date === parsed.due?.date ||
-              c.date === pickDate
-                ? 'bg-accent text-accent-ink'
-                : c.date === todayIso
-                  ? 'font-semibold text-accent-text'
-                  : c.inMonth
-                    ? ''
-                    : 'text-muted opacity-60'}"
-              aria-label={c.date}
-              aria-pressed={c.date === parsed.due?.date}
-              onclick={() => {
-                pickDate = c.date
-                applyPicked()
-              }}>{Number(c.date.slice(8))}</button
-            >
-          {/each}
-        </div>
-      </div>
+      <MonthCalendar
+        selected={parsed.due?.date}
+        pending={pickDate}
+        initial={parsed.due?.date}
+        onpick={(d) => {
+          pickDate = d
+          applyPicked()
+        }}
+      />
       <div class="flex flex-wrap items-center gap-2 text-[0.8125rem]">
         <input
           type="time"
@@ -211,6 +182,64 @@
         />
         <button type="button" class={optClass} disabled={!pickDate && !pickTime} onclick={applyPicked}>Set</button>
       </div>
+    </div>
+  {:else if open === 'deadline'}
+    <div class="flex flex-col gap-2" aria-label="Deadline">
+      <div class="flex flex-wrap items-center gap-1">
+        {#each deadlineQuick as q (q.text)}
+          <button type="button" class={optClass} onclick={() => set('deadline', deadlineText(q.text))}>{q.label}</button
+          >
+        {/each}
+        {#if parsed.deadline}
+          <button type="button" class={optClass} onclick={() => set('deadline', '')}>No deadline</button>
+        {/if}
+      </div>
+      <MonthCalendar
+        selected={parsed.deadline ?? ''}
+        initial={parsed.deadline ?? parsed.due?.date}
+        onpick={(d) => set('deadline', deadlineText(d))}
+      />
+    </div>
+  {:else if open === 'duration'}
+    <div class="flex flex-col gap-2" aria-label="Duration">
+      <div class="flex flex-wrap items-center gap-1">
+        {#each durationQuick as q (q.minutes)}
+          <button
+            type="button"
+            aria-pressed={parsed.duration_min === q.minutes}
+            class={parsed.duration_min === q.minutes ? optOn : optClass}
+            onclick={() => set('duration', durationText(q.minutes))}>{q.label}</button
+          >
+        {/each}
+        {#if parsed.duration_min}
+          <button type="button" class={optClass} onclick={() => set('duration', '')}>No duration</button>
+        {/if}
+      </div>
+      <form
+        class="flex flex-wrap items-center gap-2 text-[0.8125rem]"
+        onsubmit={(e) => {
+          e.preventDefault()
+          const n = Math.round(Number(customMin))
+          if (n >= 1 && n <= 1440) {
+            set('duration', durationText(n))
+            customMin = ''
+          }
+        }}
+      >
+        <input
+          type="number"
+          min="1"
+          max="1440"
+          inputmode="numeric"
+          bind:value={customMin}
+          aria-label="Custom duration in minutes"
+          placeholder="Minutes"
+          class="h-8 w-24 rounded-md border border-line bg-surface px-2"
+        />
+        <button type="submit" class={optClass} disabled={!(Number(customMin) >= 1 && Number(customMin) <= 1440)}
+          >Set</button
+        >
+      </form>
     </div>
   {:else if open === 'priority'}
     <div class="flex flex-wrap gap-1" aria-label="Priority">

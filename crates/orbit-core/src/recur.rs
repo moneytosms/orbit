@@ -651,8 +651,8 @@ mod tests {
         assert_eq!(step("last fri", "2026-11-27"), "2026-12-25");
         assert_eq!(step("last fri", "2026-12-25"), "2027-01-29");
         assert_eq!(step("4th sat", "2026-11-01"), "2026-11-28");
-        // A 5th weekday skips the months without one (Feb 2026 has four of each).
-        assert_eq!(step("5th mon", "2026-11-30"), "2026-12-28".replace("12-28", "2027-03-29").replace("2026-", ""));
+        // A 5th weekday skips the months without one.
+        assert_eq!(step("5th mon", "2026-11-30"), "2027-03-29");
         assert_eq!(step("last sun", "2028-02-01"), "2028-02-27");
         // Leap day itself.
         assert_eq!(step("last tue", "2028-02-15"), "2028-02-29");
@@ -689,11 +689,14 @@ mod tests {
         assert_eq!(first("2 weeks on thu"), "2026-11-19");
         assert_eq!(first("2 weeks on wed"), "2026-11-25");
         assert_eq!(first("2nd wed"), "2026-12-09");
-        assert_eq!(first("3rd thu"), "2026-11-19".replace("19", "19"));
+        assert_eq!(first("3rd thu"), "2026-11-19");
         assert_eq!(first("last fri"), "2026-11-27");
         assert_eq!(first("last workday"), "2026-11-30");
         let sat = parse_ymd("2026-11-21").unwrap();
-        assert_eq!(fmt_date(first_day("3 workdays", sat).unwrap()), "2026-11-23");
+        assert_eq!(
+            fmt_date(first_day("3 workdays", sat).unwrap()),
+            "2026-11-23"
+        );
     }
 
     #[test]
@@ -713,7 +716,8 @@ mod tests {
         assert_eq!(next(&r, &n, "2026-12-03"), n);
         // From completion: counted from today.
         r.from_completion = true;
-        assert_eq!(advance(&r, &due, "2026-11-28").unwrap().date, "2026-12-05".replace("05", "05"));
+        assert_eq!(advance(&r, &due, "2026-11-25").unwrap().date, "2026-12-02");
+        assert_eq!(advance(&r, &due, "2026-11-28"), None);
     }
 
     #[test]

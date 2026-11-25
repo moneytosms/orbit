@@ -35,7 +35,7 @@ import { defaultLayout } from './dashboard'
 import { clearUpgrade, setUpgrade, type UpgradeRequired } from './updates'
 
 export type Due = { date: string; time?: string | null }
-export type Recurrence = { rule: string; from_completion: boolean }
+export type Recurrence = { rule: string; from_completion: boolean; start?: string; end?: string }
 /** An offset before the due (timed) or deadline, or an absolute local `YYYY-MM-DDTHH:MM`. */
 export type Trigger = { kind: 'before'; field: 'due' | 'deadline'; minutes: number } | { kind: 'at'; at: string }
 export type Reminder = Trigger & { id: string; spent: boolean }

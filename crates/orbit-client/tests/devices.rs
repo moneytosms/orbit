@@ -51,7 +51,12 @@ fn capture_sets_deadline_and_duration_without_changing_due() {
     assert_eq!(t.priority, 2);
 
     let (id, title) = c
-        .capture("gift for Anna written by Tom", None, "2026-11-19T10:00", 3000)
+        .capture(
+            "gift for Anna written by Tom",
+            None,
+            "2026-11-19T10:00",
+            3000,
+        )
         .unwrap();
     assert_eq!(title, "gift for Anna written by Tom");
     let t = c.task(id).unwrap().unwrap();

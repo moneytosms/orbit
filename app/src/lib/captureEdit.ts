@@ -47,6 +47,42 @@ export const dateQuick = [
   { label: 'Next week', text: 'next week' },
 ] as const
 
+/** A deadline as typed text: `{<date phrase>}`. Dates from the calendar are `{YYYY-MM-DD}`. */
+export const deadlineText = (phrase: string) => `{${phrase}}`
+
+/** Natural-language quick picks for the deadline (the braces are added by `deadlineText`). */
+export const deadlineQuick = [
+  { label: 'Today', text: 'today' },
+  { label: 'Tomorrow', text: 'tomorrow' },
+  { label: 'This weekend', text: 'this weekend' },
+  { label: 'Next week', text: 'next week' },
+  { label: 'End of month', text: 'end of month' },
+] as const
+
+/** `2026-12-05` as `Sat 5 Dec`. */
+export const deadlineLabel = (date: string) => dueLabel({ date, time: null })
+
+/** A duration as typed text the parser reads back: `for 45m`, `for 1h`, `for 1h30m`. */
+export function durationText(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `for ${h ? `${h}h` : ''}${m || !h ? `${m}m` : ''}`
+}
+
+/** `90` as `1h 30m`, `45` as `45m`, `120` as `2h`. */
+export function durationLabel(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return [h ? `${h}h` : '', m || !h ? `${m}m` : ''].filter(Boolean).join(' ')
+}
+
+export const durationQuick = [
+  { label: '15m', minutes: 15 },
+  { label: '30m', minutes: 30 },
+  { label: '1h', minutes: 60 },
+  { label: '2h', minutes: 120 },
+] as const
+
 export const reminderQuick = [
   { label: '10 min before', minutes: '10', text: '!10m' },
   { label: '30 min before', minutes: '30', text: '!30m' },

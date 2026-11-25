@@ -558,7 +558,7 @@ fn resolve(a: &Clock, b: &Clock) -> Option<(u32, u32)> {
         }
         (None, None) => (plain(a), plain(b)),
     };
-    (e > s && e - s <= DURATION_MAX_MIN).then_some((s, e - s))
+    (e > s && e - s <= DURATION_MAX_MIN).then(|| (s, e - s))
 }
 
 fn range_from(a: &Clock, b: &Clock, used: usize) -> Option<Range> {
