@@ -18,6 +18,7 @@
     type Parsed,
   } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
+  import { knownJson, quickAddPrefs } from '$lib/captureKnown'
 
   let { open = $bindable(false), parentId }: { open: boolean; parentId: string } = $props()
 
@@ -92,7 +93,9 @@
         labels: all.map((l) => l.name),
         pages: ps.map((x) => x.title),
       }
-      const parsed: Parsed = JSON.parse(parse_quick_add(t.slice(1), localNow(), JSON.stringify(known)))
+      const parsed: Parsed = JSON.parse(
+        parse_quick_add(t.slice(1), localNow(), knownJson(known, await quickAddPrefs())),
+      )
       const title = quickTitle(parsed).trim()
       if (title) {
         out = [
@@ -120,16 +123,14 @@
           out = [
             {
               title: `${rows.length} Task${rows.length === 1 ? '' : 's'}`,
-              items: rows
-                .slice(0, 50)
-                .map((r) =>
-                  hitItem({
-                    id: r.id,
-                    kind: r.kind,
-                    title: (r as { title?: string; name?: string }).title ?? (r as { name?: string }).name ?? '',
-                    score: 0,
-                  }),
-                ),
+              items: rows.slice(0, 50).map((r) =>
+                hitItem({
+                  id: r.id,
+                  kind: r.kind,
+                  title: (r as { title?: string; name?: string }).title ?? (r as { name?: string }).name ?? '',
+                  score: 0,
+                }),
+              ),
             },
           ]
         } catch (e) {

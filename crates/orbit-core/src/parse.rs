@@ -19,6 +19,40 @@ pub struct Known {
     pub pages: Vec<String>,
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Date settings from Settings; missing fields mean the built-in behaviour.
+    #[serde(default)]
+    pub prefs: Prefs,
+}
+
+/// Date settings. The defaults are the built-in behaviour.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct Prefs {
+    /// Turns off due, deadline, `for` duration and time-range phrases. Explicit tokens (`!`
+    /// reminders, `{date}`, sigils, priority, `every` rules) keep working.
+    #[serde(default)]
+    pub dates_off: bool,
+    /// Weekday that `next week` lands on: 0 = Monday .. 6 = Sunday. `None` is Monday.
+    #[serde(default)]
+    pub next_week_day: Option<u8>,
+    /// First day of the weekend, same encoding. `None` is Saturday.
+    #[serde(default)]
+    pub weekend_day: Option<u8>,
+}
+
+impl Prefs {
+    /// `next week` target, 0 = Monday. Values above 6 fall back to the default.
+    pub(crate) fn next_week_target(&self) -> i64 {
+        day_or(self.next_week_day, 0)
+    }
+
+    /// `this weekend` / `next weekend` target, 0 = Monday. Values above 6 fall back to the default.
+    pub(crate) fn weekend_target(&self) -> i64 {
+        day_or(self.weekend_day, 5)
+    }
+}
+
+fn day_or(day: Option<u8>, default: i64) -> i64 {
+    day.filter(|d| *d <= 6).map_or(default, i64::from)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -400,14 +434,19 @@ pub(crate) fn month_day(today: i64, m: i64, d: i64) -> Option<i64> {
     None
 }
 
-/// A date phrase at the start of `w` (lowercased words): (day number, words used).
+/// [`date_phrase_with`] with the default settings (filters do not read Settings).
 pub(crate) fn date_phrase(w: &[String], today: i64) -> Option<(i64, usize)> {
+    date_phrase_with(w, today, &Prefs::default())
+}
+
+/// A date phrase at the start of `w` (lowercased words): (day number, words used).
+pub(crate) fn date_phrase_with(w: &[String], today: i64, prefs: &Prefs) -> Option<(i64, usize)> {
     let first = w[0].as_str();
     match first {
         "today" => return Some((today, 1)),
         "tomorrow" => return Some((today + 1, 1)),
         "next" if w.get(1).map(String::as_str) == Some("week") => {
-            return Some((today + 7 - weekday(today), 2));
+            return Some((today + 7 - weekday(today) + prefs.next_week_target(), 2));
         }
         "in" => {
             let n: i64 = w.get(1)?.parse().ok().filter(|n| (1..=9999).contains(n))?;
@@ -452,6 +491,7 @@ enum SpanUnit {
 fn recurrence_bounds(
     w: &[String],
     today: i64,
+    prefs: &Prefs,
     rec: &mut Recurrence,
     span: &mut Option<(i64, SpanUnit)>,
 ) -> usize {
@@ -460,7 +500,7 @@ fn recurrence_bounds(
         let rest = &w[used + 1..];
         match word.as_str() {
             "starting" | "from" | "until" | "ending" | "till" | "through" if !rest.is_empty() => {
-                let Some((day, n)) = date_phrase(rest, today) else {
+                let Some((day, n)) = date_phrase_with(rest, today, prefs) else {
                     break;
                 };
                 let date = fmt_date(day);
@@ -551,7 +591,38 @@ pub(crate) fn priority_word(w: &str) -> Option<u8> {
 
 /// A `!` reminder at the start of `w`: the trigger, the token value (minutes, or
 /// `YYYY-MM-DDTHH:MM`) and the words used.
-fn reminder_token(w: &[String], now: &str, today: Option<i64>) -> Option<(Trigger, String, usize)> {
+/// `!later` (three hours from now) and the day parts `!morning` (09:00), `!afternoon` (14:00),
+/// `!evening` (18:00), `!tonight` (20:00) and `!night` (21:00). The day parts are the next time
+/// the clock shows them, tomorrow when already passed. Returns local `YYYY-MM-DDTHH:MM`.
+fn reminder_shortcut(word: &str, today: i64, now_min: u32) -> Option<String> {
+    let (day, clock) = if word == "later" {
+        let t = now_min + 180;
+        (today + i64::from(t / 1440), t % 1440)
+    } else {
+        let clock = match word {
+            "morning" => 9 * 60,
+            "afternoon" => 14 * 60,
+            "evening" => 18 * 60,
+            "tonight" => 20 * 60,
+            "night" => 21 * 60,
+            _ => return None,
+        };
+        (today + i64::from(clock <= now_min), clock)
+    };
+    Some(format!(
+        "{}T{:02}:{:02}",
+        fmt_date(day),
+        clock / 60,
+        clock % 60
+    ))
+}
+
+fn reminder_token(
+    w: &[String],
+    now: &str,
+    today: Option<i64>,
+    prefs: &Prefs,
+) -> Option<(Trigger, String, usize)> {
     let rest = &w[0][1..];
     if let Some(n) = rest
         .strip_suffix(['m', 'h', 'd'])
@@ -574,9 +645,12 @@ fn reminder_token(w: &[String], now: &str, today: Option<i64>) -> Option<(Trigge
         ));
     }
     let today = today?;
+    if let Some(at) = reminder_shortcut(rest, today, now_minutes(now)) {
+        return Some((Trigger::At { at: at.clone() }, at, 1));
+    }
     let mut ph: Vec<String> = vec![rest.to_string()];
     ph.extend(w[1..].iter().cloned());
-    let found = when(&ph, today, now_minutes(now), false)?;
+    let found = when(&ph, today, now_minutes(now), false, prefs)?;
     let at = format!("{}T{}", fmt_date(found.day), found.time?);
     Some((Trigger::At { at: at.clone() }, at, found.used))
 }
@@ -597,7 +671,7 @@ fn deadline_or_duration(
     ws: &[Word],
     lower: &[String],
     i: usize,
-    (today, now_min): (Option<i64>, u32),
+    (today, now_min, prefs): (Option<i64>, u32, &Prefs),
     (want_deadline, want_duration): (bool, bool),
     range_start: &mut Option<String>,
 ) -> Option<(Kind, String, usize)> {
@@ -610,20 +684,21 @@ fn deadline_or_duration(
             let inner = input[ws[i].start + 1..ws[j].end - 1].to_lowercase();
             let words: Vec<String> = inner.split_whitespace().map(str::to_string).collect();
             if !words.is_empty()
-                && let Some(f) = when_date(&words, today, now_min)
+                && let Some(f) = when_date(&words, today, now_min, prefs)
                 && f.used == words.len()
             {
                 return Some((Kind::Deadline, day(f.day), j + 1 - i));
             }
         }
         if w == "by"
+            && !prefs.dates_off
             && i + 1 < lower.len()
-            && let Some(f) = when_date(&lower[i + 1..], today, now_min)
+            && let Some(f) = when_date(&lower[i + 1..], today, now_min, prefs)
         {
             return Some((Kind::Deadline, day(f.day), 1 + f.used));
         }
     }
-    if want_duration {
+    if want_duration && !prefs.dates_off {
         if w == "for"
             && i + 1 < lower.len()
             && let Some((mins, used)) = duration(&lower[i + 1..])
@@ -729,7 +804,8 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         }
         if first == '!'
             && w.text.len() > 1
-            && let Some((trigger, value, used)) = reminder_token(&lower[i..], now, today)
+            && let Some((trigger, value, used)) =
+                reminder_token(&lower[i..], now, today, &known.prefs)
         {
             let end = ws[i + used - 1].end;
             out.tokens.push(Token {
@@ -762,7 +838,7 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
             &ws,
             &lower,
             i,
-            (today, now_min),
+            (today, now_min, &known.prefs),
             (out.deadline.is_none(), out.duration_min.is_none()),
             &mut range_start,
         ) {
@@ -790,7 +866,13 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
                 let mut rec = Recurrence::new(rule, lower[i] == "every!");
                 i += 1 + used;
                 if let Some(today) = today {
-                    i += recurrence_bounds(&lower[i..], today, &mut rec, &mut rec_span);
+                    i += recurrence_bounds(
+                        &lower[i..],
+                        today,
+                        &known.prefs,
+                        &mut rec,
+                        &mut rec_span,
+                    );
                 }
                 out.recurrence = Some(rec);
                 rec_time = time;
@@ -799,8 +881,9 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         }
         if out.due.is_none()
             && !recurring
+            && !known.prefs.dates_off
             && let Some(today) = today
-            && let Some(found) = when(&lower[i..], today, now_min, true)
+            && let Some(found) = when(&lower[i..], today, now_min, true, &known.prefs)
         {
             {
                 let date = fmt_date(found.day);
@@ -895,6 +978,7 @@ mod tests {
             goals: vec!["Get Fit".into()],
             pages: vec!["Trip Notes".into()],
             labels: vec!["errand".into(), "deep work".into()],
+            prefs: Prefs::default(),
         }
     }
 
@@ -1734,5 +1818,245 @@ mod tests {
         assert_eq!((r.deadline, r.duration_min), (None, None));
         let kinds = serde_json::to_string(&[Kind::Deadline, Kind::Duration]).unwrap();
         assert_eq!(kinds, r#"["deadline","duration"]"#);
+    }
+
+    fn pp(input: &str, prefs: Prefs) -> Parsed {
+        parse(input, NOW, &Known { prefs, ..known() })
+    }
+
+    fn date_of(input: &str, prefs: Prefs) -> Option<String> {
+        pp(input, prefs).due.map(|d| d.date)
+    }
+
+    fn off() -> Prefs {
+        Prefs {
+            dates_off: true,
+            ..Prefs::default()
+        }
+    }
+
+    fn bang_at(input: &str, now: &str) -> String {
+        match &parse(input, now, &known()).reminders[..] {
+            [Trigger::At { at }] => at.clone(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn later_is_three_hours_from_now_and_rolls_over_midnight() {
+        assert_eq!(bang_at("x !later", NOW), "2026-11-19T13:00");
+        assert_eq!(bang_at("x !later", "2026-11-19T21:00"), "2026-11-20T00:00");
+        assert_eq!(bang_at("x !later", "2026-11-19T23:30"), "2026-11-20T02:30");
+        assert_eq!(bang_at("x !later", "2026-11-19T00:00"), "2026-11-19T03:00");
+        let r = p("x !Later p1");
+        assert_eq!(r.title, "x");
+        assert_eq!(r.priority, Some(1));
+        let t = &r.tokens[0];
+        assert_eq!(
+            (t.kind, t.text.as_str(), t.value.as_str()),
+            (Kind::Reminder, "!Later", "2026-11-19T13:00")
+        );
+    }
+
+    #[test]
+    fn day_part_shortcuts_are_the_next_time_the_clock_shows_them() {
+        // At 10:00 each is today while still ahead, tomorrow once passed.
+        assert_eq!(bang_at("x !morning", NOW), "2026-11-20T09:00");
+        assert_eq!(bang_at("x !afternoon", NOW), "2026-11-19T14:00");
+        assert_eq!(bang_at("x !evening", NOW), "2026-11-19T18:00");
+        assert_eq!(bang_at("x !tonight", NOW), "2026-11-19T20:00");
+        assert_eq!(bang_at("x !night", NOW), "2026-11-19T21:00");
+        // On the hour counts as passed, like a bare `9am`.
+        assert_eq!(
+            bang_at("x !morning", "2026-11-19T09:00"),
+            "2026-11-20T09:00"
+        );
+        assert_eq!(
+            bang_at("x !afternoon", "2026-11-19T14:30"),
+            "2026-11-20T14:00"
+        );
+        assert_eq!(
+            bang_at("x !evening", "2026-11-19T19:00"),
+            "2026-11-20T18:00"
+        );
+        assert_eq!(
+            bang_at("x !tonight", "2026-11-19T21:00"),
+            "2026-11-20T20:00"
+        );
+        assert_eq!(bang_at("x !night", "2026-11-19T22:00"), "2026-11-20T21:00");
+        assert_eq!(
+            bang_at("x !MORNING", "2026-11-19T08:00"),
+            "2026-11-19T09:00"
+        );
+    }
+
+    #[test]
+    fn existing_bang_forms_keep_working_next_to_shortcuts() {
+        let r = p("call mom !30m !later !morning");
+        assert_eq!(r.title, "call mom");
+        assert_eq!(r.reminders.len(), 3);
+        assert_eq!(
+            r.reminders[0],
+            Trigger::Before {
+                field: Anchor::Due,
+                minutes: 30
+            }
+        );
+        assert_eq!(
+            r.reminders[1],
+            Trigger::At {
+                at: "2026-11-19T13:00".into()
+            }
+        );
+        assert_eq!(bang_at("x !tomorrow morning", NOW), "2026-11-20T09:00");
+        assert_eq!(bang_at("x !fri 9am", NOW), "2026-11-20T09:00");
+        assert_eq!(bang_at("x !9am", NOW), "2026-11-20T09:00");
+        assert_eq!(bang_at("x !14:00", NOW), "2026-11-19T14:00");
+        // Unknown words stay in the title; the phrase after them still parses.
+        let r = p("wow !soon tonight");
+        assert_eq!(r.title, "wow !soon");
+        assert_eq!(due("wow !soon tonight"), d("2026-11-19", Some("20:00")));
+        assert!(p("x later").reminders.is_empty());
+    }
+
+    #[test]
+    fn dates_off_stops_date_phrases_but_not_explicit_tokens() {
+        let r = pp("buy milk tomorrow 9am", off());
+        assert_eq!(r.title, "buy milk tomorrow 9am");
+        assert!(r.due.is_none() && r.tokens.is_empty());
+        for input in [
+            "x in 5 minutes",
+            "x fri",
+            "x next week",
+            "x this weekend",
+            "x 27/1",
+            "x end of month",
+            "x today at 10pm",
+            "x tonight",
+            "x in the evening",
+        ] {
+            assert!(pp(input, off()).due.is_none(), "{input}");
+        }
+        let r = pp("send report by fri", off());
+        assert_eq!(r.title, "send report by fri");
+        assert_eq!(r.deadline, None);
+        let r = pp("write essay for 1h30m", off());
+        assert_eq!(r.title, "write essay for 1h30m");
+        assert_eq!(r.duration_min, None);
+        let r = pp("standup 9:30-9:45", off());
+        assert_eq!(r.title, "standup 9:30-9:45");
+        assert!(r.duration_min.is_none() && r.due.is_none());
+
+        // Explicit tokens keep working.
+        let r = pp("call mom !30m p1 #errand @home", off());
+        assert_eq!(r.title, "call mom");
+        assert_eq!(
+            r.reminders,
+            vec![Trigger::Before {
+                field: Anchor::Due,
+                minutes: 30
+            }]
+        );
+        assert_eq!(r.priority, Some(1));
+        assert_eq!(r.labels, vec!["errand"]);
+        assert_eq!(r.place.as_deref(), Some("Home"));
+        let r = pp("pay rent {dec 5} by fri", off());
+        assert_eq!(r.deadline.as_deref(), Some("2026-12-05"));
+        assert_eq!(r.title, "pay rent by fri");
+        let r = pp("x !morning", off());
+        assert_eq!(
+            r.reminders,
+            vec![Trigger::At {
+                at: "2026-11-20T09:00".into()
+            }]
+        );
+        let r = pp("water plants every 3 days", off());
+        assert!(r.recurrence.is_some() && r.due.is_some());
+        let r = pp("review every week until dec 25", off());
+        assert_eq!(
+            r.recurrence.as_ref().and_then(|x| x.end.as_deref()),
+            Some("2026-12-25")
+        );
+        let r = pp("standup every weekday at 9am", off());
+        assert!(r.recurrence.is_some());
+        assert_eq!(r.due.and_then(|d| d.time).as_deref(), Some("09:00"));
+    }
+
+    #[test]
+    fn next_week_day_pref_picks_the_weekday_of_next_week() {
+        // Thursday 2026-11-19: next week's Monday is the 23rd, Wednesday the 25th, Sunday the 29th.
+        let pref = |day| Prefs {
+            next_week_day: Some(day),
+            ..Prefs::default()
+        };
+        assert_eq!(
+            date_of("x next week", Prefs::default()).as_deref(),
+            Some("2026-11-23")
+        );
+        assert_eq!(
+            date_of("x next week", pref(0)).as_deref(),
+            Some("2026-11-23")
+        );
+        assert_eq!(
+            date_of("x next week", pref(2)).as_deref(),
+            Some("2026-11-25")
+        );
+        assert_eq!(
+            date_of("x next week", pref(6)).as_deref(),
+            Some("2026-11-29")
+        );
+        // Out of range falls back to Monday.
+        assert_eq!(
+            date_of("x next week", pref(9)).as_deref(),
+            Some("2026-11-23")
+        );
+        assert_eq!(pp("dinner next week", pref(2)).title, "dinner");
+    }
+
+    #[test]
+    fn weekend_day_pref_picks_the_weekend_day() {
+        // Thursday 2026-11-19: this weekend is the 21st (Saturday), next weekend the 28th.
+        let sun = || Prefs {
+            weekend_day: Some(6),
+            ..Prefs::default()
+        };
+        assert_eq!(
+            date_of("x this weekend", Prefs::default()).as_deref(),
+            Some("2026-11-21")
+        );
+        assert_eq!(
+            date_of("x next weekend", Prefs::default()).as_deref(),
+            Some("2026-11-28")
+        );
+        assert_eq!(
+            date_of("x this weekend", sun()).as_deref(),
+            Some("2026-11-22")
+        );
+        assert_eq!(
+            date_of("x next weekend", sun()).as_deref(),
+            Some("2026-11-29")
+        );
+        assert_eq!(pp("x this weekend", sun()).title, "x");
+    }
+
+    #[test]
+    fn prefs_serialize_with_defaults_and_old_known_json_loads() {
+        let k: Known = serde_json::from_str(r#"{"areas":["Home"]}"#).unwrap();
+        assert_eq!(k.prefs, Prefs::default());
+        let k: Known =
+            serde_json::from_str(r#"{"prefs":{"dates_off":true,"next_week_day":2}}"#).unwrap();
+        assert_eq!(
+            k.prefs,
+            Prefs {
+                dates_off: true,
+                next_week_day: Some(2),
+                weekend_day: None
+            }
+        );
+        let json = serde_json::to_string(&Prefs::default()).unwrap();
+        assert_eq!(
+            json,
+            r#"{"dates_off":false,"next_week_day":null,"weekend_day":null}"#
+        );
     }
 }

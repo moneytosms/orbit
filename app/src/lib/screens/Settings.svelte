@@ -20,18 +20,21 @@
 
   let { version = 0 }: { version?: number } = $props()
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
+  import { badgePreference, badgeSupported, refreshAppBadge, setBadgePreference } from '$lib/appBadge'
   import {
     getDaySettings,
-    getDefaultReminder,
+    getDefaultReminders,
     getGamification,
-    setDefaultReminder,
+    setDefaultReminders,
     setGamification,
     getSettings,
     setDayStart,
     setStartView,
     setTimezone,
     getNextSettings,
+    getQuickAddSettings,
     setNextSettings,
+    setQuickAddSettings,
     views,
     VIEW_INBOX,
     VIEW_UPCOMING,
@@ -240,8 +243,36 @@
     dayStart = s.day_start
   })
   let notify = $state(notifyEnabled())
-  let defaultReminder = $state(true)
-  getDefaultReminder().then((v) => (defaultReminder = v))
+  // Offsets in minutes before a timed due; `[]` is none.
+  let defaultReminders = $state<number[]>([0])
+  getDefaultReminders().then((v) => (defaultReminders = v))
+  let appBadge = $state(badgePreference())
+  let smartDates = $state(true)
+  let nextWeekDay = $state('0')
+  let weekendDay = $state('5')
+  getQuickAddSettings().then((q) => {
+    smartDates = q.smart_dates
+    nextWeekDay = String(q.next_week_day)
+    weekendDay = String(q.weekend_day)
+  })
+  const REMINDER_CHIPS: [number, string][] = [
+    [0, 'At due time'],
+    [10, '10 min'],
+    [30, '30 min'],
+    [60, '1 hour'],
+    [1440, '1 day'],
+  ]
+  const toggleReminder = (m: number) => {
+    const next = defaultReminders.includes(m)
+      ? defaultReminders.filter((x) => x !== m)
+      : [...defaultReminders, m].sort((a, b) => a - b)
+    defaultReminders = next
+    void setDefaultReminders(next)
+  }
+  const clearReminders = () => {
+    defaultReminders = []
+    void setDefaultReminders([])
+  }
   let gamification = $state(true)
   let targets = $state<StardustTargets>()
   const loadTargets = () => stardust().then((d) => (targets = d.targets))
@@ -256,6 +287,7 @@
   const sections = [
     ['appearance', 'Appearance'],
     ['reminders', 'Reminders'],
+    ['quick-add', 'Quick add'],
     ['general', 'Day and calendar'],
     ['capture-shortcut', 'Quick capture'],
     ['profile', 'Profile'],
@@ -581,14 +613,92 @@
         />
       {/snippet}
       {#snippet reminderControl()}
-        <Checkbox
-          bind:checked={defaultReminder}
-          aria-label="Remind at the due time"
-          onCheckedChange={(v) => setDefaultReminder(v === true)}
-        />
+        <div class="flex flex-wrap justify-end gap-1.5" role="group" aria-label="Default reminders">
+          {#each REMINDER_CHIPS as [m, label] (m)}
+            <Button
+              size="sm"
+              variant={defaultReminders.includes(m) ? 'on' : 'ghost'}
+              aria-pressed={defaultReminders.includes(m)}
+              onclick={() => toggleReminder(m)}>{label}</Button
+            >
+          {/each}
+          <Button
+            size="sm"
+            variant={defaultReminders.length === 0 ? 'on' : 'ghost'}
+            aria-pressed={defaultReminders.length === 0}
+            onclick={clearReminders}>None</Button
+          >
+        </div>
       {/snippet}
       {@render row('Notify on this device', 'Show system notifications for reminders here.', notifyControl)}
-      {@render row('Remind at the due time', 'Tasks with a time get a reminder when it arrives.', reminderControl)}
+      {@render row(
+        'Default reminders',
+        'Tasks with a time get a reminder at each chosen time before it.',
+        reminderControl,
+      )}
+      {#if badgeSupported()}
+        {#snippet badgeControl()}
+          <Checkbox
+            bind:checked={appBadge}
+            aria-label="Show due count on the app icon"
+            onCheckedChange={(v) => {
+              setBadgePreference(v === true)
+              void refreshAppBadge()
+            }}
+          />
+        {/snippet}
+        {@render row(
+          'Show due count on the app icon',
+          'Shows how many tasks are due today or overdue on the app icon, where the browser allows it.',
+          badgeControl,
+        )}
+      {/if}
+    </section>
+
+    <section id="quick-add" class="panel scroll-mt-4">
+      <h2 class="panel-title">Quick add</h2>
+      {#snippet smartControl()}
+        <Checkbox
+          bind:checked={smartDates}
+          aria-label="Recognise dates in quick add"
+          onCheckedChange={(v) => setQuickAddSettings({ smart_dates: v === true })}
+        />
+      {/snippet}
+      {#snippet nextWeekControl()}
+        <select
+          bind:value={nextWeekDay}
+          onchange={() => setQuickAddSettings({ next_week_day: Number(nextWeekDay) })}
+          aria-label="Next week means"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        >
+          <option value="0">Monday</option>
+          <option value="1">Tuesday</option>
+          <option value="2">Wednesday</option>
+          <option value="3">Thursday</option>
+          <option value="4">Friday</option>
+          <option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
+      {/snippet}
+      {#snippet weekendControl()}
+        <select
+          bind:value={weekendDay}
+          onchange={() => setQuickAddSettings({ weekend_day: Number(weekendDay) })}
+          aria-label="Weekend means"
+          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
+        >
+          <option value="4">Friday</option>
+          <option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
+      {/snippet}
+      {@render row(
+        'Recognise dates in quick add',
+        'Words like "tomorrow", "fri" and "next week" set the due date. Off keeps them in the title.',
+        smartControl,
+      )}
+      {@render row('Next week means', 'The day "next week" resolves to.', nextWeekControl)}
+      {@render row('Weekend means', 'The day "weekend" resolves to.', weekendControl)}
     </section>
 
     <section id="general" class="panel scroll-mt-4">

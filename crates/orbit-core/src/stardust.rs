@@ -425,6 +425,7 @@ mod tests {
             next_due_days: None,
             next_undated_p1: None,
             default_reminder: None,
+            default_reminders: None,
             target_daily: None,
             target_weekly: None,
             days_off: None,
@@ -434,6 +435,9 @@ mod tests {
             vacation_from: None,
             vacations: None,
             gamification: None,
+            smart_dates: None,
+            next_week_day: None,
+            weekend_day: None,
         };
         f(&mut s);
         s

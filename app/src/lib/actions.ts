@@ -10,6 +10,7 @@ import {
   createView,
   dayFrom,
   deleteItem,
+  duplicateTask,
   lastTask,
   moveTo,
   setDue,
@@ -20,9 +21,11 @@ import {
   type Task,
 } from './sync'
 import { inbox_id } from '../../wasm/orbit_wasm'
-import { readScreen, routes, type Route } from './routes'
+import { readScreen, routes, taskHref, type Route } from './routes'
 import { getTheme, setTheme } from './theme'
 import { clearCursor, moveCursor, openCursor } from './keys'
+import { POSTPONE } from './overdue'
+import { postponeById } from './postpone'
 
 /** The item an action acts on: the open Task drawer, else the current screen's Area, Project, Page or View. */
 export type Target = { kind: 'task' | 'area' | 'project' | 'page' | 'view'; id: string }
@@ -41,6 +44,8 @@ export const ui = {
   newTask: () => {},
   openPalette: () => {},
   openHelp: () => {},
+  /** Shows a short confirmation; the shell fills it in. */
+  notify: (_text: string) => {},
 }
 let override: string | null = null
 /** Marks a Task as focused (the palette's own drawer); `null` clears it. */
@@ -72,6 +77,17 @@ const toggleTheme = () => {
   setTheme(dark ? 'light' : 'dark')
 }
 const pri = (n: Task['priority']) => (id: string) => setPriority(id, n)
+
+/** Copies the address-bar link to a Task (`#/task/<id>`) and confirms it. */
+export async function copyTaskLink(id: string) {
+  const url = new URL(taskHref(id), location.href).href
+  try {
+    await navigator.clipboard.writeText(url)
+    ui.notify('Link copied')
+  } catch {
+    ui.notify('Could not copy the link')
+  }
+}
 
 /** Every action, built from the current local data (Projects and Views make one entry each). */
 export async function actions(): Promise<Action[]> {
@@ -125,6 +141,8 @@ export async function actions(): Promise<Action[]> {
     },
     'task',
   )
+  add('task.duplicate', 'Duplicate task', 'Task', () => (here ? duplicateTask(here.id) : undefined), 'task')
+  add('task.copylink', 'Copy task link', 'Task', () => (here ? copyTaskLink(here.id) : undefined), 'task')
   add('item.inbox', 'Move to Inbox', 'Task', () => (here ? moveTo(here.id, inbox_id()) : undefined), 'task')
   for (const a of areas) {
     for (const p of a.projects) {
@@ -140,7 +158,17 @@ export async function actions(): Promise<Action[]> {
   add('task.today', 'Reschedule: Today', 'Task', () => (here ? setDue(here.id, dayFrom(0)) : undefined), 'task')
   add('task.tomorrow', 'Reschedule: Tomorrow', 'Task', () => (here ? setDue(here.id, dayFrom(1)) : undefined), 'task')
   add('task.cleardate', 'Clear date', 'Task', () => (here ? setDue(here.id, null) : undefined), 'task')
-  add('task.nextweek', 'Reschedule: Next week', 'Task', () => (here ? setDue(here.id, dayFrom(7)) : undefined), 'task')
+  // Postpone choices (the drawer's buttons too). "Tomorrow" stays above as Reschedule: Tomorrow, for the y key.
+  for (const [choice, text] of POSTPONE) {
+    if (choice === 'tomorrow') continue
+    add(
+      `postpone.${choice}`,
+      choice === 'none' ? 'Postpone: No date' : `Postpone: ${text}`,
+      'Task',
+      () => (here ? postponeById(here.id, choice) : undefined),
+      'task',
+    )
+  }
   for (const n of [1, 2, 3, 4] as const) {
     add(`task.p${n}`, `Priority ${n}`, 'Task', () => (here ? pri(n)(here.id) : undefined), 'task')
   }

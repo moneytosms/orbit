@@ -97,15 +97,7 @@ pub fn sync(dir: &str, server: &str, device: &str, token: &str) -> Result<Value>
 pub fn reminders(dir: &str, now_local: &str) -> Result<Value> {
     with(dir, "", |c| {
         let rows = c.rows()?;
-        let cfg = reminder::Config {
-            default_reminder: rows
-                .iter()
-                .find_map(|r| match r {
-                    Row::Settings(s) => s.default_reminder,
-                    _ => None,
-                })
-                .unwrap_or(true),
-        };
+        let cfg = reminder::Config::from_rows(&rows);
         Ok(serde_json::to_value(reminder::schedule(
             &rows, now_local, &cfg,
         ))?)

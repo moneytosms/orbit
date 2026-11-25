@@ -32,6 +32,7 @@ import { req, tx } from './db'
 import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
 import { defaultLayout } from './dashboard'
+import { duplicatePlan } from './duplicate'
 import { clearUpgrade, setUpgrade, type UpgradeRequired } from './updates'
 
 export type Due = { date: string; time?: string | null }
@@ -121,6 +122,7 @@ export type Settings = {
   next_due_days?: number | null
   next_undated_p1?: boolean | null
   default_reminder?: boolean | null
+  default_reminders?: number[] | null
   target_daily?: number | null
   target_weekly?: number | null
   days_off?: number[] | null
@@ -130,6 +132,9 @@ export type Settings = {
   vacation_from?: string | null
   vacations?: [string, string][] | null
   gamification?: boolean | null
+  smart_dates?: boolean | null
+  next_week_day?: number | null
+  weekend_day?: number | null
 }
 /** The fields of a Task that `task.update` can change; absent = unchanged, `null` clears. */
 export type TaskPatch = Partial<
@@ -497,6 +502,33 @@ export async function uncompleteTask(undo: CompletionUndo) {
   )
   if (dueChanged) delete args.restore_due
   await enqueue('task.uncomplete', args)
+}
+/** Every visible completed Task (not trashed or archived), newest completion first. */
+export async function completedTasks(): Promise<Task[]> {
+  return (await visibleRows())
+    .filter((r): r is Task => r.kind === 'task' && r.completed_at !== null)
+    .sort((a, b) => (b.completed_at ?? 0) - (a.completed_at ?? 0))
+}
+/** Reopens a completed Task without its completion history (the Completed screen's Restore). */
+export const reopenTask = (id: string) => enqueue('task.uncomplete', { id })
+/**
+ * Copies a Task and its open subtasks right below the original. Returns the copy's id.
+ * The copy is open and has no completion history; see duplicatePlan for what is carried over.
+ */
+export async function duplicateTask(id: string): Promise<string | null> {
+  const plan = duplicatePlan(await rowsSnapshot(), id, newId, orderBetween)
+  for (const op of plan) {
+    // The Inbox is the default parent, so a Task under it is sent without a parent, as createTask does.
+    await enqueue('task.create', {
+      id: op.id,
+      title: op.title,
+      parent_id: op.parent_id === inbox_id() ? undefined : op.parent_id,
+      order: op.order,
+    })
+    if (Object.keys(op.patch).length) await updateTask(op.id, op.patch)
+    for (const trigger of op.reminders) await addReminder(op.id, trigger)
+  }
+  return plan[0]?.id ?? null
 }
 export const updateProject = (
   id: string,
@@ -1489,12 +1521,32 @@ export async function getDefaultReminder(): Promise<boolean> {
   return row?.default_reminder !== false
 }
 export const setDefaultReminder = (default_reminder: boolean) => enqueue('settings.update', { default_reminder })
+/** Minutes before a timed due that each get a default reminder, sorted; the legacy on/off counts as `[0]`. */
+export async function getDefaultReminders(): Promise<number[]> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  if (row?.default_reminders) return [...row.default_reminders].sort((a, b) => a - b)
+  return row?.default_reminder === false ? [] : [0]
+}
+/** Replaces the default reminder offsets; the legacy flag follows so older Devices stay roughly right. */
+export const setDefaultReminders = (default_reminders: number[]) =>
+  enqueue('settings.update', { default_reminders, default_reminder: default_reminders.length > 0 })
 /** Whether Stardust, Levels, the ring, Badges, Patches and their toasts show (on unless turned off). */
 export async function getGamification(): Promise<boolean> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
   return row?.gamification !== false
 }
 export const setGamification = (gamification: boolean) => enqueue('settings.update', { gamification })
+export type QuickAddSettings = { smart_dates: boolean; next_week_day: number; weekend_day: number }
+/** Quick-add date settings: dates recognised (on unless turned off), `next week` day and `weekend` day (0 = Monday). */
+export async function getQuickAddSettings(): Promise<QuickAddSettings> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return {
+    smart_dates: row?.smart_dates !== false,
+    next_week_day: row?.next_week_day ?? 0,
+    weekend_day: row?.weekend_day ?? 5,
+  }
+}
+export const setQuickAddSettings = (p: Partial<QuickAddSettings>) => enqueue('settings.update', p)
 /** `YYYY-MM-DDTHH:MM` in the synced timezone at `now`. */
 export async function localMinute(now = Date.now()): Promise<string> {
   const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
@@ -1502,10 +1554,10 @@ export async function localMinute(now = Date.now()): Promise<string> {
 }
 /** The reminders due or coming up (under an hour late ones included), soonest first, from core. */
 export async function reminderSchedule(now = Date.now()): Promise<Fire[]> {
-  const default_reminder = await getDefaultReminder()
+  const default_reminders = await getDefaultReminders()
   const rows = await allRows()
   return JSON.parse(
-    reminder_schedule(JSON.stringify(rows), await localMinute(now), JSON.stringify({ default_reminder })),
+    reminder_schedule(JSON.stringify(rows), await localMinute(now), JSON.stringify({ default_reminders })),
   )
 }
 

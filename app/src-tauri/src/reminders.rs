@@ -65,15 +65,7 @@ async fn tick(
         return Err(e);
     }
     let rows = client.rows()?;
-    let cfg = reminder::Config {
-        default_reminder: rows
-            .iter()
-            .find_map(|r| match r {
-                Row::Settings(s) => s.default_reminder,
-                _ => None,
-            })
-            .unwrap_or(true),
-    };
+    let cfg = reminder::Config::from_rows(&rows);
     let now_local = chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string();
     let fires = reminder::schedule(&rows, &now_local, &cfg);
     let mut spent = false;

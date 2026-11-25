@@ -13,12 +13,14 @@
   import Dashboard from './lib/screens/Dashboard.svelte'
   import Settings from './lib/screens/Settings.svelte'
   import Trash from './lib/screens/Trash.svelte'
+  import Completed from './lib/screens/Completed.svelte'
   import View from './lib/screens/View.svelte'
   import Profile from './lib/screens/Profile.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
   import { readScreen, readTaskLink, routes, type Screen } from './lib/routes'
   import TaskDrawer from './lib/TaskDrawer.svelte'
+  import { ui } from './lib/actions'
   import {
     awardUp,
     badgeShelf,
@@ -39,6 +41,7 @@
     VIEW_UPCOMING,
   } from './lib/sync'
   import type { CompletionUndo } from './lib/sync'
+  import { onRestorable } from './lib/undo'
   import type { View as ViewRow } from './lib/sync'
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { refreshNotifier, startNotifier } from './lib/notify'
@@ -59,7 +62,9 @@
   let allViews = $state<ViewRow[]>([])
   let screen: Screen = $state(readScreen())
   let linkedTask = $state(readTaskLink())
-  let toast = $state<{ text: string; undo?: CompletionUndo; sparkle?: boolean } | null>(null)
+  let toast = $state<{ text: string; undo?: CompletionUndo; restore?: () => Promise<void>; sparkle?: boolean } | null>(
+    null,
+  )
   let version = $state(0)
   let hide: ReturnType<typeof setTimeout> | undefined
   let latestCompletion: CompletionUndo['completion_hlc'] | undefined
@@ -69,6 +74,7 @@
     clearTimeout(hide)
     hide = setTimeout(() => (toast = null), duration)
   }
+  ui.notify = (text) => showToast({ text }, 2500)
 
   onRejected((code) => {
     showToast({ text: `A change was rejected (${code.replaceAll('_', ' ')}) and has been undone.` })
@@ -82,10 +88,16 @@
     }
     latestCompletion = undo.completion_hlc
     if (matchMedia?.('(pointer: coarse)').matches && 'vibrate' in navigator) {
-      try { navigator.vibrate(8) } catch { /* unsupported by this browser */ }
+      try {
+        navigator.vibrate(8)
+      } catch {
+        /* unsupported by this browser */
+      }
     }
     showToast({ text: 'Task completed', undo, sparkle: true })
   })
+  // Other changes that can be taken back (reschedules, postpones) reuse this toast.
+  onRestorable((r) => showToast({ text: r.text, restore: r.restore }))
   onAppearanceChange((p) => updateSettings(p))
   onSignedOut((n) => {
     pending = n
@@ -126,7 +138,11 @@
         const text = `Level up! You reached ${sd.level.name}.`
         showToast({ text: toast?.undo ? `${text} · Task completed` : text, undo: toast?.undo, sparkle: toast?.sparkle })
       } else if (awardUp(earned)) {
-        showToast({ text: toast?.undo ? 'New Badge earned · Task completed' : 'New Badge earned.', undo: toast?.undo, sparkle: toast?.sparkle })
+        showToast({
+          text: toast?.undo ? 'New Badge earned · Task completed' : 'New Badge earned.',
+          undo: toast?.undo,
+          sparkle: toast?.sparkle,
+        })
       }
     }
     // Theme and accent from another Device. Empty theme: not set; empty accent: theme's own.
@@ -160,13 +176,14 @@
   }
 
   // Offline with a Device: straight in. Otherwise ask the server whether this is the first run.
-  if (!captureOverlay && !launcher) void (async () => {
-    if (await hasDevice()) return enter()
-    gate = await needsSetup().then(
-      (setup) => (setup ? 'setup' : 'login'),
-      () => 'login' as const,
-    )
-  })()
+  if (!captureOverlay && !launcher)
+    void (async () => {
+      if (await hasDevice()) return enter()
+      gate = await needsSetup().then(
+        (setup) => (setup ? 'setup' : 'login'),
+        () => 'login' as const,
+      )
+    })()
 </script>
 
 <svelte:window
@@ -181,109 +198,124 @@
 {#if captureOverlay}
   <CaptureOverlay />
 {:else}
-{#if gate === 'setup' || gate === 'login'}
-  <Auth mode={gate} {pending} done={enter} />
-{:else if gate === 'app'}
-  <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()} onchange={refresh}>
-    {#snippet children(add)}
-      {#if screen.name === 'page'}
-        <Page id={screen.id} onchange={refresh} />
-      {:else if screen.name === 'roadmap'}
-        {#key screen.id}
-          <Roadmap id={screen.id} {areas} onchange={refresh} />
-        {/key}
-      {:else if screen.name === 'roadmaps'}
-        <Roadmap {areas} onchange={refresh} />
-      {:else if screen.name === 'view'}
-        {#key screen.id}
-          <View id={screen.id} {areas} onchange={refresh} />
-        {/key}
-      {:else if screen.name === 'upcoming'}
-        <View id={VIEW_UPCOMING} {areas} onchange={refresh} />
-      {:else if screen.name === 'area'}
-        {#key screen.id}
-          {@const areaId = screen.id}
-          <Area id={areaId} {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
-            {#snippet tasks()}
-              <Inbox parentId={areaId} {title} {rows} onchange={refresh} />
-            {/snippet}
-          </Area>
-        {/key}
-      {:else if parent}
-        {#if screen.name === 'project'}
-          {@const pid = screen.id}
-          {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === pid)}
-          {#if proj}
-            {#key proj.id}
-              <Banner
-                icon={proj.icon}
-                cover={proj.cover}
-                onsave={async (patch) => {
-                  await updateProject(proj.id, patch)
-                  refresh()
-                }}
-              />
-            {/key}
+  {#if gate === 'setup' || gate === 'login'}
+    <Auth mode={gate} {pending} done={enter} />
+  {:else if gate === 'app'}
+    <Shell {screen} {title} {areas} {inboxCount} parentId={parent ?? inbox_id()} onchange={refresh}>
+      {#snippet children(add)}
+        {#if screen.name === 'page'}
+          <Page id={screen.id} onchange={refresh} />
+        {:else if screen.name === 'roadmap'}
+          {#key screen.id}
+            <Roadmap id={screen.id} {areas} onchange={refresh} />
+          {/key}
+        {:else if screen.name === 'roadmaps'}
+          <Roadmap {areas} onchange={refresh} />
+        {:else if screen.name === 'view'}
+          {#key screen.id}
+            <View id={screen.id} {areas} onchange={refresh} />
+          {/key}
+        {:else if screen.name === 'upcoming'}
+          <View id={VIEW_UPCOMING} {areas} onchange={refresh} />
+        {:else if screen.name === 'area'}
+          {#key screen.id}
+            {@const areaId = screen.id}
+            <Area id={areaId} {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
+              {#snippet tasks()}
+                <Inbox parentId={areaId} {title} {rows} onchange={refresh} />
+              {/snippet}
+            </Area>
+          {/key}
+        {:else if parent}
+          {#if screen.name === 'project'}
+            {@const pid = screen.id}
+            {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === pid)}
+            {#if proj}
+              {#key proj.id}
+                <Banner
+                  icon={proj.icon}
+                  cover={proj.cover}
+                  onsave={async (patch) => {
+                    await updateProject(proj.id, patch)
+                    refresh()
+                  }}
+                />
+              {/key}
+            {/if}
           {/if}
+          <Inbox parentId={parent} {title} {rows} onchange={refresh} />
+          {#if screen.name === 'project'}
+            <Backlinks id={screen.id} {version} />
+          {/if}
+        {:else if screen.name === 'goals'}
+          <Goals {areas} />
+        {:else if screen.name === 'routines'}
+          <Routines {areas} />
+        {:else if screen.name === 'completed'}
+          <Completed {version} onchange={refresh} />
+        {:else if screen.name === 'trash'}
+          <Trash onchange={refresh} />
+        {:else if screen.name === 'settings'}
+          <Settings {version} />
+        {:else if screen.name === 'home'}
+          <Dashboard {version} onchange={refresh} />
+        {:else if screen.name === 'profile'}
+          <Profile {version} />
+        {:else}
+          <Stub {title} />
         {/if}
-        <Inbox parentId={parent} {title} {rows} onchange={refresh} />
-        {#if screen.name === 'project'}
-          <Backlinks id={screen.id} {version} />
-        {/if}
-      {:else if screen.name === 'goals'}
-        <Goals {areas} />
-      {:else if screen.name === 'routines'}
-        <Routines {areas} />
-      {:else if screen.name === 'trash'}
-        <Trash onchange={refresh} />
-      {:else if screen.name === 'settings'}
-        <Settings {version} />
-      {:else if screen.name === 'home'}
-        <Dashboard {version} onchange={refresh} />
-      {:else if screen.name === 'profile'}
-        <Profile {version} />
-      {:else}
-        <Stub {title} />
+      {/snippet}
+    </Shell>
+  {/if}
+
+  {#if gate === 'app'}
+    <TaskDrawer
+      taskId={linkedTask}
+      onclose={() => {
+        linkedTask = null
+        history.replaceState(null, '', location.pathname)
+      }}
+    />
+  {/if}
+
+  {#if !import.meta.env.VITE_DEMO}<UpdateNotice />{/if}
+
+  {#if toast}
+    <p
+      role="status"
+      class="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(90vw/var(--zoom,1))] -translate-x-1/2 items-center rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
+    >
+      {#if toast.sparkle}<span aria-hidden="true" class="completion-spark">✦</span>{/if}
+      <span>{toast.text}</span>
+      {#if toast.undo}
+        <button
+          class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
+          onclick={async () => {
+            const undo = toast?.undo
+            if (!undo) return
+            await uncompleteTask(undo)
+            showToast({ text: 'Task restored' }, 2500)
+          }}>Undo</button
+        >
+      {:else if toast.restore}
+        <button
+          class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
+          onclick={async () => {
+            const restore = toast?.restore
+            if (!restore) return
+            await restore()
+            showToast({ text: 'Change undone' }, 2500)
+          }}>Undo</button
+        >
       {/if}
-    {/snippet}
-  </Shell>
-{/if}
-
-{#if gate === 'app'}
-  <TaskDrawer
-    taskId={linkedTask}
-    onclose={() => {
-      linkedTask = null
-      history.replaceState(null, '', location.pathname)
-    }}
-  />
-{/if}
-
-{#if !import.meta.env.VITE_DEMO}<UpdateNotice />{/if}
-
-{#if toast}
-  <p
-    role="status"
-    class="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(90vw/var(--zoom,1))] -translate-x-1/2 items-center rounded-lg bg-text py-[9px] pr-2.5 pl-3.5 text-bg shadow-2 desk:bottom-6"
-  >
-    {#if toast.sparkle}<span aria-hidden="true" class="completion-spark">✦</span>{/if}
-    <span>{toast.text}</span>
-    {#if toast.undo}
       <button
-        class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
-        onclick={async () => {
-          const undo = toast?.undo
-          if (!undo) return
-          await uncompleteTask(undo)
-          showToast({ text: 'Task restored' }, 2500)
-        }}
-      >Undo</button>
-    {/if}
-    <button
-      class="ml-2 rounded px-1 text-bg/70 hover:text-bg"
-      aria-label="Dismiss notification"
-      onclick={() => { clearTimeout(hide); toast = null }}
-    >×</button>
-  </p>
-{/if}
+        class="ml-2 rounded px-1 text-bg/70 hover:text-bg"
+        aria-label="Dismiss notification"
+        onclick={() => {
+          clearTimeout(hide)
+          toast = null
+        }}>×</button
+      >
+    </p>
+  {/if}
 {/if}

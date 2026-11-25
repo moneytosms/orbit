@@ -19,6 +19,9 @@
   import Table from '$lib/Table.svelte'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
   import Composer from '$lib/Composer.svelte'
+  import OverdueBanner from '$lib/OverdueBanner.svelte'
+  import { planMoves } from '$lib/overdue'
+  import { applyMoves, projectOccurrences } from '$lib/postpone'
   import {
     completeTask,
     createSection,
@@ -200,6 +203,11 @@
     openId = null
     onchange()
   }
+  // The row's one-click reschedule for an overdue Task (a recurring one goes to its next occurrence from today).
+  async function rescheduleRow(task: Task) {
+    await applyMoves(planMoves([task], today(), projectOccurrences), `"${task.title}" moved to today`)
+    onchange()
+  }
 
   // Top-level Tasks are the draggable units; each carries its open subtasks.
   const groups = $derived.by(() => {
@@ -283,7 +291,9 @@
         <Flag size={12} class={flagClass[task.priority]} aria-label="Priority {task.priority}" />
       {/if}
       {#if task.due}
-        <span class="text-xs {task.due.date < today() ? 'text-danger' : 'text-muted'}">{dueText(task.due)}</span>
+        <span class="text-xs {task.due.date < today() ? 'font-medium text-danger-text' : 'text-muted'}"
+          >{dueText(task.due)}</span
+        >
       {/if}
       {#if task.recurrence}
         <span class="text-xs text-muted" aria-label="Repeats {task.recurrence.rule}">↻</span>
@@ -294,6 +304,16 @@
         {/if}
       {/each}
     </button>
+    {#if task.due && task.due.date < today()}
+      <button
+        type="button"
+        aria-label="Reschedule {task.title} to today"
+        title="Reschedule to today"
+        onclick={() => rescheduleRow(task)}
+        class="mr-1 shrink-0 rounded-md border border-line bg-surface px-2 py-0.5 text-xs font-medium text-text shadow-1 opacity-0 hover:border-accent-line hover:text-accent-text focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
+        >Reschedule</button
+      >
+    {/if}
     <span class="absolute right-2 bottom-0 h-px bg-line group-hover:hidden" style:left="{36 + depth * 24}px"></span>
   </div>
 {/snippet}
@@ -301,6 +321,7 @@
 <div class="mb-2 flex items-center gap-2">
   <h1 class="page-title flex-1">{title}</h1>
 </div>
+<OverdueBanner tasks={rows.map((r) => r.task)} {onchange} />
 <div class="mb-4">
   <Composer {parentId} autofocus={false} />
 </div>

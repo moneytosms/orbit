@@ -5,8 +5,8 @@
 //! parser so every phrase reports the words it used (the Composer shows them as chips).
 //! Numeric dates read day/month; `3/12` is 3 December.
 use crate::parse::{
-    civil_from_days, date_phrase, day_number, days_from_civil, days_in_month, month_day,
-    month_name, time_word, weekday, weekday_name,
+    Prefs, civil_from_days, date_phrase_with, day_number, days_from_civil, days_in_month,
+    month_day, month_name, time_word, weekday, weekday_name,
 };
 use crate::recur::add_months;
 
@@ -24,10 +24,16 @@ fn s(w: &[String], i: usize) -> &str {
 /// The phrase at the start of `w` (lowercased words). A phrase with a time and no date means
 /// the next time the clock shows it. `trailing_date` allows `9am friday`; reminders turn it off
 /// so `!9am friday` stays a reminder plus a due date.
-pub(crate) fn when(w: &[String], today: i64, now_min: u32, trailing_date: bool) -> Option<When> {
+pub(crate) fn when(
+    w: &[String],
+    today: i64,
+    now_min: u32,
+    trailing_date: bool,
+    prefs: &Prefs,
+) -> Option<When> {
     relative(w, today, now_min)
-        .or_else(|| dated(w, today))
-        .or_else(|| timed(w, today, now_min, trailing_date))
+        .or_else(|| dated(w, today, prefs))
+        .or_else(|| timed(w, today, now_min, trailing_date, prefs))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -235,9 +241,9 @@ fn time_slot(w: &[String], i: usize, after_date: bool) -> Option<(String, usize)
     None
 }
 
-fn dated(w: &[String], today: i64) -> Option<When> {
+fn dated(w: &[String], today: i64, prefs: &Prefs) -> Option<When> {
     let on = s(w, 0) == "on";
-    let (day, n, default) = date_ext(&w[usize::from(on)..], today, on)?;
+    let (day, n, default) = date_ext(&w[usize::from(on)..], today, on, prefs)?;
     let i = usize::from(on) + n;
     Some(match time_slot(w, i, true) {
         Some((t, u)) => When {
@@ -253,12 +259,18 @@ fn dated(w: &[String], today: i64) -> Option<When> {
     })
 }
 
-fn timed(w: &[String], today: i64, now_min: u32, trailing_date: bool) -> Option<When> {
+fn timed(
+    w: &[String],
+    today: i64,
+    now_min: u32,
+    trailing_date: bool,
+    prefs: &Prefs,
+) -> Option<When> {
     let (t, u) = time_slot(w, 0, false)?;
     if trailing_date {
         let on = s(w, u) == "on";
         let at = u + usize::from(on);
-        if let Some((day, n, _)) = date_ext(&w[at..], today, on) {
+        if let Some((day, n, _)) = date_ext(&w[at..], today, on, prefs) {
             return Some(When {
                 day,
                 time: Some(t),
@@ -341,6 +353,7 @@ fn date_ext(
     w: &[String],
     today: i64,
     after_on: bool,
+    prefs: &Prefs,
 ) -> Option<(i64, usize, Option<&'static str>)> {
     if w.is_empty() {
         return None;
@@ -373,7 +386,7 @@ fn date_ext(
                     let (y, _, _) = civil_from_days(today);
                     return Some((days_from_civil(y + 1, 1, 1), 2, None));
                 }
-                "weekend" => return Some((today + 7 - wd + 5, 2, None)),
+                "weekend" => return Some((today + 7 - wd + prefs.weekend_target(), 2, None)),
                 _ => {}
             }
         }
@@ -382,7 +395,8 @@ fn date_ext(
                 return Some((today + (t - wd).rem_euclid(7), 2, None));
             }
             if second == "weekend" {
-                return Some((today + if wd == 6 { 0 } else { 5 - wd }.max(0), 2, None));
+                // The weekend day this week, or today once it has started.
+                return Some((today + (prefs.weekend_target() - wd).max(0), 2, None));
             }
             if let Some(t) = daypart(second) {
                 return Some((today, 2, Some(t)));
@@ -419,7 +433,7 @@ fn date_ext(
     if after_on && let Some(d) = ordinal(first) {
         return Some((next_ordinal(today, d)?, 1, None));
     }
-    date_phrase(w, today).map(|(d, n)| (d, n, None))
+    date_phrase_with(w, today, prefs).map(|(d, n)| (d, n, None))
 }
 
 /// `27th`: a day number with its suffix, never a bare number.
@@ -439,8 +453,8 @@ fn month_end(today: i64) -> i64 {
 
 /// Like [`when`] but only phrases that name a day (`friday`, `dec 5`, `in 3 days`, `end of
 /// month`), never a bare time: used by `by <date>` and `{<date>}` deadlines.
-pub(crate) fn when_date(w: &[String], today: i64, now_min: u32) -> Option<When> {
-    relative(w, today, now_min).or_else(|| dated(w, today))
+pub(crate) fn when_date(w: &[String], today: i64, now_min: u32, prefs: &Prefs) -> Option<When> {
+    relative(w, today, now_min).or_else(|| dated(w, today, prefs))
 }
 
 /// Longest quick-add duration, like Todoist.
@@ -592,4 +606,111 @@ pub(crate) fn range(w: &[String]) -> Option<Range> {
         return None;
     }
     range_from(&a, &b, 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::{fmt_date, parse_ymd};
+
+    fn words(s: &str) -> Vec<String> {
+        s.split_whitespace().map(str::to_lowercase).collect()
+    }
+
+    /// The day `s` resolves to from `today` (`YYYY-MM-DD`).
+    fn on(today: &str, s: &str, prefs: &Prefs) -> Option<String> {
+        let today = parse_ymd(today).unwrap();
+        when(&words(s), today, 600, false, prefs).map(|f| fmt_date(f.day))
+    }
+
+    #[test]
+    fn next_week_and_weekend_follow_the_defaults() {
+        let d = Prefs::default();
+        // Thursday 2026-11-19.
+        assert_eq!(
+            on("2026-11-19", "next week", &d).as_deref(),
+            Some("2026-11-23")
+        );
+        assert_eq!(
+            on("2026-11-19", "this weekend", &d).as_deref(),
+            Some("2026-11-21")
+        );
+        assert_eq!(
+            on("2026-11-19", "next weekend", &d).as_deref(),
+            Some("2026-11-28")
+        );
+        // Sunday 2026-11-22: next week starts tomorrow.
+        assert_eq!(
+            on("2026-11-22", "next week", &d).as_deref(),
+            Some("2026-11-23")
+        );
+    }
+
+    #[test]
+    fn next_week_prefs_count_from_this_weeks_day() {
+        let fri = Prefs {
+            next_week_day: Some(4),
+            ..Prefs::default()
+        };
+        // Thursday: Friday of next week is the 27th.
+        assert_eq!(
+            on("2026-11-19", "next week", &fri).as_deref(),
+            Some("2026-11-27")
+        );
+        // Sunday: Friday of next week (Mon 23rd onwards) is the 27th too.
+        assert_eq!(
+            on("2026-11-22", "next week", &fri).as_deref(),
+            Some("2026-11-27")
+        );
+        // Monday 23rd: next week is the 30th to Dec 6, so its Sunday is Dec 6.
+        let sun = Prefs {
+            next_week_day: Some(6),
+            ..Prefs::default()
+        };
+        assert_eq!(
+            on("2026-11-23", "next week", &sun).as_deref(),
+            Some("2026-12-06")
+        );
+    }
+
+    #[test]
+    fn weekend_prefs_pick_this_week_or_today_once_started() {
+        let sun = Prefs {
+            weekend_day: Some(6),
+            ..Prefs::default()
+        };
+        // Friday: Sunday is the 22nd. Thursday: Sunday is the 22nd too.
+        assert_eq!(
+            on("2026-11-20", "this weekend", &sun).as_deref(),
+            Some("2026-11-22")
+        );
+        assert_eq!(
+            on("2026-11-19", "this weekend", &sun).as_deref(),
+            Some("2026-11-22")
+        );
+        // Saturday with Sunday as the weekend day: tomorrow.
+        assert_eq!(
+            on("2026-11-21", "this weekend", &sun).as_deref(),
+            Some("2026-11-22")
+        );
+        // Sunday itself is already the weekend day.
+        assert_eq!(
+            on("2026-11-22", "this weekend", &sun).as_deref(),
+            Some("2026-11-22")
+        );
+        // Default Saturday: on Saturday or Sunday, this weekend is today.
+        let d = Prefs::default();
+        assert_eq!(
+            on("2026-11-21", "this weekend", &d).as_deref(),
+            Some("2026-11-21")
+        );
+        assert_eq!(
+            on("2026-11-22", "this weekend", &d).as_deref(),
+            Some("2026-11-22")
+        );
+        assert_eq!(
+            on("2026-11-22", "next weekend", &d).as_deref(),
+            Some("2026-11-28")
+        );
+    }
 }

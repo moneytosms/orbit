@@ -1,6 +1,8 @@
 mod cmd;
 mod docs;
 mod guide;
+mod lines;
+mod markdown;
 mod mcp;
 mod out;
 mod refs;
@@ -65,16 +67,70 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project.
+    /// Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project. `-` reads a
+    /// list from stdin, one task per line.
     #[command(
-        after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow 9am p2 #health\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run"
+        after_help = "Examples:\n  orbit add \"buy milk\"\n  orbit add call the dentist tomorrow 9am p2 #health\n  orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 \"buy milk\" --dry-run\n  printf '%s\\n' 'trip' '  passport' '- [ ] tickets' | orbit add -\n  orbit add --lines \"buy milk\\nbuy eggs tomorrow\" --dry-run"
     )]
     Add {
-        #[arg(required = true)]
+        /// The task title, or `-` for a list on stdin.
+        #[arg(required_unless_present = "lines", conflicts_with = "lines")]
         title: Vec<String>,
         /// Use this UUID for the task. Adding an id that exists is a no-op.
         #[arg(long)]
         id: Option<String>,
+        /// Several tasks, one per line. List markers are stripped and indented lines nest.
+        #[arg(long, value_name = "TEXT")]
+        lines: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Move a task's due date to a phrase, keeping its time unless the phrase gives one.
+    #[command(
+        after_help = "Examples:\n  orbit postpone 1\n  orbit postpone 3f2b9c fri\n  orbit postpone buy milk \"in 3 days\" --dry-run"
+    )]
+    Postpone {
+        /// A row number, id prefix or title words.
+        r: String,
+        /// A date phrase, default `tomorrow`: `fri`, `in 3 days`, `next week`, `9am`.
+        phrase: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Set a task's due date to a phrase, or clear it with `none`. The time is replaced too.
+    #[command(
+        after_help = "Examples:\n  orbit reschedule 1 today\n  orbit reschedule 3f2b9c \"fri 9am\"\n  orbit reschedule 1 none\n  orbit reschedule 1 tomorrow --dry-run"
+    )]
+    Reschedule {
+        /// A row number, id prefix or title words.
+        r: String,
+        /// A date phrase, or `none` to clear the due date.
+        phrase: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Remind about a task again later: one hour from now by default.
+    #[command(
+        after_help = "Examples:\n  orbit snooze 1\n  orbit snooze 3f2b9c \"tomorrow 9am\"\n  orbit snooze 1 \"in 2 hours\" --dry-run"
+    )]
+    Snooze {
+        /// A row number, id prefix or title words.
+        r: String,
+        /// When to remind: a phrase with a time, else 09:00 on that day. Default: one hour from now.
+        phrase: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// List open tasks whose due date has passed, or move them all with --reschedule.
+    #[command(
+        after_help = "Examples:\n  orbit overdue\n  orbit overdue --all\n  orbit overdue --reschedule\n  orbit overdue --reschedule \"next monday\" --dry-run\n  orbit --json overdue"
+    )]
+    Overdue {
+        /// Move every overdue task to this phrase (default `today`), instead of listing them.
+        #[arg(long, value_name = "PHRASE", num_args = 0..=1, default_missing_value = "today")]
+        reschedule: Option<String>,
+        #[arg(long)]
+        all: bool,
         #[arg(long)]
         dry_run: bool,
     },
@@ -159,13 +215,17 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Download everything as a zip: items.json, Pages as .md and attachments.
+    /// Download everything as a zip: items.json, Pages as .md and attachments. With --md, write
+    /// Areas and Projects as Markdown checklists from this device instead (no server needed).
     #[command(
-        after_help = "Examples:\n  orbit export orbit-export.zip\n  orbit --json export backup.zip"
+        after_help = "Examples:\n  orbit export orbit-export.zip\n  orbit --json export backup.zip\n  orbit export --md tasks.md\n  orbit export --md > tasks.md"
     )]
     Export {
-        /// Where to write the zip.
-        file: PathBuf,
+        /// Where to write the zip, or the Markdown file with --md (stdout when omitted with --md).
+        file: Option<PathBuf>,
+        /// Write Markdown instead of the zip.
+        #[arg(long)]
+        md: bool,
     },
     /// Print a short reference: commands, refs, listings, JSON shapes and exit codes.
     #[command(after_help = "Examples:\n  orbit guide\n  orbit --json guide")]
@@ -216,7 +276,33 @@ fn run(command: Cmd, no_color: bool) -> Done {
         Cmd::Sync => cmd::sync(),
         Cmd::Status => cmd::status(),
         Cmd::SelfUpdate { dry_run } => cmd::self_update(dry_run),
-        Cmd::Add { title, id, dry_run } => cmd::add(&title, id.as_deref(), dry_run),
+        Cmd::Add {
+            title,
+            id,
+            lines,
+            dry_run,
+        } => {
+            let list = match lines {
+                Some(text) => Some(text),
+                None if title == ["-"] => Some(cmd::read_stdin()?),
+                None => None,
+            };
+            match list {
+                Some(_) if id.is_some() => Err(out::usage("--id applies to one task, not a list")),
+                Some(text) => cmd::add_lines(&text, dry_run),
+                None => cmd::add(&title, id.as_deref(), dry_run),
+            }
+        }
+        Cmd::Postpone { r, phrase, dry_run } => {
+            cmd::set_due(&r, phrase.as_deref().unwrap_or("tomorrow"), true, dry_run)
+        }
+        Cmd::Reschedule { r, phrase, dry_run } => cmd::set_due(&r, &phrase, false, dry_run),
+        Cmd::Snooze { r, phrase, dry_run } => cmd::snooze(&r, phrase.as_deref(), dry_run),
+        Cmd::Overdue {
+            reschedule,
+            all,
+            dry_run,
+        } => cmd::overdue(reschedule.as_deref(), all, dry_run, no_color),
         Cmd::Ls { all, wide } => cmd::ls(all, wide, no_color),
         Cmd::Next { all, wide } => cmd::next(all, wide, no_color),
         Cmd::Done { r, dry_run } => cmd::done(&r, dry_run),
@@ -232,7 +318,7 @@ fn run(command: Cmd, no_color: bool) -> Done {
             from: Import::Todoist { maps, yes },
         } => cmd::import_todoist(&maps, yes),
         Cmd::Checkin { r, date, dry_run } => cmd::checkin(&r, date.as_deref(), dry_run),
-        Cmd::Export { file } => cmd::export(&file),
+        Cmd::Export { file, md } => cmd::export(file.as_deref(), md),
         Cmd::Guide => guide::guide(),
         Cmd::Docs { dir } => docs::write(&dir),
         Cmd::Mcp | Cmd::Completions { .. } => unreachable!("handled in main"),

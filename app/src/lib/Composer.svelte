@@ -15,6 +15,7 @@
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import CaptureBar from './CaptureBar.svelte'
   import { pasteLines, type PasteLine } from './pasteLines'
+  import { DEFAULT_PREFS, knownJson, quickAddPrefs, type QuickAddPrefs } from '$lib/captureKnown'
 
   let {
     prefill = '',
@@ -30,6 +31,7 @@
   let focused = $state(false)
   let inputEl: HTMLInputElement | undefined = $state()
   let known = $state({ areas: [] as string[], goals: [] as string[], labels: [] as string[], pages: [] as string[] })
+  let prefs = $state<QuickAddPrefs>(DEFAULT_PREFS)
 
   async function loadKnown() {
     const [t, all, gs, ps] = await Promise.all([tree(), labels(), listGoals(), listPages()])
@@ -39,6 +41,7 @@
       labels: all.map((l) => l.name),
       pages: ps.map((x) => x.title),
     }
+    prefs = await quickAddPrefs()
   }
   onMount(() => {
     loadKnown()
@@ -51,15 +54,7 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
   // Page titles are known from the local Pages, so `%Title` resolves.
-  const parsed: Parsed = $derived(
-    JSON.parse(
-      parse_quick_add(
-        draft,
-        localNow(),
-        JSON.stringify({ areas: known.areas, goals: known.goals, pages: known.pages, labels: known.labels }),
-      ),
-    ),
-  )
+  const parsed: Parsed = $derived(JSON.parse(parse_quick_add(draft, localNow(), knownJson(known, prefs))))
 
   // The sigil word under the caret, with the names it could complete to.
   const suggestion = $derived.by(() => {
@@ -106,14 +101,7 @@
 
   // Multi-line paste: offer one task per line instead of one long title.
   let pasted: PasteLine[] | null = $state(null)
-  const parseLine = (text: string): Parsed =>
-    JSON.parse(
-      parse_quick_add(
-        text,
-        localNow(),
-        JSON.stringify({ areas: known.areas, goals: known.goals, pages: known.pages, labels: known.labels }),
-      ),
-    )
+  const parseLine = (text: string): Parsed => JSON.parse(parse_quick_add(text, localNow(), knownJson(known, prefs)))
   function onpaste(e: ClipboardEvent) {
     const lines = pasteLines(e.clipboardData?.getData('text') ?? '')
     if (lines.length < 2) return

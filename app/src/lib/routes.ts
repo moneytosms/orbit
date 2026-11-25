@@ -1,4 +1,5 @@
 import CalendarDays from '@lucide/svelte/icons/calendar-days'
+import CircleCheck from '@lucide/svelte/icons/circle-check'
 import CircleUser from '@lucide/svelte/icons/circle-user'
 import House from '@lucide/svelte/icons/house'
 import Inbox from '@lucide/svelte/icons/inbox'
@@ -12,6 +13,7 @@ import Trash2 from '@lucide/svelte/icons/trash-2'
 export const routes = {
   home: { label: 'Home', icon: House },
   inbox: { label: 'Inbox', icon: Inbox },
+  completed: { label: 'Completed', icon: CircleCheck },
   upcoming: { label: 'Upcoming', icon: CalendarDays },
   goals: { label: 'Goals', icon: Target },
   roadmaps: { label: 'Roadmaps', icon: Map },
@@ -36,6 +38,9 @@ export const readScreen = (): Screen => {
     ? { name: m[1] as 'project' | 'area' | 'page' | 'view' | 'roadmap', id: decodeURIComponent(m[2]) }
     : { name: readRoute() }
 }
+
+/** The address-bar link to a Task (`#/task/<id>`); copy it with the page's own origin in front. */
+export const taskHref = (id: string) => `#/task/${encodeURIComponent(id)}`
 
 /** A Task named by the address bar (`#/task/<id>`), which opens its drawer over whatever screen is up. */
 export const readTaskLink = (): string | null => {

@@ -17,8 +17,9 @@
     type Widget,
   } from '$lib/dashboard'
   import Checklist from '$lib/Checklist.svelte'
+  import OverdueBanner from '$lib/OverdueBanner.svelte'
   import { checklistDismissed, dismissChecklist, showChecklist } from '$lib/onboarding'
-  import { getDashboard, setDashboard, tree, views, visibleSnapshot, type View } from '$lib/sync'
+  import { getDashboard, setDashboard, tree, views, visibleSnapshot, type Task, type View } from '$lib/sync'
   import Glance from '$lib/widgets/Glance.svelte'
   import GoalProgress from '$lib/widgets/GoalProgress.svelte'
   import NextList from '$lib/widgets/NextList.svelte'
@@ -37,6 +38,7 @@
   let viewChoices = $state<View[]>([])
   let summaries = $state<Record<string, string>>({})
   let calendarShown = $state(false)
+  let openTasks = $state<Task[]>([])
   let dragging = false
   let grid: HTMLDivElement | undefined = $state()
 
@@ -44,6 +46,13 @@
     void version
     if (dragging) return
     getDashboard().then((w) => (layout = withCalendar(w as Widget[])))
+  })
+  // Open Tasks for the overdue banner; reloaded with the rest of the Home screen.
+  const loadTasks = () =>
+    visibleSnapshot().then((rows) => (openTasks = rows.filter((r): r is Task => r.kind === 'task')))
+  $effect(() => {
+    void version
+    void loadTasks()
   })
 
   const shown = $derived(phoneOrder(layout))
@@ -209,6 +218,14 @@
     }}>{editing ? 'Done' : 'Edit layout'}</Button
   >
 </div>
+
+<OverdueBanner
+  tasks={openTasks}
+  onchange={() => {
+    void loadTasks()
+    onchange?.()
+  }}
+/>
 
 {#if showChecklist(areaCount, dismissed)}
   <Checklist

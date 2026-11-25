@@ -24,7 +24,9 @@ For daily users who want a task list that shows only what matters now. A View is
 4. Pin a view to the sidebar, hide it, or use its menu to rename or delete it. Built-in views cannot be renamed or deleted; **Reset** restores their defaults.
 
 5. In a Calendar layout, tick **Show future occurrences of recurring tasks** to see the next occurrences of repeating tasks as faded, read-only entries. Open one to edit the task itself.
-6. Keyboard: with a task selected (`j`/`k`), `t` sets today, `y` tomorrow, **Shift T** clears the date, `1` to `4` set the priority, `e` completes and `c` or Enter opens it. Press `?` for the full list.
+6. Finished tasks live in **Completed** (sidebar, or *Go to Completed* in the palette). They are grouped by the day you completed them, newest first. Search by words in the title or description, and **Restore** reopens a task.
+7. Star an Area, Project, saved View or Goal from its menu (**Add to favorites**). Starred items are listed under **Favorites** at the top of the sidebar. Favorites are saved on this device only, not synced.
+8. Keyboard: with a task selected (`j`/`k`), `t` sets today, `y` tomorrow, **Shift T** clears the date, `1` to `4` set the priority, `e` completes, `l` copies its link and `c` or Enter opens it. Press `?` for the full list.
 
 ## Verify it worked
 

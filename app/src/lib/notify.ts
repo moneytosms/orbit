@@ -58,6 +58,51 @@ const inMinutes = async (m: number) => {
   return new Date(now.getTime() + m * 60_000).toISOString().slice(0, 16)
 }
 
+/** Snooze presets offered for a Task, in menu order. */
+export const SNOOZE_PRESETS = ['10m', '30m', '1h', '3h', 'tomorrow9', 'monday9'] as const
+export type SnoozePreset = (typeof SNOOZE_PRESETS)[number]
+
+/**
+ * When a snooze preset lands, as local `YYYY-MM-DDTHH:MM`, given `now` in the same form.
+ * Pure calendar arithmetic on the floating local time, so no zone or DST handling is needed.
+ * `monday9` is the next Monday after today (a Monday now gives the one a week on).
+ */
+export function snoozeUntil(preset: SnoozePreset, now: string): string {
+  const day = now.slice(0, 10)
+  const addDays = (n: number) => {
+    const d = new Date(`${day}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+  const addMinutes = (m: number) => {
+    const d = new Date(`${now.slice(0, 16)}:00Z`)
+    return new Date(d.getTime() + m * 60_000).toISOString().slice(0, 16)
+  }
+  switch (preset) {
+    case '10m':
+      return addMinutes(10)
+    case '30m':
+      return addMinutes(30)
+    case '1h':
+      return addMinutes(60)
+    case '3h':
+      return addMinutes(180)
+    case 'tomorrow9':
+      return `${addDays(1)}T09:00`
+    case 'monday9': {
+      const dow = new Date(`${day}T00:00:00Z`).getUTCDay() // 0 = Sunday
+      const toMonday = (1 - dow + 7) % 7 || 7
+      return `${addDays(toMonday)}T09:00`
+    }
+  }
+}
+
+/** Snoozes a Task by a preset, measured from the device's local now. */
+export async function snoozeTaskPreset(taskId: string, preset: SnoozePreset) {
+  await snoozeTask(taskId, snoozeUntil(preset, await localMinute()))
+  void refreshNotifier()
+}
+
 /** Runs a notification action (also used for clicks on the notification body). */
 export async function handleAction(action: string, taskId?: string, routineId?: string) {
   if (action === 'checkin' && routineId) await checkIn(routineId, await localDay(), 'done')

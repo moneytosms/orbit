@@ -3,6 +3,7 @@
   import { DropdownMenu } from 'bits-ui'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Button } from '$lib/components/ui/button'
+  import { favorites, toggleFavorite } from '$lib/favorites'
   import {
     archiveItem,
     deleteItem,
@@ -33,6 +34,9 @@
     onchange: () => void
     archiveable?: boolean
   } = $props()
+
+  /** Areas, Projects, saved Views and Goals can be starred; Pages, Roadmaps and Sections cannot. */
+  const favouritable = $derived(kind === 'area' || kind === 'project' || kind === 'view' || kind === 'goal')
 
   let open = $state(false)
   let mode = $state<'rename' | 'delete'>('rename')
@@ -112,6 +116,13 @@
   </DropdownMenu.Trigger>
   <DropdownMenu.Portal>
     <DropdownMenu.Content align="end" class="z-50 min-w-36 rounded-lg border border-line bg-surface p-1 shadow-2">
+      {#if favouritable}
+        <DropdownMenu.Item
+          class="cursor-pointer rounded-md px-2.5 py-1.5 text-sm outline-none focus:bg-hover"
+          onSelect={() => toggleFavorite(id)}
+          >{$favorites.includes(id) ? 'Remove from favorites' : 'Add to favorites'}</DropdownMenu.Item
+        >
+      {/if}
       <DropdownMenu.Item
         class="cursor-pointer rounded-md px-2.5 py-1.5 text-sm outline-none focus:bg-hover"
         onSelect={() => showDialog('rename')}>Rename</DropdownMenu.Item

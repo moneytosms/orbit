@@ -24,6 +24,7 @@ export const keymap: Key[] = [
   { keys: 't', action: 'task.today', label: 'Schedule today', group: 'Task' },
   { keys: 'T', action: 'task.cleardate', label: 'Clear date', group: 'Task' },
   { keys: 'y', action: 'task.tomorrow', label: 'Schedule tomorrow', group: 'Task' },
+  { keys: 'l', action: 'task.copylink', label: 'Copy task link', group: 'Task' },
   { keys: 'g h', action: 'go.home', label: 'Go to Home', group: 'Go to' },
   { keys: 'g i', action: 'go.inbox', label: 'Go to Inbox', group: 'Go to' },
   { keys: 'g u', action: 'go.upcoming', label: 'Go to Upcoming', group: 'Go to' },

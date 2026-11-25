@@ -292,6 +292,10 @@ pub struct Settings {
     /// A Task with a timed due gets an "at due time" reminder; `None` is on.
     #[serde(default)]
     pub default_reminder: Option<bool>,
+    /// Minutes before a timed due that each get a default reminder; `None` = fall back to
+    /// `default_reminder`. An empty list means none.
+    #[serde(default)]
+    pub default_reminders: Option<Vec<u32>>,
     /// Completed Tasks wanted per day; `None` = 5.
     #[serde(default)]
     pub target_daily: Option<u32>,
@@ -319,6 +323,15 @@ pub struct Settings {
     /// Gamification: Stardust, Levels, Badges, Patches and their toasts; `None` is on.
     #[serde(default)]
     pub gamification: Option<bool>,
+    /// Quick add recognises dates (`tomorrow`, `fri`, `next week`); `None` is on.
+    #[serde(default)]
+    pub smart_dates: Option<bool>,
+    /// The day `next week` means in quick add, 0 = Monday .. 6 = Sunday; `None` = 0.
+    #[serde(default)]
+    pub next_week_day: Option<u8>,
+    /// The day `weekend` means in quick add, 0 = Monday .. 6 = Sunday; `None` = 5 (Saturday).
+    #[serde(default)]
+    pub weekend_day: Option<u8>,
 }
 
 /// One Home dashboard widget on the fixed-row grid.
@@ -721,6 +734,8 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_reminder: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_reminders: Option<Vec<u32>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         target_daily: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target_weekly: Option<u32>,
@@ -738,6 +753,12 @@ pub enum Op {
         vacations: Option<Vec<[String; 2]>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gamification: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        smart_dates: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_week_day: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        weekend_day: Option<u8>,
     },
     /// Records a Badge or Patch earned by the server. Never revoked.
     #[serde(rename = "award.grant")]
@@ -1360,6 +1381,7 @@ impl Op {
                 next_due_days,
                 next_undated_p1,
                 default_reminder,
+                default_reminders,
                 target_daily,
                 target_weekly,
                 days_off,
@@ -1369,6 +1391,9 @@ impl Op {
                 vacation_from,
                 vacations,
                 gamification,
+                smart_dates,
+                next_week_day,
+                weekend_day,
             } => [
                 ("display_name", display_name.is_some()),
                 ("avatar", avatar.is_some()),
@@ -1381,6 +1406,7 @@ impl Op {
                 ("next_due_days", next_due_days.is_some()),
                 ("next_undated_p1", next_undated_p1.is_some()),
                 ("default_reminder", default_reminder.is_some()),
+                ("default_reminders", default_reminders.is_some()),
                 ("target_daily", target_daily.is_some()),
                 ("target_weekly", target_weekly.is_some()),
                 ("days_off", days_off.is_some()),
@@ -1390,6 +1416,9 @@ impl Op {
                 ("vacation_from", vacation_from.is_some()),
                 ("vacations", vacations.is_some()),
                 ("gamification", gamification.is_some()),
+                ("smart_dates", smart_dates.is_some()),
+                ("next_week_day", next_week_day.is_some()),
+                ("weekend_day", weekend_day.is_some()),
             ]
             .into_iter()
             .filter(|(_, present)| *present)
@@ -2300,6 +2329,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             next_due_days,
             next_undated_p1,
             default_reminder,
+            default_reminders,
             target_daily,
             target_weekly,
             days_off,
@@ -2309,7 +2339,16 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             vacation_from,
             vacations,
             gamification,
+            smart_dates,
+            next_week_day,
+            weekend_day,
         } => {
+            if default_reminders
+                .as_ref()
+                .is_some_and(|v| v.len() > 16 || v.iter().any(|m| *m > 60 * 24 * 365))
+            {
+                return Err(ErrorCode::BadField);
+            }
             let old = match existing {
                 Some(Row::Settings(s)) => s,
                 Some(_) => return Err(ErrorCode::BadField),
@@ -2326,6 +2365,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     next_due_days: None,
                     next_undated_p1: None,
                     default_reminder: None,
+                    default_reminders: None,
                     target_daily: None,
                     target_weekly: None,
                     days_off: None,
@@ -2335,6 +2375,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     vacation_from: None,
                     vacations: None,
                     gamification: None,
+                    smart_dates: None,
+                    next_week_day: None,
+                    weekend_day: None,
                 },
             };
             Ok(Row::Settings(Settings {
@@ -2350,6 +2393,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 next_due_days: next_due_days.or(old.next_due_days),
                 next_undated_p1: next_undated_p1.or(old.next_undated_p1),
                 default_reminder: default_reminder.or(old.default_reminder),
+                default_reminders: default_reminders.clone().or(old.default_reminders),
                 target_daily: target_daily.or(old.target_daily),
                 target_weekly: target_weekly.or(old.target_weekly),
                 days_off: days_off.clone().or(old.days_off),
@@ -2363,6 +2407,9 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 },
                 vacations: vacations.clone().or(old.vacations),
                 gamification: gamification.or(old.gamification),
+                smart_dates: smart_dates.or(old.smart_dates),
+                next_week_day: next_week_day.or(old.next_week_day),
+                weekend_day: weekend_day.or(old.weekend_day),
             }))
         }
     }
@@ -3665,6 +3712,7 @@ mod tests {
                 next_due_days: None,
                 next_undated_p1: None,
                 default_reminder: None,
+                default_reminders: None,
                 target_daily: None,
                 target_weekly: None,
                 days_off: None,
@@ -3674,6 +3722,9 @@ mod tests {
                 vacation_from: None,
                 vacations: None,
                 gamification: None,
+                smart_dates: None,
+                next_week_day: None,
+                weekend_day: None,
             })
         );
         let second = apply(Some(first), &up(serde_json::json!({ "accent": "#ff0000" }))).unwrap();
@@ -3720,6 +3771,59 @@ mod tests {
         assert_eq!(
             up(serde_json::json!({ "theme": "x" })).op.target(),
             SETTINGS
+        );
+    }
+
+    #[test]
+    fn quick_add_prefs_patch_per_field_and_old_rows_load() {
+        let up = |args| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000e3",
+                "settings.update",
+                args,
+                1000,
+            )
+        };
+        let Row::Settings(s) = apply(None, &up(serde_json::json!({ "next_week_day": 4 }))).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (s.smart_dates, s.next_week_day, s.weekend_day),
+            (None, Some(4), None)
+        );
+        let Row::Settings(s) = apply(
+            Some(Row::Settings(s)),
+            &up(serde_json::json!({ "smart_dates": false, "weekend_day": 6 })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            (s.smart_dates, s.next_week_day, s.weekend_day),
+            (Some(false), Some(4), Some(6))
+        );
+        let Row::Settings(s) = apply(
+            Some(Row::Settings(s)),
+            &up(serde_json::json!({ "next_week_day": 0 })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            (s.smart_dates, s.next_week_day, s.weekend_day),
+            (Some(false), Some(0), Some(6))
+        );
+        let old: Settings = serde_json::from_value(serde_json::json!({
+            "id": SETTINGS,
+            "theme": "legacy",
+            "accent": "",
+            "start_view": ""
+        }))
+        .unwrap();
+        assert_eq!(
+            (old.smart_dates, old.next_week_day, old.weekend_day),
+            (None, None, None)
         );
     }
 

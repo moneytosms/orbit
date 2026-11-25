@@ -1,5 +1,6 @@
 <script lang="ts">
   import { doneShare, glance, type Glance } from '$lib/dashboard'
+  import { badgePreference, dueBadgeCount, showBadge } from '$lib/appBadge'
   import { goals, localDay, routines, routineStats, stardust, visibleSnapshot } from '$lib/sync'
   import WidgetSkeleton from './WidgetSkeleton.svelte'
 
@@ -13,6 +14,7 @@
   async function load() {
     const today = await localDay()
     const base = glance(await visibleSnapshot(), today)
+    if (badgePreference()) void showBadge(dueBadgeCount(base))
     let routinesDue = 0
     for (const r of await routines()) {
       const day = (await routineStats(r.id, today)).days.find(([d]) => d === today)?.[1]

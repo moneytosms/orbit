@@ -13,7 +13,7 @@ For daily users who want to capture a task in one line and know what Orbit under
 
    | Token | Meaning | Example |
    | --- | --- | --- |
-   | `today`, `tomorrow`, `tmrw`, `fri`, `next fri`, `this fri`, `in 3 days`, `next week`, `next month`, `next year`, `this weekend`, `end of month`, `mid jan`, `dec 5th`, `5 dec 2027`, `the 27th`, `27/1`, `2026-12-01` | due date (`next week` is next Monday; a bare weekday is its next occurrence; `next fri` is the one in next week; `27/1` and `3/12` read day/month) | `pay rent on fri` |
+   | `today`, `tomorrow`, `tmrw`, `fri`, `next fri`, `this fri`, `in 3 days`, `next week`, `next month`, `next year`, `this weekend`, `end of month`, `mid jan`, `dec 5th`, `5 dec 2027`, `the 27th`, `27/1`, `2026-12-01` | due date (`next week` is next Monday, or the weekday set in Settings; `this weekend` and `next weekend` are Saturday, or the weekend day set in Settings; a bare weekday is its next occurrence; `next fri` is the one in next week; `27/1` and `3/12` read day/month) | `pay rent on fri` |
    | `6pm`, `18:00`, `9:15am`, `6 pm`, `at noon`, `at midnight` | due time (the next time the clock shows it if no date: `9am` typed at 10:00 means tomorrow) | `call mom tomorrow 6pm` |
    | `today at 10pm`, `fri at 7pm`, `9am fri`, `tonight`, `tomorrow morning`, `this evening`, `in the evening` | date plus time or a part of the day (morning 09:00, afternoon 14:00, evening 18:00, night 21:00, tonight 20:00) | `gym tomorrow morning` |
    | `in 5 minutes`, `in 2 hours`, `in half an hour`, `in 1h30m`, `in an hour and a half`, `90 minutes from now`, `in 2 months` | relative to now, with the time when it is hours or minutes | `check oven in 20 min` |
@@ -27,12 +27,20 @@ For daily users who want to capture a task in one line and know what Orbit under
    | `for 1h`, `for 30 min`, `for 1h15m`, `for 90 minutes`, `for an hour`, `for half an hour`, `for 1.5 hours` | duration, 1 minute to 24 hours (`for 25h` and `for 3 days` stay in the title; so does `for the team`) | `write essay for 1h30m` |
    | `3-4pm`, `9:30-10:00`, `9am-10:30am`, `from 9 to 10:30` | time range: due time = the start, duration = the length (`tomorrow 3-4pm` works; the end must be after the start, `9-10` without a colon or am/pm is not a range, and ranges across midnight are not read) | `standup tomorrow 9:30-9:45` |
    | `!30m`, `!9am`, `!fri 9am`, `!in 10 minutes`, `!tomorrow morning` | reminder (offset before due, or a fixed time) | `dentist fri 3pm !1h` |
+   | `!later` (three hours from now, rolls past midnight), `!morning` (09:00), `!afternoon` (14:00), `!evening` (18:00), `!tonight` (20:00), `!night` (21:00) | reminder at a fixed time. The day parts are the next time the clock shows them, so `!morning` at 10:00 means tomorrow 09:00. Unknown `!words` stay in the title | `call back !later` |
 
 2. Or click instead of typing. While you type, a row of options sits under the box (destination, date, deadline, duration, priority, labels, goal, reminder), in the New task window, the bottom bar and the desktop quick-capture window. Each option shows what the line currently means, and picking one (a month calendar for dates and deadlines, 15m/30m/1h/2h or custom minutes for duration) rewrites the typed text with the same syntax, so you can mix typing and clicking.
 3. Use a backslash to keep a sigil literal: `issue \#1` stays `issue #1`.
 4. An unknown name stays in the title and shows as unresolved instead of guessing.
 5. Organise later. Captures with no destination land in the Inbox. Move a task by dragging it, from its menu, or by editing it in the task drawer.
 6. Group tasks inside an Area or a Project with **Sections**: use **+ New section** at the end of the list. Drag tasks between sections and drag headings to reorder. Deleting a section moves its tasks to the parent list, never deletes them.
+7. Copy a task with **Duplicate task** in the task drawer, or the palette's *Duplicate task*. The copy is open, sits right below the original and keeps its title, description, labels, priority, date, deadline, duration, reminders, goal, place and open subtasks. It does not keep the completion history, a repeat rule, or reminders that already fired. **Copy link** (or `l` with a task selected) copies its `#/task/<id>` link.
+
+## Settings
+
+- **Turn off date recognition.** With dates turned off, due dates, deadlines (`by fri`), durations (`for 1h`) and time ranges (`3-4pm`) stay in the title, so you can type them as words. Tokens you mark explicitly keep working: `!` reminders, `{date}` deadlines, `@`/`$`/`%`/`#` names, priorities and `every` rules.
+- **Next week day.** `next week` lands on Monday by default. Pick another weekday in Settings and `next week` uses it. `next fri` and the other weekday phrases are unchanged.
+- **Weekend day.** `this weekend` and `next weekend` use Saturday by default. Pick Sunday or another day in Settings.
 
 ## Verify it worked
 
@@ -56,6 +64,18 @@ The task is listed with tomorrow's date, priority 2 and the `health` label, and 
 **`@Name` did not resolve.** The name must match an existing Area or Project and end at a word boundary. Multi-word names match the longest name first.
 
 **A task I added offline is missing on another device.** Changes wait in the queue until the next sync. See [Install, Troubleshooting](install.md#troubleshooting).
+
+## Overdue, postpone and reschedule
+
+A Task is **overdue** when it is open and its due date is before today. Lists with Tasks in them (Home, Inbox, Areas and Projects) show an overdue banner at the top with the count and these buttons:
+
+- **Reschedule to today** and **Tomorrow** move every overdue Task in that list.
+- **Pick date…** opens a month calendar; a day before today is refused.
+- **Show list** lists the overdue Tasks, each with its own **Reschedule** button.
+
+A move keeps each Task's time of day. A repeating Task moves to its first occurrence on or after the chosen day, so its rhythm holds. Every move shows a toast with **Undo** that puts the old dates back.
+
+Any Task can be postponed from its detail drawer, with **Postpone**: Tomorrow, Next week (the first day of the week set in Settings), This weekend (the coming Saturday, or today at the weekend), +1 day and +1 week (counted from the later of its due date and today), or No date. The command palette (`Ctrl K` then `>`) has the same choices as **Postpone: …**. Overdue rows show their due date in red, and a **Reschedule** button appears on hover or focus (always shown on touch screens).
 
 ## Next
 

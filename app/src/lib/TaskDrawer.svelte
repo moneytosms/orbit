@@ -2,10 +2,12 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import Backlinks from '$lib/Backlinks.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { copyTaskLink } from '$lib/actions'
   import {
     addReminder,
     createLabel,
     deleteItem,
+    duplicateTask,
     getTask,
     goals as listGoals,
     inheritedGoal,
@@ -19,6 +21,8 @@
     type TaskPatch,
   } from '$lib/sync'
 
+  import { POSTPONE, type Postpone } from '$lib/overdue'
+  import { postponeTask } from '$lib/postpone'
   let { taskId, onclose }: { taskId: string | null; onclose: () => void } = $props()
 
   let open = $state(false)
@@ -102,6 +106,13 @@
     if (task && value !== task.description) save({ description: value })
   }
 
+  // Quick postpone from the date fields; undo is offered by the toast.
+  async function postpone(choice: Postpone) {
+    if (!taskId || !task) return
+    await postponeTask($state.snapshot(task) as Task, choice)
+    task = await getTask(taskId)
+    linkVersion++
+  }
   // A time only applies to a date: clearing the date clears the time too.
   function saveDate(e: Event) {
     const date = (e.currentTarget as HTMLInputElement).value
@@ -193,6 +204,13 @@
             </button>
           </div>
         {/if}
+
+        <div role="group" aria-label="Postpone" class="flex flex-wrap items-center gap-1.5">
+          <span class="text-xs font-medium text-muted">Postpone</span>
+          {#each POSTPONE as [choice, text] (choice)}
+            <Button size="sm" variant="ghost" onclick={() => postpone(choice)}>{text}</Button>
+          {/each}
+        </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div class="grid gap-1.5">
@@ -346,6 +364,14 @@
               class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none placeholder:text-muted focus-visible:border-accent-line"
             />
           </form>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Button variant="ghost" aria-label="Duplicate task" onclick={() => duplicateTask(task?.id ?? '')}>
+            Duplicate task
+          </Button>
+          <Button variant="ghost" aria-label="Copy task link" onclick={() => copyTaskLink(task?.id ?? '')}>
+            Copy link
+          </Button>
         </div>
         <Button variant="ghost" aria-label="Delete task" onclick={remove}>Delete task</Button>
       </div>

@@ -13,8 +13,10 @@
   import Composer from './Composer.svelte'
   import EntityCreateMenu from './EntityCreateMenu.svelte'
   import EntityMenu from './EntityMenu.svelte'
+  import { favorites, resolveFavorites, type FavoriteEntry } from '$lib/favorites'
   import Palette from './Palette.svelte'
   import { runAction, setFocusedTask, ui } from '$lib/actions'
+  import { refreshAppBadge } from '$lib/appBadge'
   import { clearCursor, isTyping, matcher } from '$lib/keys'
   import Shortcuts from './Shortcuts.svelte'
   import DropTarget from './DropTarget.svelte'
@@ -28,6 +30,7 @@
     createView,
     moveItem,
     orderBetween,
+    goals,
     pinnedViews,
     reorderViews,
     updateView,
@@ -36,6 +39,7 @@
     VIEW_UPCOMING,
     type Area,
     type Project,
+    type Goal,
     type View,
     getProfile,
     getPage,
@@ -129,6 +133,23 @@
   let areaExpansion = $state<Record<string, boolean>>({})
   let pinned = $state<View[]>([])
   let hiddenViews = $state<View[]>([])
+  let allViewRows = $state<View[]>([])
+  let activeGoals = $state<Goal[]>([])
+  /** Starred Areas, Projects, saved Views and Goals, in the order they were starred. */
+  const favoriteList: FavoriteEntry[] = $derived.by(() => {
+    const lookup = new Map<string, FavoriteEntry>()
+    for (const a of areas) {
+      lookup.set(a.area.id, { id: a.area.id, kind: 'area', name: a.area.name, href: `#/area/${a.area.id}` })
+      for (const p of a.projects) {
+        lookup.set(p.id, { id: p.id, kind: 'project', name: p.name, href: `#/project/${p.id}` })
+      }
+    }
+    for (const v of allViewRows) {
+      if (!v.builtin) lookup.set(v.id, { id: v.id, kind: 'view', name: v.name, href: `#/view/${v.id}` })
+    }
+    for (const g of activeGoals) lookup.set(g.id, { id: g.id, kind: 'goal', name: g.name, href: '#/goals' })
+    return resolveFavorites($favorites, lookup)
+  })
   let profile = $state({ display_name: '', avatar: '' })
   let device = $state('')
   let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin })))
@@ -156,6 +177,15 @@
     }
     return () => window.removeEventListener('orbit-profile-change', refreshProfile)
   })
+  // The app icon badge recounts on start and whenever the tab comes back; the Glance widget refreshes it too.
+  onMount(() => {
+    const refreshBadge = () => {
+      if (document.visibilityState === 'visible') void refreshAppBadge()
+    }
+    document.addEventListener('visibilitychange', refreshBadge)
+    void refreshAppBadge()
+    return () => document.removeEventListener('visibilitychange', refreshBadge)
+  })
   $effect(() => {
     if (composing || !composerOpener) return
     const opener = composerOpener
@@ -167,7 +197,9 @@
   async function loadViews() {
     // Inbox and Upcoming have fixed nav rows instead of pins.
     pinned = (await pinnedViews()).filter((v) => v.id !== VIEW_INBOX && v.id !== VIEW_UPCOMING)
-    hiddenViews = (await views()).filter((v) => v.hidden)
+    allViewRows = await views()
+    hiddenViews = allViewRows.filter((v) => v.hidden)
+    activeGoals = await goals()
   }
   async function newView() {
     const id = await createView('New view', 'task')
@@ -389,7 +421,7 @@
           <div id="area-projects-{instance}-{a.id}" class="flex flex-col gap-0.5" hidden={!areaIsExpanded(a)}>
             {#each a.projects.slice(0, 4) as p (p.id)}
               <DropTarget parentId={p.id}>
-                <div class="group flex h-7 items-center rounded-[7px] hover:bg-hover">
+                <div class="group flex h-8 items-center rounded-[7px] hover:bg-hover">
                   <a
                     href="#/project/{p.id}"
                     onclick={() => (drawer = false)}
@@ -398,6 +430,7 @@
                   >
                     {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
                   </a>
+                  <EntityMenu id={p.id} name={p.name} kind="project" fallbackHref="#/home" {onchange} />
                 </div>
               </DropTarget>
             {/each}
@@ -442,6 +475,20 @@
         <Plus size={14} class="text-accent-ink" /> Add task
       </Button>
     </div>
+    {#if favoriteList.length}
+      <section class="flex flex-col gap-0.5" aria-label="Favorites">
+        <h2 class="px-2.5 pb-1 text-[0.7812rem] font-semibold text-muted">Favorites</h2>
+        {#each favoriteList as f (f.id)}
+          <a
+            href={f.href}
+            onclick={() => (drawer = false)}
+            class="flex h-8 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover"
+          >
+            <span class="min-w-0 flex-1 truncate">{f.name}</span>
+          </a>
+        {/each}
+      </section>
+    {/if}
     <nav class="flex flex-col gap-0.5" aria-label="Main">
       {@render row('home')}
       {#if !isHidden(VIEW_INBOX)}
@@ -450,6 +497,7 @@
       {#if !isHidden(VIEW_UPCOMING)}
         {@render row('upcoming')}
       {/if}
+      {@render row('completed')}
     </nav>
     <nav class="flex flex-col gap-0.5" aria-label="Plans">
       {@render row('goals')}

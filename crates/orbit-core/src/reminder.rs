@@ -39,11 +39,16 @@ pub struct Reminder {
     pub spent: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Config {
-    /// The "at due time" reminder for a Task with a timed due and no reminders.
+    /// Legacy on/off: `true` means the "at due time" default, used only when
+    /// `default_reminders` is absent.
     #[serde(default = "yes")]
     pub default_reminder: bool,
+    /// Minutes before a timed due to fire a default reminder; `None` falls back to
+    /// `default_reminder`.
+    #[serde(default)]
+    pub default_reminders: Option<Vec<u32>>,
 }
 
 fn yes() -> bool {
@@ -54,7 +59,35 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             default_reminder: true,
+            default_reminders: None,
         }
+    }
+}
+
+impl Config {
+    /// The config for the Settings row in `rows`, or the defaults when there is none.
+    pub fn from_rows(rows: &[Row]) -> Config {
+        rows.iter()
+            .find_map(|r| match r {
+                Row::Settings(s) => Some(Config {
+                    default_reminder: s.default_reminder.unwrap_or(true),
+                    default_reminders: s.default_reminders.clone(),
+                }),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// The effective default offsets in minutes, sorted and deduplicated.
+    pub fn offsets(&self) -> Vec<u32> {
+        let mut v = match &self.default_reminders {
+            Some(v) => v.clone(),
+            None if self.default_reminder => vec![0],
+            None => vec![],
+        };
+        v.sort_unstable();
+        v.dedup();
+        v
     }
 }
 
@@ -130,11 +163,28 @@ pub fn schedule(rows: &[Row], now_local: &str, cfg: &Config) -> Vec<Fire> {
                     Some(parse_ymd(&d.date)? * 1440 + minutes_of_day(time)?)
                 });
                 let deadline = t.deadline.as_deref().and_then(parse_ymd).map(|d| d * 1440);
-                if cfg.default_reminder
-                    && t.reminders.is_empty()
-                    && let Some(due) = due
-                {
-                    push(Some(t.id), None, None, due, &t.title);
+                if let Some(due) = due {
+                    // The legacy bool only defaults a Task with no reminders of its own; the
+                    // offset list adds one fire per offset, skipping any an explicit reminder covers.
+                    let legacy_gated = cfg.default_reminders.is_none() && !t.reminders.is_empty();
+                    if !legacy_gated {
+                        let explicit: Vec<u32> = t
+                            .reminders
+                            .iter()
+                            .filter_map(|r| match r.trigger {
+                                Trigger::Before {
+                                    field: Anchor::Due,
+                                    minutes,
+                                } => Some(minutes),
+                                _ => None,
+                            })
+                            .collect();
+                        for m in cfg.offsets() {
+                            if !explicit.contains(&m) {
+                                push(Some(t.id), None, None, due - m as i64, &t.title);
+                            }
+                        }
+                    }
                 }
                 for r in &t.reminders {
                     let at = match &r.trigger {
@@ -302,7 +352,15 @@ mod tests {
 
     const ON: Config = Config {
         default_reminder: true,
+        default_reminders: None,
     };
+
+    fn offsets(list: Option<Vec<u32>>) -> Config {
+        Config {
+            default_reminder: true,
+            default_reminders: list,
+        }
+    }
 
     #[test]
     fn offset_follows_the_current_due() {
@@ -373,8 +431,71 @@ mod tests {
         assert_eq!(times(&rows, "2026-03-02T08:00", &ON), ["2026-03-02T09:00"]);
         let off = Config {
             default_reminder: false,
+            default_reminders: None,
         };
         assert!(times(&rows, "2026-03-02T08:00", &off).is_empty());
+    }
+
+    #[test]
+    fn legacy_bool_defaults_only_a_task_without_reminders() {
+        let bare = [Row::Task(task(Some(("2026-03-02", Some("09:00"))), vec![]))];
+        let with_explicit = [Row::Task(task(
+            Some(("2026-03-02", Some("09:00"))),
+            vec![before(2, 30)],
+        ))];
+        let now = "2026-03-02T08:00";
+        assert_eq!(offsets(None).offsets(), [0]);
+        assert_eq!(times(&bare, now, &offsets(None)), ["2026-03-02T09:00"]);
+        assert_eq!(
+            times(&with_explicit, now, &offsets(None)),
+            ["2026-03-02T08:30"]
+        );
+        let off = Config {
+            default_reminder: false,
+            default_reminders: None,
+        };
+        assert!(off.offsets().is_empty());
+    }
+
+    #[test]
+    fn each_default_offset_yields_one_fire() {
+        let rows = [Row::Task(task(Some(("2026-03-02", Some("09:00"))), vec![]))];
+        let cfg = offsets(Some(vec![30, 0, 1440, 30]));
+        assert_eq!(cfg.offsets(), [0, 30, 1440]);
+        let fires = schedule(&rows, "2026-03-01T08:00", &cfg);
+        assert_eq!(
+            times(&rows, "2026-03-01T08:00", &cfg),
+            ["2026-03-01T09:00", "2026-03-02T08:30", "2026-03-02T09:00"]
+        );
+        assert!(
+            fires
+                .iter()
+                .all(|f| f.reminder_id.is_none() && f.task_id.is_some())
+        );
+    }
+
+    #[test]
+    fn default_offsets_skip_those_an_explicit_reminder_covers() {
+        let rows = [Row::Task(task(
+            Some(("2026-03-02", Some("09:00"))),
+            vec![before(2, 30)],
+        ))];
+        let cfg = offsets(Some(vec![0, 30]));
+        assert_eq!(
+            times(&rows, "2026-03-02T08:00", &cfg),
+            ["2026-03-02T08:30", "2026-03-02T09:00"]
+        );
+        let fires = schedule(&rows, "2026-03-02T08:00", &cfg);
+        let explicit = fires.iter().filter(|f| f.reminder_id.is_some()).count();
+        assert_eq!(explicit, 1);
+    }
+
+    #[test]
+    fn empty_offset_list_means_no_defaults() {
+        let rows = [Row::Task(task(Some(("2026-03-02", Some("09:00"))), vec![]))];
+        // An explicit empty list wins over the legacy `true`, which is still set.
+        assert!(offsets(Some(vec![])).default_reminder);
+        assert!(times(&rows, "2026-03-02T08:00", &offsets(Some(vec![]))).is_empty());
     }
 
     #[test]

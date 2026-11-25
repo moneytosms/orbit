@@ -1,16 +1,17 @@
 //! The commands. Each returns the human text and the `--json` body; `main` prints them.
 use crate::out::{Done, Fail, R, fail, internal, table, usage};
-use crate::refs;
+use crate::{lines, markdown, refs};
 use orbit_client::{Client, Rejection, is_signed_out};
 use orbit_core::next::{Cfg, whats_next};
+use orbit_core::parse;
 use orbit_core::routine::{CheckState, checkin_id};
 use orbit_core::search::Index;
 use orbit_core::view::today_string;
-use orbit_core::{ErrorCode, Op, PROTOCOL_V, Row, Task, UpgradeRequired, Uuid};
+use orbit_core::{Due, ErrorCode, Op, PROTOCOL_V, Row, Task, UpgradeRequired, Uuid};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::error::Error;
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::{BufRead, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -303,7 +304,16 @@ pub fn self_update(dry_run: bool) -> Done {
     crate::updates::self_update(dry_run)
 }
 
-pub fn export(file: &Path) -> Done {
+/// The zip from the server, or with `md`, a Markdown checklist of this device's replica.
+pub fn export(file: Option<&Path>, md: bool) -> Done {
+    if md {
+        return export_md(file);
+    }
+    let Some(file) = file else {
+        return Err(usage(
+            "export needs a file for the zip: `orbit export FILE.zip`, or `orbit export --md`",
+        ));
+    };
     let ctx = open()?;
     if ctx.url.is_empty() {
         return Err(fail(
@@ -895,6 +905,354 @@ pub fn checkin(r: &str, date: Option<&str>, dry_run: bool) -> Done {
         format!("checked in {} for {date} · orbit ls", routine.name),
         json!({ "routine": routine.id, "name": routine.name, "date": date, "changed": true, "dry_run": false }),
     ))
+}
+
+/// The local time in the `YYYY-MM-DDTHH:MM` form the parser and reminders use.
+fn local_stamp() -> String {
+    chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string()
+}
+
+fn tasks_word(n: usize) -> String {
+    if n == 1 {
+        "1 task".into()
+    } else {
+        format!("{n} tasks")
+    }
+}
+
+/// Reads all of stdin, for `orbit add -`.
+pub fn read_stdin() -> R<String> {
+    let mut text = String::new();
+    std::io::stdin()
+        .read_to_string(&mut text)
+        .map_err(internal)?;
+    Ok(text)
+}
+
+/// `orbit add -` and `orbit add --lines`: one task per line, with indented lines nested under the
+/// line above (two levels at most). Every line is checked before anything is queued.
+pub fn add_lines(text: &str, dry_run: bool) -> Done {
+    let lines = lines::split(text);
+    if lines.is_empty() {
+        return Err(fail(
+            "title_required",
+            "no tasks in the input",
+            Some("give one task per line, e.g. printf 'buy milk\\neggs\\n' | orbit add -"),
+        ));
+    }
+    let mut ctx = open()?;
+    let now_local = local_stamp();
+    let known = ctx.client.known().map_err(internal)?;
+    let mut parsed = Vec::with_capacity(lines.len());
+    for line in &lines {
+        let p = parse::parse(&line.text, &now_local, &known);
+        if p.title.is_empty() {
+            return Err(fail(
+                "title_required",
+                format!("`{}` has no title, only quick-add tokens", line.text),
+                Some("give every line a title; nothing was added"),
+            ));
+        }
+        parsed.push(p);
+    }
+
+    // The id of the latest task at each depth, so a deeper line can nest under it.
+    let mut parents: Vec<Uuid> = Vec::new();
+    let mut items = Vec::with_capacity(lines.len());
+    // (depth, id when created, title) for the human output.
+    let mut shown: Vec<(usize, Option<Uuid>, String)> = Vec::with_capacity(lines.len());
+    for (line, p) in lines.iter().zip(&parsed) {
+        if dry_run {
+            items.push(json!({
+                "id": Value::Null, "title": p.title, "depth": line.depth,
+                "created": false, "dry_run": true, "parsed": p,
+            }));
+            shown.push((line.depth, None, p.title.clone()));
+            continue;
+        }
+        let (id, title) = ctx
+            .client
+            .capture(&line.text, None, &now_local, now_ms())
+            .map_err(internal)?;
+        if let Some(parent) = line
+            .depth
+            .checked_sub(1)
+            .and_then(|d| parents.get(d))
+            .copied()
+        {
+            ctx.client
+                .enqueue(
+                    Op::ItemMove {
+                        id,
+                        parent_id: Some(parent),
+                        order: String::new(),
+                    },
+                    now_ms(),
+                )
+                .map_err(internal)?;
+        }
+        parents.truncate(line.depth);
+        parents.push(id);
+        items.push(json!({
+            "id": id, "title": title, "depth": line.depth, "created": true, "dry_run": false,
+        }));
+        shown.push((line.depth, Some(id), title));
+    }
+
+    let created: Vec<Uuid> = shown.iter().filter_map(|(_, id, _)| *id).collect();
+    let all_ids = if created.is_empty() {
+        Vec::new()
+    } else {
+        ctx.client
+            .rows()
+            .map_err(internal)?
+            .iter()
+            .map(Row::id)
+            .collect::<Vec<_>>()
+    };
+    let listing = if created.is_empty() {
+        0
+    } else {
+        refs::listing_len(&ctx.dir)?
+    };
+    let mut human: Vec<String> = shown
+        .iter()
+        .map(|(depth, id, title)| {
+            let indent = "  ".repeat(*depth);
+            match id {
+                Some(id) => format!("{indent}{} {title}", id_prefix(*id, &all_ids, listing)),
+                None => format!("{indent}would add: {title}"),
+            }
+        })
+        .collect();
+    let summary = if dry_run {
+        format!("would add {}", tasks_word(lines.len()))
+    } else {
+        format!("added {}", tasks_word(created.len()))
+    };
+    human.push(summary);
+    Ok((
+        human.join("\n"),
+        json!({
+            "items": items,
+            "added": if dry_run { 0 } else { created.len() },
+            "dry_run": dry_run,
+        }),
+    ))
+}
+
+/// Where a date phrase puts a due date: cleared by `none`, or set, with a time only if the phrase
+/// gives one.
+enum Target {
+    Clear,
+    Set { date: String, time: Option<String> },
+}
+
+/// Reads a date phrase with the quick-add grammar. The phrase must be one date and nothing else.
+fn phrase_target(phrase: &str, now_local: &str) -> R<Target> {
+    let p = phrase.trim();
+    if p.is_empty() {
+        return Err(usage("needs a date, such as `tomorrow`, `fri 9am` or `none`"));
+    }
+    if p.eq_ignore_ascii_case("none") {
+        return Ok(Target::Clear);
+    }
+    // A synthetic title, so the phrase is read as quick-add text and any leftover word shows.
+    let parsed = parse::parse(&format!("task {p}"), now_local, &parse::Known::default());
+    match parsed.due {
+        Some(due) if parsed.title == "task" && parsed.recurrence.is_none() => Ok(Target::Set {
+            date: due.date,
+            time: due.time,
+        }),
+        _ => Err(fail(
+            "bad_date",
+            format!("could not read `{p}` as a single date"),
+            Some("try `tomorrow`, `fri 9am`, `in 3 days` or `none`"),
+        )),
+    }
+}
+
+/// The due a task gets from a target. A phrase without a time keeps the task's time when `keep_time`.
+fn new_due(target: &Target, task: &Task, keep_time: bool) -> Option<Due> {
+    match target {
+        Target::Clear => None,
+        Target::Set { date, time } => {
+            let kept = keep_time
+                .then(|| task.due.as_ref().and_then(|d| d.time.clone()))
+                .flatten();
+            Some(Due {
+                date: date.clone(),
+                time: time.clone().or(kept),
+            })
+        }
+    }
+}
+
+fn due_text(due: Option<&Due>) -> String {
+    match due {
+        None => "none".into(),
+        Some(Due {
+            date,
+            time: Some(time),
+        }) => format!("{date} {time}"),
+        Some(Due { date, time: None }) => date.clone(),
+    }
+}
+
+fn due_json(due: Option<&Due>) -> Value {
+    due.map_or(Value::Null, |d| json!({ "date": d.date, "time": d.time }))
+}
+
+/// `orbit postpone` (keeps the time) and `orbit reschedule` (replaces the due date and time).
+pub fn set_due(r: &str, phrase: &str, keep_time: bool, dry_run: bool) -> Done {
+    let mut ctx = open()?;
+    let task = task_of(&ctx, r)?;
+    let target = phrase_target(phrase, &local_stamp())?;
+    let due = new_due(&target, &task, keep_time);
+    let text = due_text(due.as_ref());
+    let body = |changed: bool| {
+        json!({
+            "id": task.id, "title": task.title, "due": due_json(due.as_ref()),
+            "changed": changed, "dry_run": dry_run,
+        })
+    };
+    if dry_run {
+        return Ok((
+            format!("would set {} due to {text}", task.title),
+            body(false),
+        ));
+    }
+    ctx.client
+        .update_task(task.id, json!({ "due": due_json(due.as_ref()) }), now_ms())
+        .map_err(internal)?;
+    Ok((format!("{}: due {text} · orbit ls", task.title), body(true)))
+}
+
+/// `orbit snooze`: a one-off reminder at the phrase's time (09:00 for a date alone), or one hour
+/// from now. Uses the same reminder.snooze op the apps send.
+pub fn snooze(r: &str, phrase: Option<&str>, dry_run: bool) -> Done {
+    let mut ctx = open()?;
+    let task = task_of(&ctx, r)?;
+    let at = match phrase {
+        None => (chrono::Local::now() + chrono::TimeDelta::hours(1))
+            .format("%Y-%m-%dT%H:%M")
+            .to_string(),
+        Some(p) => match phrase_target(p, &local_stamp())? {
+            Target::Set { date, time } => format!("{date}T{}", time.as_deref().unwrap_or("09:00")),
+            Target::Clear => return Err(usage("snooze needs a time, not `none`")),
+        },
+    };
+    let shown = at.replace('T', " ");
+    let body = |changed: bool| {
+        json!({
+            "id": task.id, "title": task.title, "at": at, "changed": changed, "dry_run": dry_run,
+        })
+    };
+    if dry_run {
+        return Ok((
+            format!("would remind {} at {shown}", task.title),
+            body(false),
+        ));
+    }
+    ctx.client
+        .enqueue(
+            Op::ReminderSnooze {
+                task_id: task.id,
+                at: at.clone(),
+            },
+            now_ms(),
+        )
+        .map_err(internal)?;
+    Ok((
+        format!("{}: reminder at {shown} · orbit ls", task.title),
+        body(true),
+    ))
+}
+
+/// `orbit overdue`: open tasks whose due has passed (a timed due counts once its time has passed).
+/// With `reschedule`, moves all of them to that phrase instead of listing them.
+pub fn overdue(reschedule: Option<&str>, all: bool, dry_run: bool, no_color: bool) -> Done {
+    let mut ctx = open()?;
+    let now = chrono::Local::now();
+    let today = now.format("%Y-%m-%d").to_string();
+    let hhmm = now.format("%H:%M").to_string();
+    let mut tasks: Vec<Task> = open_tasks(&ctx.client)?
+        .into_iter()
+        .filter(|task| {
+            task.due.as_ref().is_some_and(|due| {
+                due.date < today
+                    || (due.date == today
+                        && due.time.as_deref().is_some_and(|time| time < hhmm.as_str()))
+            })
+        })
+        .collect();
+    tasks.sort_by_key(|t| t.due.as_ref().map(|d| (d.date.clone(), d.time.clone())));
+
+    if let Some(phrase) = reschedule {
+        let target = phrase_target(phrase, &local_stamp())?;
+        let n = tasks.len();
+        if !dry_run {
+            for task in &tasks {
+                let due = new_due(&target, task, false);
+                ctx.client
+                    .update_task(task.id, json!({ "due": due_json(due.as_ref()) }), now_ms())
+                    .map_err(internal)?;
+            }
+        }
+        let verb = if dry_run { "would move" } else { "moved" };
+        let human = if n == 0 {
+            "no overdue tasks".to_string()
+        } else {
+            format!("{verb} {} to {}", tasks_word(n), phrase.trim())
+        };
+        let items: Vec<Value> = tasks
+            .iter()
+            .map(|t| json!({ "id": t.id, "title": t.title }))
+            .collect();
+        return Ok((
+            human,
+            json!({ "items": items, "total": n, "changed": !dry_run && n > 0, "dry_run": dry_run }),
+        ));
+    }
+    let ids = ctx
+        .client
+        .rows()
+        .map_err(internal)?
+        .iter()
+        .map(Row::id)
+        .collect::<Vec<_>>();
+    present(
+        &ctx.dir,
+        task_entries(&tasks, &ctx.client),
+        ListingView {
+            all,
+            empty: "no overdue tasks",
+            wide: false,
+            no_color,
+            next: false,
+            all_ids: &ids,
+        },
+    )
+}
+
+/// `orbit export --md`: from this device's replica, so it needs no server.
+fn export_md(file: Option<&Path>) -> Done {
+    let ctx = open()?;
+    let text = markdown::render(&ctx.client.rows().map_err(internal)?);
+    match file {
+        Some(path) => {
+            std::fs::write(path, &text).map_err(internal)?;
+            let shown = path.display().to_string();
+            Ok((
+                format!("wrote {shown} ({} bytes)", text.len()),
+                json!({ "path": shown, "bytes": text.len(), "format": "md" }),
+            ))
+        }
+        None => Ok((
+            text.trim_end().to_string(),
+            json!({ "markdown": text, "format": "md" }),
+        )),
+    }
 }
 
 /// `ID=area:NAME`, `ID=project:AREA/NAME` or `ID=inbox` as a project mapping.

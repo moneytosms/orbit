@@ -252,7 +252,8 @@ pub fn backlinks(rows_json: &str, id: &str) -> Result<Vec<String>, JsError> {
 }
 
 /// The reminders to show at `now_local` (`YYYY-MM-DDTHH:MM`) over `rows_json` (a Row array),
-/// soonest first, as a JSON array of fires. `cfg_json` is `{ "default_reminder": bool }`.
+/// soonest first, as a JSON array of fires. `cfg_json` is `{ "default_reminders": [minutes] }`
+/// (or the legacy `{ "default_reminder": bool }`).
 #[wasm_bindgen]
 pub fn reminder_schedule(
     rows_json: &str,

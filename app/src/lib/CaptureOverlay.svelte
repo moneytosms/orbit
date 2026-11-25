@@ -5,6 +5,7 @@
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import CaptureBar from './CaptureBar.svelte'
   import type { Parsed } from './sync'
+  import { DEFAULT_PREFS, knownJson, quickAddPrefs, type QuickAddPrefs } from './captureKnown'
 
   let draft = $state('')
   let input: HTMLInputElement
@@ -17,11 +18,14 @@
   }
   type Known = { areas: string[]; goals: string[]; pages: string[]; labels: string[] }
   let known: Known = $state({ areas: [], goals: [], pages: [], labels: [] })
-  const parsed = $derived(JSON.parse(parse_quick_add(draft, localNow(), JSON.stringify(known))) as Parsed)
+  let prefs: QuickAddPrefs = $state(DEFAULT_PREFS)
+  const parsed = $derived(JSON.parse(parse_quick_add(draft, localNow(), knownJson(known, prefs))) as Parsed)
 
   // The names the option bar offers come from this device's replica; the window has no other store.
+  // Date prefs come from the synced Settings where this window can read them, else the defaults.
   async function loadKnown() {
     known = await invoke<Known>('capture_known').catch(() => known)
+    prefs = await quickAddPrefs()
   }
   async function edited() {
     await tick()
