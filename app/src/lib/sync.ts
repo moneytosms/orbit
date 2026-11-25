@@ -1515,12 +1515,6 @@ export const removeReminder = (taskId: string, id: string) => enqueue('reminder.
 export const spendReminder = (taskId: string, id: string) => enqueue('reminder.spend', { task_id: taskId, id })
 /** Adds a one-off absolute reminder at `at` (`YYYY-MM-DDTHH:MM`). */
 export const snoozeTask = (taskId: string, at: string) => enqueue('reminder.snooze', { task_id: taskId, at })
-/** Whether a Task with a timed due gets a reminder at its due time by default (on unless turned off). */
-export async function getDefaultReminder(): Promise<boolean> {
-  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
-  return row?.default_reminder !== false
-}
-export const setDefaultReminder = (default_reminder: boolean) => enqueue('settings.update', { default_reminder })
 /** Minutes before a timed due that each get a default reminder, sorted; the legacy on/off counts as `[0]`. */
 export async function getDefaultReminders(): Promise<number[]> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
@@ -1554,11 +1548,14 @@ export async function localMinute(now = Date.now()): Promise<string> {
 }
 /** The reminders due or coming up (under an hour late ones included), soonest first, from core. */
 export async function reminderSchedule(now = Date.now()): Promise<Fire[]> {
-  const default_reminders = await getDefaultReminders()
+  // Raw settings, not the effective offsets: core keeps the legacy on/off rule for a Task with its own reminders.
+  const settings = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  const cfg = {
+    default_reminder: settings?.default_reminder !== false,
+    default_reminders: settings?.default_reminders ?? null,
+  }
   const rows = await allRows()
-  return JSON.parse(
-    reminder_schedule(JSON.stringify(rows), await localMinute(now), JSON.stringify({ default_reminders })),
-  )
+  return JSON.parse(reminder_schedule(JSON.stringify(rows), await localMinute(now), JSON.stringify(cfg)))
 }
 
 let rowsChanged = (_rows: Row[], _removed: string[]) => {}

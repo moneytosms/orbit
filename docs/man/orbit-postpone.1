@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-postpone 1  "postpone " 
+.SH NAME
+orbit\-postpone \- Move a task\*(Aqs due date to a phrase, keeping its time unless the phrase gives one
+.SH SYNOPSIS
+\fBorbit postpone\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> [\fIPHRASE\fR] 
+.SH DESCRIPTION
+Move a task\*(Aqs due date to a phrase, keeping its time unless the phrase gives one
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+A row number, id prefix or title words
+.TP
+[\fIPHRASE\fR]
+A date phrase, default `tomorrow`: `fri`, `in 3 days`, `next week`, `9am`
+.SH EXTRA
+Examples:
+  orbit postpone 1
+  orbit postpone 3f2b9c fri
+  orbit postpone buy milk "in 3 days" \-\-dry\-run

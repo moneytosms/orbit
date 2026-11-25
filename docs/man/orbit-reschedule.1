@@ -1,0 +1,34 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-reschedule 1  "reschedule " 
+.SH NAME
+orbit\-reschedule \- Set a task\*(Aqs due date to a phrase, or clear it with `none`. The time is replaced too
+.SH SYNOPSIS
+\fBorbit reschedule\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> <\fIPHRASE\fR> 
+.SH DESCRIPTION
+Set a task\*(Aqs due date to a phrase, or clear it with `none`. The time is replaced too
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+A row number, id prefix or title words
+.TP
+<\fIPHRASE\fR>
+A date phrase, or `none` to clear the due date
+.SH EXTRA
+Examples:
+  orbit reschedule 1 today
+  orbit reschedule 3f2b9c "fri 9am"
+  orbit reschedule 1 none
+  orbit reschedule 1 tomorrow \-\-dry\-run

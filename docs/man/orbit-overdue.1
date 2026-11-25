@@ -1,0 +1,35 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-overdue 1  "overdue " 
+.SH NAME
+orbit\-overdue \- List open tasks whose due date has passed, or move them all with \-\-reschedule
+.SH SYNOPSIS
+\fBorbit overdue\fR [\fB\-\-json\fR] [\fB\-\-reschedule\fR] [\fB\-\-all\fR] [\fB\-\-no\-color\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+List open tasks whose due date has passed, or move them all with \-\-reschedule
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-reschedule\fR [\fI<PHRASE>\fR]
+Move every overdue task to this phrase (default `today`), instead of listing them
+.TP
+\fB\-\-all\fR
+
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH EXTRA
+Examples:
+  orbit overdue
+  orbit overdue \-\-all
+  orbit overdue \-\-reschedule
+  orbit overdue \-\-reschedule "next monday" \-\-dry\-run
+  orbit \-\-json overdue

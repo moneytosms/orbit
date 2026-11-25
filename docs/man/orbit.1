@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH orbit 1  "orbit 0.2.0" 
+.TH orbit 1  "orbit 0.6.1" 
 .SH NAME
 orbit \- Orbit from the terminal
 .SH SYNOPSIS
@@ -38,7 +38,19 @@ orbit\-self\-update(1)
 Check for and install a verified CLI release
 .TP
 orbit\-add(1)
-Add a task. Quick\-add syntax applies: dates, p1\-p4, #label, @Area or @project
+Add a task. Quick\-add syntax applies: dates, p1\-p4, #label, @Area or @project. `\-` reads a list from stdin, one task per line
+.TP
+orbit\-postpone(1)
+Move a task\*(Aqs due date to a phrase, keeping its time unless the phrase gives one
+.TP
+orbit\-reschedule(1)
+Set a task\*(Aqs due date to a phrase, or clear it with `none`. The time is replaced too
+.TP
+orbit\-snooze(1)
+Remind about a task again later: one hour from now by default
+.TP
+orbit\-overdue(1)
+List open tasks whose due date has passed, or move them all with \-\-reschedule
 .TP
 orbit\-ls(1)
 List open tasks in a terminal\-width\-aware table
@@ -65,7 +77,7 @@ orbit\-checkin(1)
 Check a routine in for a day (default today)
 .TP
 orbit\-export(1)
-Download everything as a zip: items.json, Pages as .md and attachments
+Download everything as a zip: items.json, Pages as .md and attachments. With \-\-md, write Areas and Projects as Markdown checklists from this device instead (no server needed)
 .TP
 orbit\-guide(1)
 Print a short reference: commands, refs, listings, JSON shapes and exit codes
@@ -82,4 +94,4 @@ Examples:
   orbit done 1
   orbit guide
 .SH VERSION
-v0.2.0
+v0.6.1

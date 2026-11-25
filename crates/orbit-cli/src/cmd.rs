@@ -1052,7 +1052,9 @@ enum Target {
 fn phrase_target(phrase: &str, now_local: &str) -> R<Target> {
     let p = phrase.trim();
     if p.is_empty() {
-        return Err(usage("needs a date, such as `tomorrow`, `fri 9am` or `none`"));
+        return Err(usage(
+            "needs a date, such as `tomorrow`, `fri 9am` or `none`",
+        ));
     }
     if p.eq_ignore_ascii_case("none") {
         return Ok(Target::Clear);

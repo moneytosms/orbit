@@ -10,6 +10,11 @@ Everything works offline. `orbit sync` sends queued changes and fetches the rest
 
 Core commands
   orbit add TITLE...             add a task (--id UUID to pick its id, --dry-run)
+  orbit add -                    one task per stdin line (--lines TEXT does the same)
+  orbit postpone REF [PHRASE]    move the due date, keeping its time (default tomorrow)
+  orbit reschedule REF PHRASE    set the due date and time, or `none` to clear it
+  orbit snooze REF [PHRASE]      remind later (default one hour from now)
+  orbit overdue [--reschedule P] list tasks past their due date, or move them all
   orbit ls                       open tasks (--all for every row)
   orbit next                     what to do next (--all for every row)
   orbit show REF                 one task, with its id and status
@@ -17,6 +22,7 @@ Core commands
   orbit edit REF --title T --description D
   orbit search WORDS...          find tasks by words (--all)
   orbit checkin REF              check a routine in (--date YYYY-MM-DD, default today)
+  orbit export --md [FILE]       tasks as a Markdown checklist (no server needed)
   orbit login URL, logout, sync, status
   orbit import todoist           preview an import (--map ID=TARGET, --yes to import)
   orbit mcp                      serve the same commands to AI tools over stdio
@@ -37,8 +43,8 @@ Filters and listings
   finds \"buy milk\".
 
 Dry runs
-  add, done, edit, checkin and logout take --dry-run: they report what would change and
-  write nothing.
+  add, done, edit, checkin, postpone, reschedule, snooze, overdue and logout take --dry-run:
+  they report what would change and write nothing.
 
 JSON (--json, a global flag)
   Each command prints one JSON object on stdout, with \"v\":1.

@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH orbit-snooze 1  "snooze " 
+.SH NAME
+orbit\-snooze \- Remind about a task again later: one hour from now by default
+.SH SYNOPSIS
+\fBorbit snooze\fR [\fB\-\-dry\-run\fR] [\fB\-\-json\fR] [\fB\-\-no\-color\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIR\fR> [\fIPHRASE\fR] 
+.SH DESCRIPTION
+Remind about a task again later: one hour from now by default
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+
+.TP
+\fB\-\-json\fR
+Print one JSON object per result, with `"v":1`, instead of text
+.TP
+\fB\-\-no\-color\fR
+Disable ANSI colors
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIR\fR>
+A row number, id prefix or title words
+.TP
+[\fIPHRASE\fR]
+When to remind: a phrase with a time, else 09:00 on that day. Default: one hour from now
+.SH EXTRA
+Examples:
+  orbit snooze 1
+  orbit snooze 3f2b9c "tomorrow 9am"
+  orbit snooze 1 "in 2 hours" \-\-dry\-run

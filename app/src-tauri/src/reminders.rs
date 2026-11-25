@@ -1,8 +1,8 @@
 //! Background replica that fires reminder notifications while the app runs, even hidden to tray.
 use crate::token;
 use orbit_client::Client;
+use orbit_core::Op;
 use orbit_core::reminder::{self, Fire};
-use orbit_core::{Op, Row};
 use std::collections::HashSet;
 use std::time::Duration;
 use tauri::AppHandle;

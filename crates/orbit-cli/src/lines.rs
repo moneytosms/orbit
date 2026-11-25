@@ -115,11 +115,15 @@ mod tests {
 
     #[test]
     fn list_markers_are_stripped() {
-        let lines = split("- eggs\n* bread\n+ tea\n• jam\n1. rice\n2) beans\n[ ] soap\n- [x] salt\n- [X] pepper");
+        let lines = split(
+            "- eggs\n* bread\n+ tea\n• jam\n1. rice\n2) beans\n[ ] soap\n- [x] salt\n- [X] pepper",
+        );
         let got: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
         assert_eq!(
             got,
-            vec!["eggs", "bread", "tea", "jam", "rice", "beans", "soap", "salt", "pepper"]
+            vec![
+                "eggs", "bread", "tea", "jam", "rice", "beans", "soap", "salt", "pepper"
+            ]
         );
     }
 

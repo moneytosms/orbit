@@ -703,3 +703,243 @@ fn export_without_login_explains_itself() {
     assert_eq!(o.code, 1);
     assert_eq!(o.json()["error"]["code"], "no_server");
 }
+
+/// Like `orbit`, with `input` on stdin.
+fn orbit_stdin(dir: &Path, args: &[&str], input: &str) -> Out {
+    use std::io::Write as _;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_orbit"))
+        .args(args)
+        .env("ORBIT_DIR", dir)
+        .env("ORBIT_SESSION", "test")
+        .env("ORBIT_PASSWORD", PW)
+        .env("ORBIT_RELEASE_API", "http://127.0.0.1:1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    Out {
+        code: out.status.code().unwrap(),
+        stdout: String::from_utf8(out.stdout).unwrap(),
+        stderr: String::from_utf8(out.stderr).unwrap(),
+    }
+}
+
+#[test]
+fn add_dash_reads_a_list_and_nests_indented_lines() {
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit_stdin(
+        d.path(),
+        &["--json", "add", "-"],
+        "- [ ] trip\n  passport\n    visa\n\n1. buy milk\n",
+    );
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let body = o.json();
+    assert_eq!(body["added"], 4);
+    let items = body["items"].as_array().unwrap();
+    let titles: Vec<&str> = items.iter().map(|i| i["title"].as_str().unwrap()).collect();
+    assert_eq!(titles, vec!["trip", "passport", "visa", "buy milk"]);
+    let depths: Vec<u64> = items.iter().map(|i| i["depth"].as_u64().unwrap()).collect();
+    assert_eq!(depths, vec![0, 1, 2, 0]);
+
+    let parent = |child: &Value| {
+        let id = child["id"].as_str().unwrap();
+        orbit(d.path(), &["--json", "show", id]).json()["task"]["parent_id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(parent(&items[1]), items[0]["id"].as_str().unwrap());
+    assert_eq!(parent(&items[2]), items[1]["id"].as_str().unwrap());
+    assert_eq!(
+        parent(&items[3]),
+        "00000000-0000-7000-8000-000000000001",
+        "buy milk is in the Inbox"
+    );
+
+    let human = orbit_stdin(d.path(), &["add", "-"], "walk dog\n");
+    assert_eq!(human.stdout.trim_end().lines().last(), Some("added 1 task"));
+}
+
+#[test]
+fn add_lines_dry_run_prints_the_parse_and_adds_nothing() {
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit(
+        d.path(),
+        &[
+            "--json",
+            "add",
+            "--lines",
+            "pay rent tomorrow p1\nwalk dog",
+            "--dry-run",
+        ],
+    );
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let body = o.json();
+    assert_eq!(body["added"], 0);
+    assert_eq!(body["dry_run"], true);
+    assert_eq!(body["items"][0]["title"], "pay rent");
+    assert_eq!(body["items"][0]["parsed"]["priority"], 1);
+    assert_eq!(body["items"][1]["title"], "walk dog");
+    assert_eq!(orbit(d.path(), &["--json", "ls"]).json()["total"], 0);
+}
+
+#[test]
+fn add_lines_checks_every_line_before_adding_any() {
+    let d = tempfile::tempdir().unwrap();
+    let o = orbit(d.path(), &["--json", "add", "--lines", "ok task\np1"]);
+    assert_eq!(o.code, 1);
+    assert_eq!(o.json()["error"]["code"], "title_required");
+    assert_eq!(orbit(d.path(), &["--json", "ls"]).json()["total"], 0);
+
+    let o = orbit(d.path(), &["--json", "add", "--lines", "a", "--id", A]);
+    assert_eq!(o.code, 2);
+    let o = orbit_stdin(d.path(), &["add", "-", "--id", B], "a\n");
+    assert_eq!(o.code, 2);
+}
+
+#[test]
+fn postpone_keeps_the_time_and_reschedule_replaces_it() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "--id", A, "pay rent"]);
+    let due = |o: Out| o.json()["due"].clone();
+
+    let set = due(orbit(d.path(), &["--json", "reschedule", A, "fri 9am"]));
+    assert_eq!(set["time"], "09:00", "{set}");
+
+    let moved = due(orbit(d.path(), &["--json", "postpone", A]));
+    assert_eq!(moved["time"], "09:00", "postpone keeps the time: {moved}");
+
+    let moved = due(orbit(d.path(), &["--json", "postpone", A, "in 3 days"]));
+    assert_eq!(moved["time"], "09:00");
+
+    let retimed = due(orbit(d.path(), &["--json", "postpone", A, "3pm"]));
+    assert_eq!(retimed["time"], "15:00", "a phrase time wins");
+
+    let replaced = due(orbit(d.path(), &["--json", "reschedule", A, "tomorrow"]));
+    assert!(
+        replaced["time"].is_null(),
+        "reschedule replaces the time: {replaced}"
+    );
+
+    let o = orbit(d.path(), &["--json", "reschedule", A, "none"]);
+    assert_eq!(o.json()["due"], Value::Null);
+    assert_eq!(
+        orbit(d.path(), &["--json", "show", A]).json()["task"]["due"],
+        Value::Null
+    );
+
+    let bad = orbit(d.path(), &["--json", "reschedule", A, "whenever soon"]);
+    assert_eq!(bad.code, 1);
+    assert_eq!(bad.json()["error"]["code"], "bad_date");
+
+    let dry = orbit(d.path(), &["--json", "postpone", A, "--dry-run"]);
+    assert_eq!(dry.json()["changed"], false);
+    assert_eq!(dry.json()["dry_run"], true);
+}
+
+#[test]
+fn snooze_adds_a_one_off_reminder() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "--id", A, "pay rent"]);
+    let reminders = |d: &Path| {
+        orbit(d, &["--json", "show", A]).json()["task"]["reminders"]
+            .as_array()
+            .unwrap()
+            .clone()
+    };
+
+    let o = orbit(d.path(), &["--json", "snooze", A, "tomorrow 8am"]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert!(o.json()["at"].as_str().unwrap().ends_with("T08:00"));
+    let got = reminders(d.path());
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0]["kind"], "at");
+    assert!(got[0]["at"].as_str().unwrap().ends_with("T08:00"));
+
+    let o = orbit(d.path(), &["--json", "snooze", A]);
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_eq!(
+        reminders(d.path()).len(),
+        2,
+        "the default is one hour from now"
+    );
+
+    let dry = orbit(
+        d.path(),
+        &["--json", "snooze", A, "in 2 hours", "--dry-run"],
+    );
+    assert_eq!(dry.json()["changed"], false);
+    assert_eq!(reminders(d.path()).len(), 2);
+
+    let none = orbit(d.path(), &["--json", "snooze", A, "none"]);
+    assert_eq!(none.code, 2);
+}
+
+#[test]
+fn overdue_lists_past_due_tasks_and_moves_them_all() {
+    let d = tempfile::tempdir().unwrap();
+    orbit(d.path(), &["add", "--id", A, "late one"]);
+    orbit(d.path(), &["add", "--id", B, "not yet"]);
+    orbit(d.path(), &["reschedule", A, "2020-01-01"]);
+    orbit(d.path(), &["reschedule", B, "dec 1"]);
+
+    let body = orbit(d.path(), &["--json", "overdue"]).json();
+    assert_eq!(body["total"], 1, "{body}");
+    assert_eq!(body["items"][0]["title"], "late one");
+
+    let dry = orbit(
+        d.path(),
+        &["--json", "overdue", "--reschedule", "fri", "--dry-run"],
+    )
+    .json();
+    assert_eq!(dry["total"], 1);
+    assert_eq!(dry["changed"], false);
+    assert_eq!(orbit(d.path(), &["--json", "overdue"]).json()["total"], 1);
+
+    let moved = orbit(d.path(), &["--json", "overdue", "--reschedule", "fri"]).json();
+    assert_eq!(moved["total"], 1);
+    assert_eq!(moved["changed"], true);
+    let none_left = orbit(d.path(), &["--json", "overdue"]).json();
+    assert_eq!(none_left["total"], 0, "{none_left}");
+    assert_eq!(none_left["items"], json!([]));
+}
+
+#[test]
+fn export_md_writes_checklists_to_a_file_or_stdout() {
+    let d = tempfile::tempdir().unwrap();
+    orbit_stdin(d.path(), &["add", "-"], "- buy milk\n  oat\n");
+    orbit(d.path(), &["add", "--id", A, "done soon"]);
+    orbit(d.path(), &["done", A]);
+
+    let out = orbit(d.path(), &["export", "--md"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    // Order among Inbox tasks follows their ids, so check the lines rather than their order.
+    assert!(out.stdout.starts_with("# Inbox\n"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\n- [ ] buy milk\n  - [ ] oat\n"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("\n- [x] done soon\n"), "{}", out.stdout);
+
+    let file = d.path().join("tasks.md");
+    let o = orbit(
+        d.path(),
+        &["--json", "export", "--md", file.to_str().unwrap()],
+    );
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_eq!(o.json()["format"], "md");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("\n- [x] done soon\n"), "{written}");
+
+    let no_file = orbit(d.path(), &["--json", "export"]);
+    assert_eq!(no_file.code, 2);
+}

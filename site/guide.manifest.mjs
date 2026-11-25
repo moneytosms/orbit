@@ -24,6 +24,7 @@ export default [
     order: 2,
     items: [
       { id: "docs/tasks.md", title: "Quick add and tasks", summary: "Capture a task in one line: dates, priorities, labels, places, goals, recurrence and reminders." },
+      { id: "docs/quick-add-reference.md", kind: "reference", title: "Quick add: cheat sheet", summary: "Every symbol, date phrase, repeat rule and reminder shortcut quick add understands, with an example for each." },
       { id: "docs/views.md", title: "Views and filters", summary: "Save the list you want to see, with visual or typed filters, grouping and layouts." },
       { id: "docs/pages.md", title: "Pages", summary: "Write plans and notes next to your tasks, with links, backlinks and foldable sections." },
       { id: "docs/routines.md", title: "Routines and goals", summary: "Track habits and outcomes without overdue pile-ups, and see when a goal is behind pace." },

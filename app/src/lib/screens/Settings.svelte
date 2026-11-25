@@ -20,6 +20,7 @@
 
   let { version = 0 }: { version?: number } = $props()
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
+  import UsageGuide from '$lib/UsageGuide.svelte'
   import { badgePreference, badgeSupported, refreshAppBadge, setBadgePreference } from '$lib/appBadge'
   import {
     getDaySettings,
@@ -288,6 +289,7 @@
     ['appearance', 'Appearance'],
     ['reminders', 'Reminders'],
     ['quick-add', 'Quick add'],
+    ['guide', 'Usage guide'],
     ['general', 'Day and calendar'],
     ['capture-shortcut', 'Quick capture'],
     ['profile', 'Profile'],
@@ -699,6 +701,11 @@
       )}
       {@render row('Next week means', 'The day "next week" resolves to.', nextWeekControl)}
       {@render row('Weekend means', 'The day "weekend" resolves to.', weekendControl)}
+    </section>
+
+    <section id="guide" class="panel scroll-mt-4">
+      <h2 class="panel-title">Usage guide</h2>
+      <UsageGuide />
     </section>
 
     <section id="general" class="panel scroll-mt-4">

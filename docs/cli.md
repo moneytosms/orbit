@@ -15,7 +15,11 @@ Commands:
   sync         Send queued changes to the server and fetch the rest
   status       Show the server, sign-in state and unsynced count
   self-update  Check for and install a verified CLI release
-  add          Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
+  add          Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project. `-` reads a list from stdin, one task per line
+  postpone     Move a task's due date to a phrase, keeping its time unless the phrase gives one
+  reschedule   Set a task's due date to a phrase, or clear it with `none`. The time is replaced too
+  snooze       Remind about a task again later: one hour from now by default
+  overdue      List open tasks whose due date has passed, or move them all with --reschedule
   ls           List open tasks in a terminal-width-aware table
   next         Show what to do next, with a reason for each item
   done         Complete a task
@@ -24,7 +28,7 @@ Commands:
   search       Find tasks by words
   import       Bring data in from another app
   checkin      Check a routine in for a day (default today)
-  export       Download everything as a zip: items.json, Pages as .md and attachments
+  export       Download everything as a zip: items.json, Pages as .md and attachments. With --md, write Areas and Projects as Markdown checklists from this device instead (no server needed)
   guide        Print a short reference: commands, refs, listings, JSON shapes and exit codes
   mcp          Run as an MCP server over stdio, so AI tools can use Orbit
   completions  Print shell completions to stdout
@@ -183,13 +187,13 @@ Examples:
 ### `orbit add`
 
 ```text
-Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project
+Add a task. Quick-add syntax applies: dates, p1-p4, #label, @Area or @project. `-` reads a list from stdin, one task per line
 
-Usage: orbit add [OPTIONS] <TITLE>...
+Usage: orbit add [OPTIONS] [TITLE]...
 
 Arguments:
-  <TITLE>...
-          
+  [TITLE]...
+          The task title, or `-` for a list on stdin
 
 Options:
       --id <ID>
@@ -198,11 +202,14 @@ Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
 
-      --dry-run
-          
+      --lines <TEXT>
+          Several tasks, one per line. List markers are stripped and indented lines nest
 
       --no-color
           Disable ANSI colors
+
+      --dry-run
+          
 
   -h, --help
           Print help
@@ -211,6 +218,142 @@ Examples:
   orbit add "buy milk"
   orbit add call the dentist tomorrow 9am p2 #health
   orbit add --id 3f2b9c1e-6d4a-4b8e-9f1a-2c7d5e8b0a11 "buy milk" --dry-run
+  printf '%s\n' 'trip' '  passport' '- [ ] tickets' | orbit add -
+  orbit add --lines "buy milk\nbuy eggs tomorrow" --dry-run
+```
+
+### `orbit postpone`
+
+```text
+Move a task's due date to a phrase, keeping its time unless the phrase gives one
+
+Usage: orbit postpone [OPTIONS] <R> [PHRASE]
+
+Arguments:
+  <R>
+          A row number, id prefix or title words
+
+  [PHRASE]
+          A date phrase, default `tomorrow`: `fri`, `in 3 days`, `next week`, `9am`
+
+Options:
+      --dry-run
+          
+
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit postpone 1
+  orbit postpone 3f2b9c fri
+  orbit postpone buy milk "in 3 days" --dry-run
+```
+
+### `orbit reschedule`
+
+```text
+Set a task's due date to a phrase, or clear it with `none`. The time is replaced too
+
+Usage: orbit reschedule [OPTIONS] <R> <PHRASE>
+
+Arguments:
+  <R>
+          A row number, id prefix or title words
+
+  <PHRASE>
+          A date phrase, or `none` to clear the due date
+
+Options:
+      --dry-run
+          
+
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit reschedule 1 today
+  orbit reschedule 3f2b9c "fri 9am"
+  orbit reschedule 1 none
+  orbit reschedule 1 tomorrow --dry-run
+```
+
+### `orbit snooze`
+
+```text
+Remind about a task again later: one hour from now by default
+
+Usage: orbit snooze [OPTIONS] <R> [PHRASE]
+
+Arguments:
+  <R>
+          A row number, id prefix or title words
+
+  [PHRASE]
+          When to remind: a phrase with a time, else 09:00 on that day. Default: one hour from now
+
+Options:
+      --dry-run
+          
+
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+      --no-color
+          Disable ANSI colors
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit snooze 1
+  orbit snooze 3f2b9c "tomorrow 9am"
+  orbit snooze 1 "in 2 hours" --dry-run
+```
+
+### `orbit overdue`
+
+```text
+List open tasks whose due date has passed, or move them all with --reschedule
+
+Usage: orbit overdue [OPTIONS]
+
+Options:
+      --json
+          Print one JSON object per result, with `"v":1`, instead of text
+
+      --reschedule [<PHRASE>]
+          Move every overdue task to this phrase (default `today`), instead of listing them
+
+      --all
+          
+
+      --no-color
+          Disable ANSI colors
+
+      --dry-run
+          
+
+  -h, --help
+          Print help
+
+Examples:
+  orbit overdue
+  orbit overdue --all
+  orbit overdue --reschedule
+  orbit overdue --reschedule "next monday" --dry-run
+  orbit --json overdue
 ```
 
 ### `orbit ls`
@@ -492,17 +635,20 @@ Examples:
 ### `orbit export`
 
 ```text
-Download everything as a zip: items.json, Pages as .md and attachments
+Download everything as a zip: items.json, Pages as .md and attachments. With --md, write Areas and Projects as Markdown checklists from this device instead (no server needed)
 
-Usage: orbit export [OPTIONS] <FILE>
+Usage: orbit export [OPTIONS] [FILE]
 
 Arguments:
-  <FILE>
-          Where to write the zip
+  [FILE]
+          Where to write the zip, or the Markdown file with --md (stdout when omitted with --md)
 
 Options:
       --json
           Print one JSON object per result, with `"v":1`, instead of text
+
+      --md
+          Write Markdown instead of the zip
 
       --no-color
           Disable ANSI colors
@@ -513,6 +659,8 @@ Options:
 Examples:
   orbit export orbit-export.zip
   orbit --json export backup.zip
+  orbit export --md tasks.md
+  orbit export --md > tasks.md
 ```
 
 ### `orbit guide`
