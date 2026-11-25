@@ -600,7 +600,7 @@ pub fn run(
             && let Some(text) = &due.string
         {
             // `every!` is read by the core parser as after-completion. Words it leaves over mean it
-            // only understood a prefix (`every 2nd tuesday` reads as the 2nd of the month), so no recurrence.
+            // only understood a prefix (e.g. `every 2nd tuesday of the month` leaves `of the month`), so no recurrence.
             let parsed = parse(
                 text,
                 &format!("{}T00:00", due_of(&due.date).date),
