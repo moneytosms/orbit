@@ -17,6 +17,7 @@ pub mod stardust;
 pub mod theme;
 pub mod trash;
 pub mod view;
+mod when;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

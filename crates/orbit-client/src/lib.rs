@@ -101,6 +101,22 @@ impl Client {
         Ok(device)
     }
 
+    /// Names quick-add can resolve (`@Area`, `$Goal`, `%Page`, `#label`), from the local rows.
+    pub fn known(&mut self) -> Result<parse::Known> {
+        let mut known = parse::Known::default();
+        for r in &self.rows()? {
+            match r {
+                Row::Area(a) => known.areas.push(a.name.clone()),
+                Row::Project(p) => known.areas.push(p.name.clone()),
+                Row::Goal(g) => known.goals.push(g.name.clone()),
+                Row::Page(p) => known.pages.push(p.title.clone()),
+                Row::Label(l) => known.labels.push(l.name.clone()),
+                _ => {}
+            }
+        }
+        Ok(known)
+    }
+
     /// Queues an Inbox task from quick-add text: title, due, priority, labels and `@Area`/`@project`
     /// applied (`now_local` is `YYYY-MM-DDTHH:MM`). Goal and page tokens are parsed but not applied
     /// yet. Returns the id and the parsed title; blank or token-only text is an error.
@@ -112,17 +128,7 @@ impl Client {
         now_ms: u64,
     ) -> Result<(Uuid, String)> {
         let rows = self.rows()?;
-        let mut known = parse::Known::default();
-        for r in &rows {
-            match r {
-                Row::Area(a) => known.areas.push(a.name.clone()),
-                Row::Project(p) => known.areas.push(p.name.clone()),
-                Row::Goal(g) => known.goals.push(g.name.clone()),
-                Row::Page(p) => known.pages.push(p.title.clone()),
-                Row::Label(l) => known.labels.push(l.name.clone()),
-                _ => {}
-            }
-        }
+        let known = self.known()?;
         let parsed = parse::parse(text.trim(), now_local, &known);
         if parsed.title.is_empty() {
             return Err("empty capture".into());

@@ -144,6 +144,17 @@ pub fn capture_task(window: tauri::WebviewWindow, text: String) -> Result<(), St
         .map_err(|e| e.to_string())
 }
 
+/// Keep in step with the `capture` window in tauri.conf.json; tall enough for the option bar's open panel.
+const CAPTURE_WIDTH: f64 = 640.0;
+const CAPTURE_HEIGHT: f64 = 420.0;
+
+/// Areas, Projects, Goals, Pages and Labels the capture window offers in its option bar.
+#[tauri::command]
+pub fn capture_known(window: tauri::WebviewWindow) -> Result<serde_json::Value, String> {
+    crate::desktop::trusted(&window)?;
+    crate::replica::known(&crate::token::data_dir().to_string_lossy()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn hide_capture(window: tauri::WebviewWindow) -> Result<(), String> {
     crate::desktop::trusted(&window)?;
@@ -163,8 +174,8 @@ pub fn show(app: &AppHandle) {
         let position = monitor.position();
         let size = monitor.size();
         let scale = monitor.scale_factor();
-        let width = (640.0 * scale) as u32;
-        let height = (180.0 * scale) as u32;
+        let width = (CAPTURE_WIDTH * scale) as u32;
+        let height = (CAPTURE_HEIGHT * scale) as u32;
         let x = position.x + (size.width.saturating_sub(width) / 2) as i32;
         let y = position.y + (size.height.saturating_sub(height) / 2) as i32;
         let _ = window.set_position(PhysicalPosition::new(x, y));

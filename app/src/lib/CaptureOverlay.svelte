@@ -3,6 +3,7 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
+  import CaptureBar from './CaptureBar.svelte'
   import type { Parsed } from './sync'
 
   let draft = $state('')
@@ -14,11 +15,19 @@
     const pad = (value: number) => String(value).padStart(2, '0')
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
   }
-  const parsed = $derived(
-    JSON.parse(
-      parse_quick_add(draft, localNow(), JSON.stringify({ areas: [], goals: [], pages: [], labels: [] })),
-    ) as Parsed,
-  )
+  type Known = { areas: string[]; goals: string[]; pages: string[]; labels: string[] }
+  let known: Known = $state({ areas: [], goals: [], pages: [], labels: [] })
+  const parsed = $derived(JSON.parse(parse_quick_add(draft, localNow(), JSON.stringify(known))) as Parsed)
+
+  // The names the option bar offers come from this device's replica; the window has no other store.
+  async function loadKnown() {
+    known = await invoke<Known>('capture_known').catch(() => known)
+  }
+  async function edited() {
+    await tick()
+    input.focus()
+    input.setSelectionRange(draft.length, draft.length)
+  }
 
   // The transparent page is for the overlay window only; as a bare global it blanked the whole web app's background.
   onMount(() => document.documentElement.classList.add('capture'))
@@ -51,8 +60,10 @@
     const off = listen('orbit://show-capture', () => {
       draft = ''
       message = ''
+      void loadKnown()
       requestAnimationFrame(() => input.focus())
     })
+    void loadKnown()
     requestAnimationFrame(() => input.focus())
     return () => void off.then((unlisten) => unlisten())
   })
@@ -82,10 +93,13 @@
     <input bind:this={input} bind:value={draft} onkeydown={keydown} placeholder="Add a task" aria-label="Task title" />
     <button onclick={() => void save(false)} disabled={!draft.trim() || saving}>Add</button>
   </div>
-  {#if parsed.tokens.length}
-    <ul class="capture-chips" aria-label="Parsed quick-add tokens">
-      {#each parsed.tokens as token (token.start)}
-        <li class:unknown={!token.known}>{token.text}</li>
+  <div class="capture-bar">
+    <CaptureBar bind:draft {parsed} {known} onedit={edited} />
+  </div>
+  {#if parsed.tokens.some((t) => !t.known)}
+    <ul class="capture-chips" aria-label="Unresolved quick-add tokens">
+      {#each parsed.tokens.filter((t) => !t.known) as token (token.start)}
+        <li class="unknown">{token.text} kept in title</li>
       {/each}
     </ul>
   {/if}
@@ -143,6 +157,9 @@
   button:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+  .capture-bar {
+    margin: 8px 0 0 32px;
   }
   .capture-chips {
     display: flex;

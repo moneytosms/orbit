@@ -141,9 +141,10 @@ fn read_rule(w: &[String]) -> Option<(Rule, Option<String>, usize)> {
             }
         }
     };
-    let time = w.get(used).and_then(|t| time_word(t));
+    let at = usize::from(w.get(used).map(String::as_str) == Some("at"));
+    let time = w.get(used + at).and_then(|t| time_word(t));
     if time.is_some() {
-        used += 1;
+        used += 1 + at;
     }
     Some((rule, time, used))
 }
@@ -155,7 +156,7 @@ fn stored(rule: &str) -> Option<Rule> {
 }
 
 /// `days` moved `n` months on, clamped to the end of a shorter month.
-fn add_months(days: i64, n: i64) -> i64 {
+pub(crate) fn add_months(days: i64, n: i64) -> i64 {
     let (y, m, d) = civil_from_days(days);
     let idx = y * 12 + (m - 1) + n;
     let (y, m) = (idx.div_euclid(12), idx.rem_euclid(12) + 1);

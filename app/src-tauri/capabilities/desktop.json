@@ -29,6 +29,7 @@
     "allow-clear-upgrade-required",
     "allow-shell-version",
     "allow-capture-task",
+    "allow-capture-known",
     "allow-get-capture-shortcut",
     "allow-set-capture-shortcut",
     "allow-hide-capture"

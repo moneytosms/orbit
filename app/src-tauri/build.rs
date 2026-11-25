@@ -27,6 +27,7 @@ fn main() {
             "shell_version",
             "set_bar_theme",
             "capture_task",
+            "capture_known",
             "get_capture_shortcut",
             "set_capture_shortcut",
             "hide_capture",

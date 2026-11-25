@@ -13,6 +13,7 @@
     type Parsed,
   } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
+  import CaptureBar from './CaptureBar.svelte'
 
   let {
     prefill = '',
@@ -25,6 +26,7 @@
   // Read once: the composer is mounted fresh each time it opens.
   let draft = $state(untrack(() => prefill))
   let caret = $state(untrack(() => prefill.length))
+  let focused = $state(false)
   let inputEl: HTMLInputElement | undefined = $state()
   let known = $state({ areas: [] as string[], goals: [] as string[], labels: [] as string[], pages: [] as string[] })
 
@@ -69,6 +71,13 @@
     return { sigil, start: m.index + m[1].length, options }
   })
 
+  // A pick in the capture bar rewrites the line; put the caret back at its end so typing carries on.
+  async function edited() {
+    await tick()
+    inputEl?.focus()
+    caret = draft.length
+    inputEl?.setSelectionRange(caret, caret)
+  }
   function track(e: Event) {
     caret = (e.currentTarget as HTMLInputElement).selectionStart ?? 0
   }
@@ -118,12 +127,19 @@
       oninput={track}
       onkeyup={track}
       onclick={track}
+      onfocus={() => (focused = true)}
       placeholder="Add a task"
       aria-label="Task title"
       class="h-8 min-w-0 flex-1 bg-transparent text-[0.9375rem] outline-none placeholder:text-muted focus-visible:shadow-none"
     />
     <Button type="submit" variant="primary" disabled={!quickTitle(parsed).trim()}>Add</Button>
   </div>
+
+  {#if focused || draft}
+    <div class="pb-1">
+      <CaptureBar bind:draft {parsed} {known} onedit={edited} />
+    </div>
+  {/if}
 
   {#if parsed.tokens.length}
     <ul class="flex flex-wrap gap-1.5 pb-1" aria-label="Parsed tokens">

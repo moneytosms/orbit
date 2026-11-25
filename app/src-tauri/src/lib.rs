@@ -116,6 +116,7 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             desktop::notify_upgrade_required,
             desktop::clear_upgrade_required,
             global_capture::capture_task,
+            global_capture::capture_known,
             global_capture::get_capture_shortcut,
             global_capture::set_capture_shortcut,
             global_capture::hide_capture,

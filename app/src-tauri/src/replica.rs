@@ -65,6 +65,11 @@ pub fn capture(dir: &str, text: &str) -> Result<Value> {
     })
 }
 
+/// The names quick-add resolves, as an `orbit_core::parse::Known`, for the capture window's pickers.
+pub fn known(dir: &str) -> Result<Value> {
+    with(dir, "", |c| Ok(serde_json::to_value(c.known()?)?))
+}
+
 /// Flushes the outbox in HLC (enqueue) order and merges the server's delta. The token comes from
 /// the Keystore on every call and is dropped from SQLite again, so it never rests there.
 pub fn sync(dir: &str, server: &str, device: &str, token: &str) -> Result<Value> {

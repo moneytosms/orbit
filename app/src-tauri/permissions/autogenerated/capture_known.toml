@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-capture-known"
+description = "Enables the capture_known command without any pre-configured scope."
+commands.allow = ["capture_known"]
+
+[[permission]]
+identifier = "deny-capture-known"
+description = "Denies the capture_known command without any pre-configured scope."
+commands.deny = ["capture_known"]

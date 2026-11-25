@@ -3,6 +3,7 @@
 //! `may` and a bare `5` as dates, and never rolls past dates forward, so it was dropped.
 use crate::recur::{self, Recurrence};
 use crate::reminder::{Anchor, Trigger};
+use crate::when::when;
 use serde::{Deserialize, Serialize};
 
 pub const TITLE_MAX: usize = 120;
@@ -343,7 +344,7 @@ pub(crate) fn weekday_name(w: &str) -> Option<i64> {
     })
 }
 
-fn month_name(w: &str) -> Option<i64> {
+pub(crate) fn month_name(w: &str) -> Option<i64> {
     Some(match w {
         "jan" | "january" => 1,
         "feb" | "february" => 2,
@@ -361,7 +362,13 @@ fn month_name(w: &str) -> Option<i64> {
     })
 }
 
-fn day_number(w: &str) -> Option<i64> {
+pub(crate) fn day_number(w: &str) -> Option<i64> {
+    let w = w
+        .strip_suffix("st")
+        .or_else(|| w.strip_suffix("nd"))
+        .or_else(|| w.strip_suffix("rd"))
+        .or_else(|| w.strip_suffix("th"))
+        .unwrap_or(w);
     if w.is_empty() || w.len() > 2 || !w.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
@@ -369,7 +376,7 @@ fn day_number(w: &str) -> Option<i64> {
 }
 
 /// Next occurrence of month/day on or after `today`.
-fn month_day(today: i64, m: i64, d: i64) -> Option<i64> {
+pub(crate) fn month_day(today: i64, m: i64, d: i64) -> Option<i64> {
     let (y, _, _) = civil_from_days(today);
     for y in [y, y + 1] {
         if d >= 1 && d <= days_in_month(y, m) {
@@ -501,21 +508,23 @@ fn reminder_token(w: &[String], now: &str, today: Option<i64>) -> Option<(Trigge
     let today = today?;
     let mut ph: Vec<String> = vec![rest.to_string()];
     ph.extend(w[1..].iter().cloned());
-    if let Some((day, n)) = date_phrase(&ph, today) {
-        let time = ph.get(n).and_then(|t| time_word(t))?;
-        let at = format!("{}T{time}", fmt_date(day));
-        return Some((Trigger::At { at: at.clone() }, at, n + 1));
-    }
-    let time = time_word(rest)?;
-    let past = now.get(11..16).is_some_and(|n| time.as_str() <= n);
-    let at = format!("{}T{time}", fmt_date(today + i64::from(past)));
-    Some((Trigger::At { at: at.clone() }, at, 1))
+    let found = when(&ph, today, now_minutes(now), false)?;
+    let at = format!("{}T{}", fmt_date(found.day), found.time?);
+    Some((Trigger::At { at: at.clone() }, at, found.used))
+}
+
+/// Minutes since midnight of a local `YYYY-MM-DDTHH:MM`; 0 when there is no time.
+fn now_minutes(now: &str) -> u32 {
+    let h = now.get(11..13).and_then(|h| h.parse::<u32>().ok());
+    let m = now.get(14..16).and_then(|m| m.parse::<u32>().ok());
+    h.zip(m).map_or(0, |(h, m)| h.min(23) * 60 + m.min(59))
 }
 
 pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
     let ws = words(input);
     let lower: Vec<String> = ws.iter().map(|w| w.text.to_lowercase()).collect();
     let today = parse_now(now);
+    let now_min = now_minutes(now);
     let mut out = Parsed {
         title: String::new(),
         description: String::new(),
@@ -641,42 +650,29 @@ pub fn parse(input: &str, now: &str, known: &Known) -> Parsed {
         if out.due.is_none()
             && !recurring
             && let Some(today) = today
+            && let Some(found) = when(&lower[i..], today, now_min, true)
         {
             {
-                let mut found = date_phrase(&lower[i..], today).map(|(d, n)| (Some(d), n));
-                if found.is_none() && time_word(&lower[i]).is_some() {
-                    found = Some((None, 0));
-                }
-                if let Some((day, n)) = found {
-                    let mut used = n;
-                    let time = lower.get(i + used).and_then(|t| time_word(t));
-                    if time.is_some() {
-                        used += 1;
-                    }
-                    let (date, time) = match day {
-                        Some(d) => (fmt_date(d), time),
-                        None => (fmt_date(today), time_word(&lower[i])),
-                    };
-                    if day.is_none() {
-                        used = 1;
-                    }
-                    let end = ws[i + used - 1].end;
-                    let value = match &time {
-                        Some(t) => format!("{date}T{t}"),
-                        None => date.clone(),
-                    };
-                    out.tokens.push(Token {
-                        kind: Kind::Date,
-                        text: input[w.start..end].to_string(),
-                        value,
-                        start: w.start,
-                        end,
-                        known: true,
-                    });
-                    out.due = Some(Due { date, time });
-                    i += used;
-                    continue;
-                }
+                let date = fmt_date(found.day);
+                let end = ws[i + found.used - 1].end;
+                let value = match &found.time {
+                    Some(t) => format!("{date}T{t}"),
+                    None => date.clone(),
+                };
+                out.tokens.push(Token {
+                    kind: Kind::Date,
+                    text: input[w.start..end].to_string(),
+                    value,
+                    start: w.start,
+                    end,
+                    known: true,
+                });
+                out.due = Some(Due {
+                    date,
+                    time: found.time,
+                });
+                i += found.used;
+                continue;
             }
         }
         title.push(w.text.to_string());
@@ -727,6 +723,125 @@ mod tests {
 
     fn d(date: &str, time: Option<&str>) -> Option<(String, Option<String>)> {
         Some((date.into(), time.map(Into::into)))
+    }
+
+    #[test]
+    fn relative_times_count_from_now() {
+        assert_eq!(due("x in 5 minutes"), d("2026-11-19", Some("10:05")));
+        assert_eq!(due("x in 5 min"), d("2026-11-19", Some("10:05")));
+        assert_eq!(due("x in 5m"), d("2026-11-19", Some("10:05")));
+        assert_eq!(due("x in 2 hours"), d("2026-11-19", Some("12:00")));
+        assert_eq!(due("x in an hour"), d("2026-11-19", Some("11:00")));
+        assert_eq!(due("x in half an hour"), d("2026-11-19", Some("10:30")));
+        assert_eq!(
+            due("x in an hour and a half"),
+            d("2026-11-19", Some("11:30"))
+        );
+        assert_eq!(due("x in 1.5 hours"), d("2026-11-19", Some("11:30")));
+        assert_eq!(due("x in 1h30m"), d("2026-11-19", Some("11:30")));
+        assert_eq!(
+            due("x in 1 hour 15 minutes"),
+            d("2026-11-19", Some("11:15"))
+        );
+        assert_eq!(
+            due("x in 2 hours and 5 minutes"),
+            d("2026-11-19", Some("12:05"))
+        );
+        assert_eq!(due("x in 20 hours"), d("2026-11-20", Some("06:00")));
+        assert_eq!(due("x 90 minutes from now"), d("2026-11-19", Some("11:30")));
+        assert_eq!(due("x 10 minutes later"), d("2026-11-19", Some("10:10")));
+        assert_eq!(due("x in 2 months"), d("2027-01-19", None));
+        assert_eq!(due("x in a week"), d("2026-11-26", None));
+        assert_eq!(due("x in 5"), None);
+        assert_eq!(due("x 5 minutes"), None);
+        let r = p("call mom in 5 minutes p1");
+        assert_eq!(r.title, "call mom");
+        assert_eq!(r.tokens[0].text, "in 5 minutes");
+        assert_eq!(r.tokens[0].value, "2026-11-19T10:05");
+    }
+
+    #[test]
+    fn at_and_day_parts() {
+        assert_eq!(due("x today at 10pm"), d("2026-11-19", Some("22:00")));
+        assert_eq!(due("x tomorrow at 9am"), d("2026-11-20", Some("09:00")));
+        assert_eq!(due("x today at 9am"), d("2026-11-19", Some("09:00")));
+        assert_eq!(due("x at 6pm"), d("2026-11-19", Some("18:00")));
+        assert_eq!(due("x at noon"), d("2026-11-19", Some("12:00")));
+        assert_eq!(due("x tomorrow at noon"), d("2026-11-20", Some("12:00")));
+        assert_eq!(due("x fri at midnight"), d("2026-11-20", Some("00:00")));
+        assert_eq!(due("x fri 7 pm"), d("2026-11-20", Some("19:00")));
+        assert_eq!(due("x 9am fri"), d("2026-11-20", Some("09:00")));
+        assert_eq!(due("x tonight"), d("2026-11-19", Some("20:00")));
+        assert_eq!(due("x tonight 9pm"), d("2026-11-19", Some("21:00")));
+        assert_eq!(due("x tomorrow morning"), d("2026-11-20", Some("09:00")));
+        assert_eq!(due("x tmrw evening"), d("2026-11-20", Some("18:00")));
+        assert_eq!(due("x this afternoon"), d("2026-11-19", Some("14:00")));
+        assert_eq!(due("x in the evening"), d("2026-11-19", Some("18:00")));
+        assert_eq!(due("x in the morning"), d("2026-11-20", Some("09:00")));
+        assert_eq!(p("meet at the cafe").due, None);
+        assert_eq!(p("meet at the cafe").title, "meet at the cafe");
+        assert_eq!(p("x today at 10pm").title, "x");
+        assert_eq!(due("x on friday"), d("2026-11-20", None));
+        assert_eq!(p("pay rent on friday").title, "pay rent");
+    }
+
+    #[test]
+    fn richer_dates() {
+        assert_eq!(due("x next friday"), d("2026-11-27", None));
+        assert_eq!(due("x next tuesday"), d("2026-11-24", None));
+        assert_eq!(due("x this friday"), d("2026-11-20", None));
+        assert_eq!(due("x this thursday"), d("2026-11-19", None));
+        assert_eq!(due("x next month"), d("2026-12-19", None));
+        assert_eq!(due("x next year"), d("2027-01-01", None));
+        assert_eq!(due("x end of month"), d("2026-11-30", None));
+        assert_eq!(due("x eom"), d("2026-11-30", None));
+        assert_eq!(due("x mid january"), d("2027-01-15", None));
+        assert_eq!(due("x this weekend"), d("2026-11-21", None));
+        assert_eq!(due("x next weekend"), d("2026-11-28", None));
+        assert_eq!(due("x on the 27th"), d("2026-11-27", None));
+        assert_eq!(due("x the 5th"), d("2026-12-05", None));
+        assert_eq!(due("x dec 5th"), d("2026-12-05", None));
+        assert_eq!(due("x 5th dec"), d("2026-12-05", None));
+        assert_eq!(due("x dec 5 2027"), d("2027-12-05", None));
+        assert_eq!(due("x the 5th of dec"), d("2026-12-05", None));
+        assert_eq!(due("x 27/1"), d("2027-01-27", None));
+        assert_eq!(due("x 3/12"), d("2026-12-03", None));
+        assert_eq!(due("x 1/27"), d("2027-01-27", None));
+        assert_eq!(due("x 3/12/2027"), d("2027-12-03", None));
+        assert_eq!(due("x 2027/01/05"), d("2027-01-05", None));
+        assert_eq!(due("x tmr"), d("2026-11-20", None));
+        assert_eq!(due("x tomorrow 6pm"), d("2026-11-20", Some("18:00")));
+        // A bare ordinal or number is not a date.
+        assert_eq!(due("x 27th"), None);
+        assert_eq!(due("x the 32nd"), None);
+        assert_eq!(due("x end of"), None);
+    }
+
+    #[test]
+    fn reminders_take_the_same_phrases() {
+        let at = |s: &str| match &p(s).reminders[..] {
+            [Trigger::At { at }] => at.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(at("x !in 10 minutes"), "2026-11-19T10:10");
+        assert_eq!(at("x !tomorrow morning"), "2026-11-20T09:00");
+        assert_eq!(at("x !tonight"), "2026-11-19T20:00");
+        // A date after a reminder time stays the due date.
+        let r = p("x !9am friday");
+        assert_eq!(r.due.map(|d| d.date), Some("2026-11-20".into()));
+        assert_eq!(r.title, "x");
+    }
+
+    #[test]
+    fn every_accepts_at_before_the_time() {
+        let r = p("standup every weekday at 9am");
+        assert_eq!(r.title, "standup");
+        assert_eq!(
+            r.due.as_ref().and_then(|d| d.time.clone()),
+            Some("09:00".into())
+        );
+        let r = p("x every mon,wed at 18:30");
+        assert_eq!(r.title, "x");
     }
 
     #[test]
@@ -899,7 +1014,10 @@ mod tests {
         assert_eq!(due("x 6pm"), d("2026-11-19", Some("18:00")));
         assert_eq!(due("x 6:30pm"), d("2026-11-19", Some("18:30")));
         assert_eq!(due("x 18:00"), d("2026-11-19", Some("18:00")));
-        assert_eq!(due("x 12am"), d("2026-11-19", Some("00:00")));
+        // A bare time that has already passed today means tomorrow.
+        assert_eq!(due("x 12am"), d("2026-11-20", Some("00:00")));
+        assert_eq!(due("x 10am"), d("2026-11-20", Some("10:00")));
+        assert_eq!(due("x 10:01am"), d("2026-11-19", Some("10:01")));
         assert_eq!(due("x 12pm"), d("2026-11-19", Some("12:00")));
         assert_eq!(due("x tomorrow 6pm"), d("2026-11-20", Some("18:00")));
         assert_eq!(due("x fri 18:00"), d("2026-11-20", Some("18:00")));
