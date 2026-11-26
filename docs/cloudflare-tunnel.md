@@ -27,7 +27,7 @@ These come from the server and client code, so they decide how the route has to 
 | Behaviour | What it means for the setup |
 | --- | --- |
 | The web UI uses absolute paths (`/sync`, `/auth`, `/blobs/...`) and ships a root-scoped PWA and service worker | Use a **subdomain root** such as `https://orbit.example.com`. A subpath such as `example.com/orbit` does not work without rebuilding the app. |
-| The Linux and Android apps load the UI **from the server** (`app/src-tauri/src/desktop.rs`, `android.rs`), and the release APK has `usesCleartextTraffic="false"` | The server must serve the built web app (`ORBIT_WEB`, already `/web` in the Docker image) and must be reached over real HTTPS. The Docker image covers the first part. |
+| The Linux, Windows and Android apps load the UI **from the server** (`app/src-tauri/src/desktop.rs`, `android.rs`), and the release APK has `usesCleartextTraffic="false"` | The server must serve the built web app (`ORBIT_WEB`, already `/web` in the Docker image) and must be reached over real HTTPS. The Docker image covers the first part. |
 | Login rate limiting keys on the client address: the socket peer, or `CF-Connecting-IP` (else the first `X-Forwarded-For` entry) when the peer is loopback | Behind a tunnel on the same host the peer is `127.0.0.1`, so each real client gets its own bucket. The header is ignored from any non-loopback peer, so it cannot be spoofed from the network. See [The tunnel and the login lockout](#the-tunnel-and-the-login-lockout). |
 | The session cookie is `HttpOnly; SameSite=Strict`, and `Secure` only when `ORBIT_SECURE_COOKIE=1` | Set `ORBIT_SECURE_COOKIE=1` behind an HTTPS tunnel (browsers still send it to the HTTPS hostname). Keep the UI and the API on the same origin, which a single hostname already does. |
 | The clients sync with `POST /sync` every 60 seconds while visible, plus a 2 second debounce after an edit | No websockets and no long polling, so the Cloudflare free plan is enough and the 100 second origin timeout is not a risk. |
@@ -265,7 +265,7 @@ Backups, the off-machine copy script and restores are the same behind a tunnel: 
 Every client asks for the same thing, the bare origin `https://orbit.example.com`. Connect each one as in
 [Connect your clients](deploy.md#5-connect-your-clients) and [install.md](install.md).
 
-The Linux and Android apps load the UI from the server, so an unreachable hostname opens their retry
+The Linux, Windows and Android apps load the UI from the server, so an unreachable hostname opens their retry
 page rather than a cached interface.
 
 ## Updating

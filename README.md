@@ -29,7 +29,7 @@ Status: all v1 features listed above are built. Android is smoke-tested on an em
 
 ## Architecture
 
-Rust (axum) server with SQLite as the source of truth. Clients sync through client-generated ids, an idempotent command queue, sync-token deltas and per-field last-writer-wins. One Svelte 5 UI ships as a PWA and inside Tauri 2 (Linux, Android). Shared logic lives in `orbit-core` and runs natively and as wasm. See [docs/adr/0001-stack.md](docs/adr/0001-stack.md).
+Rust (axum) server with SQLite as the source of truth. Clients sync through client-generated ids, an idempotent command queue, sync-token deltas and per-field last-writer-wins. One Svelte 5 UI ships as a PWA and inside Tauri 2 (Linux, Windows, Android). Shared logic lives in `orbit-core` and runs natively and as wasm. See [docs/adr/0001-stack.md](docs/adr/0001-stack.md).
 
 | Path | Role |
 | --- | --- |
@@ -99,7 +99,7 @@ Full reference: [docs/cli.md](docs/cli.md), man pages in `docs/man`. Install and
 
 Setup and prerequisites (Rust, wasm32 target, `wasm-pack`, `just`, Node 24, `pnpm`; JDK and Android SDK only for Android) with install commands for Arch and Ubuntu: [docs/contributing.md](docs/contributing.md). The maintainers keep their toolchain under `~/.toolchain` with sccache; that is optional.
 
-`just check` runs, in order: the wasm build, `pnpm install --frozen-lockfile`, svelte-check, vitest, the web build, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the `site/` steps (`npm ci`, check, build, verify).
+`just check` runs, in order: the wasm build, `pnpm install --frozen-lockfile`, svelte-check, vitest, the web build, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the demo build and the `site/` steps (`npm ci`, check, build, verify).
 
 ```sh
 just check            # the gate (steps above)

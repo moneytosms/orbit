@@ -15,7 +15,7 @@ Pick the clients you want:
 | Client | Platforms | Where |
 | --- | --- | --- |
 | Web / PWA | any browser; installable on desktop and phone | below |
-| Desktop app | Linux AppImage | [Desktop app](linux-desktop.md) |
+| Desktop app | Linux AppImage, Windows installer (unsigned, not yet tested on hardware) | [Desktop app](linux-desktop.md) |
 | Android | Android 12+ (minSdk 31), sideloaded APK | [Android app](android.md) |
 | CLI and MCP | Linux prebuilt; anywhere else from source | [CLI: install and sign in](cli-install.md) |
 

@@ -111,12 +111,12 @@ Scheduled on each device from synced data; no server involved.
 | Client | Install as | Built with |
 |---|---|---|
 | Web | Any browser; installable as a PWA | Svelte 5, served by the Orbit server |
-| Linux desktop | `.AppImage`, `.deb`, `.rpm` | Tauri 2 (same Svelte UI) + tray, hotkey, notifications |
+| Linux desktop | `.AppImage` (published), `.deb` (built by Tauri, not published) | Tauri 2 (same Svelte UI) + tray, hotkey, notifications |
 | Android | Signed `.apk` you sideload | Tauri 2 (same Svelte UI) + Kotlin module for widget, share, alarms, background sync |
-| Windows | `.msi`/`.exe` | Same Tauri build. Built, untested, unsigned |
+| Windows | NSIS `.exe` (`Orbit_<version>_x64-setup.exe`) | Same Tauri build. Built, untested, unsigned |
 | macOS | `.dmg` | Same Tauri build. Deferred |
 
-**Tauri is locked** for desktop and Android: one Svelte UI serves web, Linux and Android, and the Rust shell shares `orbit-core` with the server, so it is the least-work route to all three installable clients. A native GPUI desktop client stays an idea for later (research ticket "GPUI desktop client maturity", answered in issue #10: not viable now; revisit when the conditions listed there hold).
+**Tauri is locked** for desktop and Android: one Svelte UI serves web, Linux, Windows and Android, and the Rust shell shares `orbit-core` with the server, so it is the least-work route to all three installable clients. A native GPUI desktop client stays an idea for later (research ticket "GPUI desktop client maturity", answered in issue #10: not viable now; revisit when the conditions listed there hold).
 
 ## UI layer
 

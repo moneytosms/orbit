@@ -40,7 +40,7 @@ For contributors who are about to open a change: how to set up, what the gate ch
    just fmt src/lib/sync.ts
    ```
 
-4. Run the gate. It runs `pnpm install`, svelte-check, vitest, the web build, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the wasm build and the site checks (build plus a docs lint for this guide):
+4. Run the gate. It runs `pnpm install`, svelte-check, vitest, the web build, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the wasm build, the demo build and the site checks (build plus a docs lint for this guide):
 
    ```sh
    just check

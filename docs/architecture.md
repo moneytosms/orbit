@@ -9,7 +9,7 @@ For contributors who want a map of the codebase before changing it: which crate 
 
 ## Steps
 
-1. Know the shape. A Rust (axum) server with SQLite is the source of truth. Clients sync through client-generated ids, an idempotent command queue, sync-token deltas and per-field last-writer-wins. One Svelte 5 UI ships as a PWA and inside Tauri 2 (Linux and Android).
+1. Know the shape. A Rust (axum) server with SQLite is the source of truth. Clients sync through client-generated ids, an idempotent command queue, sync-token deltas and per-field last-writer-wins. One Svelte 5 UI ships as a PWA and inside Tauri 2 (Linux, Windows and Android).
 
 2. Find the crate that owns your change:
 

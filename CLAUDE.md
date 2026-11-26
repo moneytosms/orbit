@@ -1,6 +1,6 @@
 # Orbit
 
-Personal task + notes app (Todoist-style). Rust axum server + SQLite is source of truth; clients sync via idempotent command queue, sync-token deltas, per-field LWW. One Svelte 5 UI ships as web (PWA) and in Tauri 2 (Linux, Android minSdk 31). See `docs/adr/0001-stack.md`, `docs/scope.md`, spec #31, layout #22.
+Personal task + notes app (Todoist-style). Rust axum server + SQLite is source of truth; clients sync via idempotent command queue, sync-token deltas, per-field LWW. One Svelte 5 UI ships as web (PWA) and in Tauri 2 (Linux, Windows, Android minSdk 31). See `docs/adr/0001-stack.md`, `docs/scope.md`, spec #31, layout #22.
 
 ## Layout
 
@@ -13,7 +13,7 @@ Personal task + notes app (Todoist-style). Rust axum server + SQLite is source o
 
 ## Commands
 
-- `just check`: the gate. pnpm install, svelte-check, vitest, web build, cargo fmt/clippy (`-D warnings`)/test, wasm32 build. Must pass before done.
+- `just check`: the gate. pnpm install, svelte-check, vitest, web build, cargo fmt/clippy (`-D warnings`)/test, wasm32 build, `site/` checks and build, demo build. Must pass before done.
 - `just fmt <app files>`: cargo fmt + prettier on the named app files (paths relative to `app/`, e.g. `just fmt src/lib/sync.ts`). Prettier config `app/.prettierrc` (single quotes, no semis, width 120). Format only files you touched; never run prettier over all of `src/` or without the config.
 - `just hooks`: once per clone; pre-push runs `just check`.
 - CI: `.github/workflows/check.yml` runs `just check` (bonus; local hook is the real gate).
