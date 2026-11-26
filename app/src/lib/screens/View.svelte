@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import Empty from '$lib/Empty.svelte'
   import SearchX from '@lucide/svelte/icons/search-x'
   import AlertTriangle from '@lucide/svelte/icons/alert-triangle'
@@ -10,6 +11,7 @@
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
+  import { Switch } from '$lib/components/ui/switch'
   import Board, { fieldChoices, fieldTitle } from '$lib/Board.svelte'
   import FilterEditor from '$lib/FilterEditor.svelte'
   import Table from '$lib/Table.svelte'
@@ -258,26 +260,21 @@
       >
         <ArrowUpDown size={14} /> Sort
       </Button>
-      <select
+      <Select
         aria-label="Kind"
         value={view.entity}
-        onchange={(e) => save({ kind: e.currentTarget.value as ViewRow['entity'] })}
-        class="h-8 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-      >
-        {#each ['task', 'project', 'goal', 'page', 'plan', 'roadmap', 'phase'] as k (k)}
-          <option value={k}>{k[0].toUpperCase() + k.slice(1)}s</option>
-        {/each}
-      </select>
-      <select
+        onchange={(v) => save({ kind: v as ViewRow['entity'] })}
+        options={['task', 'project', 'goal', 'page', 'plan', 'roadmap', 'phase'].map((k) => ({
+          value: k,
+          label: `${k[0].toUpperCase() + k.slice(1)}s`,
+        }))}
+      />
+      <Select
         aria-label="Group by"
         value={view.group_by ?? ''}
-        onchange={(e) => save({ group_by: e.currentTarget.value || null })}
-        class="h-8 rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-      >
-        {#each groupChoices as [value, text] (value)}
-          <option {value}>{text}</option>
-        {/each}
-      </select>
+        onchange={(v) => save({ group_by: v || null })}
+        options={groupChoices.map(([value, label]) => ({ value, label }))}
+      />
       <div role="group" aria-label="Layout" class="flex gap-1">
         {#each layouts as [value, text] (value)}
           <Button
@@ -300,7 +297,7 @@
         Fields
       </Button>
       <label class="flex items-center gap-1.5 text-sm text-muted">
-        <Checkbox
+        <Switch
           checked={view.show_completed}
           aria-label="Show completed"
           onCheckedChange={(c) => save({ show_completed: c === true })}
@@ -336,16 +333,14 @@
       >
         {#each view.sorts as s, i (i)}
           <div class="mb-2 flex items-center gap-1.5">
-            <select
+            <Select
               bind:value={s.field}
               aria-label="Sort field {i + 1}"
-              onchange={fieldChanged}
-              class="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm outline-none"
-            >
-              {#each sortFields as f (f)}
-                <option value={f}>{f.replaceAll('_', ' ')}</option>
-              {/each}
-            </select>
+              onchange={() => fieldChanged()}
+              segmented={false}
+              class="min-w-0 flex-1"
+              options={sortFields.map((f) => ({ value: f, label: f.replaceAll('_', ' ') }))}
+            />
             <Button size="sm" variant={s.desc ? 'on' : 'default'} onclick={() => toggleSort(i)}>
               {s.desc ? 'Desc' : 'Asc'}
             </Button>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import { Button } from '$lib/components/ui/button'
   import {
     labels,
@@ -131,15 +132,15 @@
 {#snippet groupEditor(g: Group, depth: number, onremove?: () => void)}
   <div class="mb-2 rounded-lg border border-line bg-sunk p-2">
     <div class="mb-2 flex flex-wrap items-center gap-1.5">
-      <select
+      <Select
         aria-label="Match"
         value={g.all ? 'all' : 'any'}
-        onchange={(e) => (g.all = e.currentTarget.value === 'all')}
-        class={fieldClass}
-      >
-        <option value="all">Match all</option>
-        <option value="any">Match any</option>
-      </select>
+        onchange={(v) => (g.all = v === 'all')}
+        options={[
+          { value: 'all', label: 'Match all' },
+          { value: 'any', label: 'Match any' },
+        ]}
+      />
       <span class="flex-1"></span>
       {#if onremove}
         <Button size="sm" variant="ghost" aria-label="Remove group" onclick={onremove}>Remove</Button>
@@ -151,26 +152,18 @@
         {@render groupEditor(child, depth + 1, () => g.children.splice(i, 1))}
       {:else}
         <div class="mb-1.5 flex flex-wrap items-center gap-1.5">
-          <select
+          <Select
             aria-label="Field"
             value={child.path}
-            onchange={(e) => setPath(child, e.currentTarget.value)}
-            class={fieldClass}
-          >
-            {#each paths as p (p)}
-              <option value={p}>{p.replaceAll('_', ' ').replaceAll('.', ' ')}</option>
-            {/each}
-          </select>
-          <select
+            onchange={(v) => setPath(child, v)}
+            options={paths.map((p) => ({ value: p, label: p.replaceAll('_', ' ').replaceAll('.', ' ') }))}
+          />
+          <Select
             aria-label="Operator"
             value={child.op}
-            onchange={(e) => setOp(child, e.currentTarget.value)}
-            class={fieldClass}
-          >
-            {#each ops as [value, text] (value)}
-              <option {value}>{text}</option>
-            {/each}
-          </select>
+            onchange={(v) => setOp(child, v)}
+            options={ops.map(([value, label]) => ({ value, label }))}
+          />
 
           {#if child.op !== 'is_empty'}
             {#if child.op === 'within'}
@@ -200,27 +193,25 @@
                 class="{fieldClass} w-16"
               />
             {:else if boolPaths.has(child.path)}
-              <select
+              <Select
                 aria-label="Value"
                 value={child.value === true ? 'true' : 'false'}
-                onchange={(e) => (child.value = e.currentTarget.value === 'true')}
-                class={fieldClass}
-              >
-                <option value="false">open</option>
-                <option value="true">done</option>
-              </select>
+                onchange={(v) => (child.value = v === 'true')}
+                options={[
+                  { value: 'false', label: 'open' },
+                  { value: 'true', label: 'done' },
+                ]}
+              />
             {:else if child.path === 'label'}
-              <select
+              <Select
                 aria-label="Value"
                 value={String(child.value ?? '')}
-                onchange={(e) => (child.value = e.currentTarget.value)}
-                class={fieldClass}
-              >
-                <option value="">Choose label</option>
-                {#each labelList as l (l.id)}
-                  <option value={l.id}>{l.name}</option>
-                {/each}
-              </select>
+                onchange={(v) => (child.value = v)}
+                options={[
+                  { value: '', label: 'Choose label' },
+                  ...labelList.map((l) => ({ value: l.id, label: l.name })),
+                ]}
+              />
             {:else}
               <input
                 aria-label="Value"

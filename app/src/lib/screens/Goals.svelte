@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import Empty from '$lib/Empty.svelte'
   import Plus from '@lucide/svelte/icons/plus'
   import Target from '@lucide/svelte/icons/target'
@@ -231,16 +232,23 @@
     <h2 class="panel-title">New goal</h2>
     <form class="grid gap-2 sm:grid-cols-2" onsubmit={add}>
       <Input bind:value={name} placeholder="Goal name" aria-label="Goal name" class="sm:col-span-2" />
-      <select bind:value={areaId} aria-label="Area" class="{inputClass} w-full">
-        {#each areas as a (a.area.id)}
-          <option value={a.area.id}>{a.area.name}</option>
-        {/each}
-      </select>
-      <select bind:value={kind} aria-label="Progress" class="{inputClass} w-full">
-        <option value="count">Count</option>
-        <option value="target">Target</option>
-        <option value="manual">Manual</option>
-      </select>
+      <Select
+        bind:value={areaId}
+        aria-label="Area"
+        segmented={false}
+        class="w-full"
+        options={areas.map((a) => ({ value: a.area.id, label: a.area.name }))}
+      />
+      <Select
+        bind:value={kind}
+        aria-label="Progress"
+        class="w-full"
+        options={[
+          { value: 'count', label: 'Count' },
+          { value: 'target', label: 'Target' },
+          { value: 'manual', label: 'Manual' },
+        ]}
+      />
       {#if kind === 'target'}
         <input
           type="number"

@@ -5,6 +5,7 @@
   import { checkServerVersion, currentUpdates, loadUpdates, onUpdates, uiHash, type UpdateState } from './updates'
   import { checkAndroidShellRelease, type AndroidShellRelease } from './androidRelease'
   import { isAndroidTauri } from './platform'
+  import { Button } from '$lib/components/ui/button'
 
   let updates: UpdateState = $state(currentUpdates())
   let pending = $state(0)
@@ -67,7 +68,7 @@
 {#if notice}
   <aside
     role="alert"
-    class="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-xl border border-line bg-panel p-4 shadow-2 desk:bottom-6"
+    class="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-xl border border-line-strong bg-surface p-4 shadow-2 desk:bottom-6"
   >
     <p class="font-semibold">Orbit update available</p>
     {#if updates.upgrade}
@@ -76,8 +77,8 @@
           .client_protocol}.
         {pending} queued {pending === 1 ? 'change' : 'changes'} will stay on this device until you update.
       </p>
-      <a class="link mt-2 inline-block" href={updates.upgrade.upgrade} target="_blank" rel="noreferrer"
-        >Get the required update</a
+      <Button size="sm" class="mt-3" href={updates.upgrade.upgrade} target="_blank" rel="noreferrer"
+        >Get the required update</Button
       >
     {:else if uiChanged}
       <p class="mt-1 text-sm text-muted">A newer app build is available. Reload Orbit to use it.</p>
@@ -87,7 +88,7 @@
       <p class="mt-1 text-sm text-muted">A newer Android app is available.</p>
     {/if}
     {#if swWaiting || uiChanged}
-      <button class="btn mt-2" onclick={reloadUpdate}>Reload to update</button>
+      <Button size="sm" class="mt-3" onclick={reloadUpdate}>Reload to update</Button>
     {/if}
     {#if shellRelease}
       <a

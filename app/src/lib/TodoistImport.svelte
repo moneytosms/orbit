@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { commitImport, startImport, type Plan, type Preview, type Report } from '$lib/todoist'
@@ -75,11 +76,15 @@
             <div class="truncate font-medium">{p.path}</div>
             <div class="text-[0.7812rem] text-muted">{fresh(p)} new of {p.tasks} tasks</div>
           </div>
-          <select bind:value={p.kind} aria-label="Becomes, {p.path}" class={select}>
-            <option value="area">Area</option>
-            <option value="project">Project</option>
-            <option value="inbox">Inbox</option>
-          </select>
+          <Select
+            bind:value={p.kind}
+            aria-label="Becomes, {p.path}"
+            options={[
+              { value: 'area', label: 'Area' },
+              { value: 'project', label: 'Project' },
+              { value: 'inbox', label: 'Inbox' },
+            ]}
+          />
           {#if p.kind !== 'inbox'}
             <Input bind:value={p.area} class="w-36" aria-label="Area, {p.path}" />
           {/if}

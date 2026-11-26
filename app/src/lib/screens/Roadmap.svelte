@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import Empty from '$lib/Empty.svelte'
   import Map from '@lucide/svelte/icons/map'
   import { Button } from '$lib/components/ui/button'
@@ -126,18 +127,15 @@
   {/if}
   <form onsubmit={addRoadmap} class="mt-3 flex flex-wrap gap-2">
     <Input bind:value={newName} placeholder="Add a roadmap" aria-label="New roadmap" class="min-w-0 flex-1" />
-    <select
+    <Select
       bind:value={parentId}
       aria-label="Roadmap owner"
       disabled={!areas.length}
-      class="h-9 rounded-md border border-line bg-surface px-2 text-sm"
-    >
-      {#each areas as a (a.area.id)}
-        <option value={a.area.id}>{a.area.name}</option>
-      {:else}
-        <option value="">No area</option>
-      {/each}
-    </select>
+      segmented={false}
+      options={areas.length
+        ? areas.map((a) => ({ value: a.area.id, label: a.area.name }))
+        : [{ value: '', label: 'No area' }]}
+    />
     <Button type="submit" variant="primary" disabled={!parentId}>Add</Button>
   </form>
   <div class="mt-3">

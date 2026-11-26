@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button'
-  import { Checkbox } from '$lib/components/ui/checkbox'
+  import { Switch } from '$lib/components/ui/switch'
   import { Input } from '$lib/components/ui/input'
   import { addFeed, feeds, FEED_COLORS, removeFeed, updateFeed, type Feed } from '$lib/auth'
 
@@ -56,7 +56,7 @@
   {#each list as f (f.id)}
     <li class="grid gap-2 rounded-md border border-line p-3">
       <div class="flex items-center gap-2">
-        <Checkbox
+        <Switch
           checked={f.visible}
           onCheckedChange={(v) => patch(f, { visible: v === true })}
           aria-label="Show {f.name}"

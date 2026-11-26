@@ -1,4 +1,11 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
+  const edgeKinds = [
+    { value: 'then', label: 'Then' },
+    { value: 'blocks', label: 'Blocks' },
+    { value: 'depends_on', label: 'Depends on' },
+    { value: 'decides', label: 'Decides' },
+  ]
   import { onMount, tick } from 'svelte'
   import Circle from '@lucide/svelte/icons/circle'
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
@@ -1261,21 +1268,23 @@
           <div class="mt-2 flex items-center gap-1 text-xs text-muted">
             Band<HelpTip label="bands" align="end" text={BAND_HELP} />
           </div>
-          <label class="block"
-            ><select
+          <div class="mt-1">
+            <Select
               aria-label="Node band"
               value={focusedNode.band_id ?? ''}
-              onchange={async (e) => {
-                await updateGraphNode(focusedNode!.id, { band_id: e.currentTarget.value || null })
+              segmented={false}
+              class="w-full"
+              onchange={async (v) => {
+                await updateGraphNode(focusedNode!.id, { band_id: v || null })
                 await load()
                 onchange()
               }}
-              class="mt-1 h-8 w-full rounded-md border border-line bg-bg px-2 text-sm"
-              ><option value="">No band</option>{#each bands as band (band.id)}<option value={band.id}
-                  >{band.name}</option
-                >{/each}</select
-            ></label
-          >
+              options={[
+                { value: '', label: 'No band' },
+                ...bands.map((band) => ({ value: band.id, label: band.name })),
+              ]}
+            />
+          </div>
           {#if focusedNode.band_id}
             {@const band = bands.find((x) => x.id === focusedNode!.band_id)}
             {#if band}
@@ -1369,19 +1378,18 @@
           <div class="mb-1 flex items-center gap-1 text-xs text-muted">
             Kind<HelpTip label="connection kinds" align="end" text={EDGE_HELP} />
           </div>
-          <select
+          <Select
             aria-label="Connection kind"
             value={focusedEdge.edge_kind}
-            onchange={async (e) => {
-              await updateGraphEdge(focusedEdge!.id, { kind: e.currentTarget.value as GraphEdgeKind })
+            segmented={false}
+            class="w-full"
+            onchange={async (v) => {
+              await updateGraphEdge(focusedEdge!.id, { kind: v as GraphEdgeKind })
               await load()
               onchange()
             }}
-            class="h-8 w-full rounded-md border border-line bg-bg px-2 text-sm"
-            ><option value="then">Then</option><option value="blocks">Blocks</option><option value="depends_on"
-              >Depends on</option
-            ><option value="decides">Decides</option></select
-          >
+            options={edgeKinds}
+          />
           <input
             aria-label="Connection label"
             value={focusedEdge.label}
@@ -1397,23 +1405,30 @@
             Drag either endpoint to a node to reroute while keeping this connection.
           </p>
           <div class="mt-2 flex gap-1">
-            <select
+            <Select
               aria-label="Reconnect source"
               value={focusedEdge.source_id}
-              onchange={(e) => rerouteEdge(focusedEdge!, 'source', e.currentTarget.value)}
-              class="h-8 min-w-0 flex-1 rounded-md border border-line bg-bg px-1 text-xs"
-              >{#each nodes as n (n.id)}<option value={n.id} disabled={n.id === focusedEdge.target_id}
-                  >{n.title || n.node_kind}</option
-                >{/each}</select
-            ><select
+              segmented={false}
+              class="min-w-0 flex-1"
+              onchange={(v) => rerouteEdge(focusedEdge!, 'source', v)}
+              options={nodes.map((n) => ({
+                value: n.id,
+                label: n.title || n.node_kind,
+                disabled: n.id === focusedEdge!.target_id,
+              }))}
+            />
+            <Select
               aria-label="Reconnect target"
               value={focusedEdge.target_id}
-              onchange={(e) => rerouteEdge(focusedEdge!, 'target', e.currentTarget.value)}
-              class="h-8 min-w-0 flex-1 rounded-md border border-line bg-bg px-1 text-xs"
-              >{#each nodes as n (n.id)}<option value={n.id} disabled={n.id === focusedEdge.source_id}
-                  >{n.title || n.node_kind}</option
-                >{/each}</select
-            ><Button
+              segmented={false}
+              class="min-w-0 flex-1"
+              onchange={(v) => rerouteEdge(focusedEdge!, 'target', v)}
+              options={nodes.map((n) => ({
+                value: n.id,
+                label: n.title || n.node_kind,
+                disabled: n.id === focusedEdge!.source_id,
+              }))}
+            /><Button
               size="sm"
               variant="ghost"
               aria-label="Delete connection"
@@ -1434,14 +1449,12 @@
         data-ui
         class="absolute bottom-14 left-2 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface p-2 shadow-1"
       >
-        <span class="px-1 text-xs text-muted">Choose a node to connect</span><select
+        <span class="px-1 text-xs text-muted">Choose a node to connect</span><Select
           aria-label="New connection type"
           bind:value={edgeKind}
-          class="h-8 rounded-md border border-line bg-bg px-1 text-xs"
-          ><option value="then">Then</option><option value="blocks">Blocks</option><option value="depends_on"
-            >Depends on</option
-          ><option value="decides">Decides</option></select
-        ><input
+          segmented={false}
+          options={edgeKinds}
+        /><input
           aria-label="New connection label"
           bind:value={edgeLabel}
           placeholder="Label"

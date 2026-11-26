@@ -11,6 +11,7 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import * as Sheet from '$lib/components/ui/sheet'
   import Composer from './Composer.svelte'
+  import { Switch } from '$lib/components/ui/switch'
   import type { BoardRow } from '$lib/Board.svelte'
   import { feedToEvents, minutesBetween, recurringEvents, toEvents } from '$lib/calendar'
   import { feedEvents } from '$lib/auth'
@@ -152,8 +153,12 @@
   <Composer prefill={adding ?? ''} parentId={inbox_id()} onsaved={() => ((adding = null), onchange())} />
 {/snippet}
 
-<label class="mb-2 flex items-center gap-2 text-sm text-muted">
-  <input type="checkbox" checked={showOccurrences} onchange={(e) => toggleOccurrences(e.currentTarget.checked)} />
+<label class="mb-2 flex items-center gap-2.5 text-sm text-muted">
+  <Switch
+    checked={showOccurrences}
+    onCheckedChange={(c) => toggleOccurrences(c === true)}
+    aria-label="Show future occurrences of recurring tasks"
+  />
   Show future occurrences of recurring tasks
 </label>
 

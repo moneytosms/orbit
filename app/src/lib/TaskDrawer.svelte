@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import * as Sheet from '$lib/components/ui/sheet'
   import Backlinks from '$lib/Backlinks.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -289,15 +290,16 @@
             {/each}
           </ul>
           <div class="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               bind:value={remKind}
               aria-label="Reminder type"
-              class="h-[2.125rem] rounded-md border border-line bg-surface px-2 text-sm text-text shadow-1"
-            >
-              <option value="due">Before due</option>
-              <option value="deadline">Before deadline</option>
-              <option value="at">At a time</option>
-            </select>
+              segmented={false}
+              options={[
+                { value: 'due', label: 'Before due' },
+                { value: 'deadline', label: 'Before deadline' },
+                { value: 'at', label: 'At a time' },
+              ]}
+            />
             {#if remKind === 'at'}
               <input
                 type="datetime-local"
@@ -321,17 +323,17 @@
 
         <div class="grid gap-1.5">
           <label for="task-goal" class="text-xs font-medium text-muted">Goal</label>
-          <select
+          <Select
             id="task-goal"
             value={task.goal_id ?? ''}
-            onchange={(e) => save({ goal_id: e.currentTarget.value || null })}
-            class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-          >
-            <option value="">{inherited ? 'From project' : 'None'}</option>
-            {#each goalList as g (g.id)}
-              <option value={g.id}>{g.name}</option>
-            {/each}
-          </select>
+            onchange={(v) => save({ goal_id: v || null })}
+            segmented={false}
+            class="w-full"
+            options={[
+              { value: '', label: inherited ? 'From project' : 'None' },
+              ...goalList.map((g) => ({ value: g.id, label: g.name })),
+            ]}
+          />
           {#if !task.goal_id && inherited}
             <p class="text-xs text-muted">
               Counts towards {goalList.find((g) => g.id === inherited)?.name ?? 'a goal'} (from project)

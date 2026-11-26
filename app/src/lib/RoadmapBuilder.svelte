@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -77,12 +78,15 @@
 {#snippet ownerField()}
   <label class="flex flex-col gap-1 text-[0.8125rem]">
     Owner
-    <select bind:value={owner} class="h-9 rounded-md border border-line bg-surface px-2 text-sm">
-      {#if extra}<option value={ownerId}>{ownerName || 'This item'}</option>{/if}
-      {#each areas as a (a.area.id)}
-        <option value={a.area.id}>{a.area.name}</option>
-      {/each}
-    </select>
+    <Select
+      bind:value={owner}
+      segmented={false}
+      class="w-full"
+      options={[
+        ...(extra ? [{ value: ownerId, label: ownerName || 'This item' }] : []),
+        ...areas.map((a) => ({ value: a.area.id, label: a.area.name })),
+      ]}
+    />
   </label>
 {/snippet}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import * as Sheet from '$lib/components/ui/sheet'
   import { Button } from '$lib/components/ui/button'
   import IconPicker from '$lib/IconPicker.svelte'
@@ -99,21 +100,29 @@
       {#if !routine}
         <div class="grid gap-1.5">
           <label for="routine-area" class="text-xs font-medium text-muted">Area</label>
-          <select id="routine-area" bind:value={parentId} class={inputClass}>
-            {#each areas as a (a.area.id)}
-              <option value={a.area.id}>{a.area.name}</option>
-            {/each}
-          </select>
+          <Select
+            id="routine-area"
+            bind:value={parentId}
+            segmented={false}
+            class="w-full"
+            options={areas.map((a) => ({ value: a.area.id, label: a.area.name }))}
+          />
         </div>
       {/if}
       <div class="grid gap-1.5">
         <label for="routine-schedule" class="text-xs font-medium text-muted">Schedule</label>
-        <select id="routine-schedule" bind:value={kind} class={inputClass}>
-          <option value="daily">Daily</option>
-          <option value="weekdays">Weekdays</option>
-          <option value="every">Every N days</option>
-          <option value="per_week">N per week</option>
-        </select>
+        <Select
+          id="routine-schedule"
+          bind:value={kind}
+          segmented={false}
+          class="w-full"
+          options={[
+            { value: 'daily', label: 'Daily' },
+            { value: 'weekdays', label: 'Weekdays' },
+            { value: 'every', label: 'Every N days' },
+            { value: 'per_week', label: 'N per week' },
+          ]}
+        />
         {#if kind === 'every' || kind === 'per_week'}
           <input
             type="number"
@@ -127,15 +136,17 @@
       </div>
       <div class="grid gap-1.5">
         <label for="routine-length" class="text-xs font-medium text-muted">Length</label>
-        <select
+        <Select
           id="routine-length"
           value={ongoing ? 'ongoing' : 'days'}
-          onchange={(e) => (ongoing = e.currentTarget.value === 'ongoing')}
-          class={inputClass}
-        >
-          <option value="ongoing">Ongoing</option>
-          <option value="days">For N days, then archive</option>
-        </select>
+          onchange={(v) => (ongoing = v === 'ongoing')}
+          segmented={false}
+          class="w-full"
+          options={[
+            { value: 'ongoing', label: 'Ongoing' },
+            { value: 'days', label: 'For N days, then archive' },
+          ]}
+        />
         {#if !ongoing}
           <input type="number" min="1" bind:value={days} aria-label="Length in days" class={inputClass} />
         {/if}
@@ -152,12 +163,13 @@
       </div>
       <div class="grid gap-1.5">
         <label for="routine-goal" class="text-xs font-medium text-muted">Target goal</label>
-        <select id="routine-goal" bind:value={goalId} class={inputClass}>
-          <option value="">None</option>
-          {#each targets as g (g.id)}
-            <option value={g.id}>{g.name}</option>
-          {/each}
-        </select>
+        <Select
+          id="routine-goal"
+          bind:value={goalId}
+          segmented={false}
+          class="w-full"
+          options={[{ value: '', label: 'None' }, ...targets.map((g) => ({ value: g.id, label: g.name }))]}
+        />
         <p class="text-xs text-muted">Each done check-in adds 1.</p>
       </div>
       <Button type="submit" disabled={!name.trim() || !parentId}>{routine ? 'Save' : 'Add routine'}</Button>

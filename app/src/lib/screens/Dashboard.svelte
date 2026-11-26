@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import EyeOff from '@lucide/svelte/icons/eye-off'
   import GripVertical from '@lucide/svelte/icons/grip-vertical'
   import MoveDiagonal2 from '@lucide/svelte/icons/move-diagonal-2'
@@ -103,9 +104,7 @@
     adding = false
     save()
   }
-  function addView(e: Event) {
-    const select = e.currentTarget as HTMLSelectElement
-    const view_id = select.value
+  function addViewById(view_id: string) {
     if (!view_id) return
     layout = place(layout, { id: crypto.randomUUID(), kind: 'view', view_id, x: 0, y: 0, w: 6, h: 3, hidden: false })
     adding = false
@@ -193,16 +192,17 @@
           {/each}
           <label class="mt-1 grid gap-1 px-2 text-sm text-muted">
             View…
-            <select
-              class="h-8 rounded-md border border-line bg-surface px-2 text-text"
+            <Select
               aria-label="Add a View widget"
-              onchange={addView}
-            >
-              <option value="">Pick a View</option>
-              {#each viewChoices as v (v.id)}
-                <option value={v.id}>{v.name}</option>
-              {/each}
-            </select>
+              value=""
+              segmented={false}
+              placeholder="Pick a View"
+              onchange={(id) => addViewById(id)}
+              options={[
+                { value: '', label: 'Pick a View' },
+                ...viewChoices.map((v) => ({ value: v.id, label: v.name })),
+              ]}
+            />
           </label>
         </div>
       {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import {
     groupItems,
     groupOptions,
@@ -341,25 +342,21 @@
   <div role="group" aria-label="Display" class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">
     <label class="flex items-center gap-1">
       Group
-      <select
+      <Select
         aria-label="Group by"
         value={display.group}
-        onchange={(e) => setDisplay({ group: e.currentTarget.value as Display['group'] })}
-        class="h-8 rounded-md border border-line bg-surface px-2 text-text"
-      >
-        {#each groupOptions as [value, text] (value)}<option {value}>{text}</option>{/each}
-      </select>
+        onchange={(v) => setDisplay({ group: v as Display['group'] })}
+        options={groupOptions.map(([value, label]) => ({ value, label }))}
+      />
     </label>
     <label class="flex items-center gap-1">
       Sort
-      <select
+      <Select
         aria-label="Sort by"
         value={display.sort}
-        onchange={(e) => setDisplay({ sort: e.currentTarget.value as Display['sort'] })}
-        class="h-8 rounded-md border border-line bg-surface px-2 text-text"
-      >
-        {#each sortOptions as [value, text] (value)}<option {value}>{text}</option>{/each}
-      </select>
+        onchange={(v) => setDisplay({ sort: v as Display['sort'] })}
+        options={sortOptions.map(([value, label]) => ({ value, label }))}
+      />
     </label>
   </div>
 {/if}
