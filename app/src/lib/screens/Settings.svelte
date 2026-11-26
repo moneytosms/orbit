@@ -20,7 +20,7 @@
 
   let { version = 0 }: { version?: number } = $props()
   import { notifyEnabled, setNotifyEnabled } from '$lib/notify'
-  import UsageGuide from '$lib/UsageGuide.svelte'
+  import AboutSection from '$lib/AboutSection.svelte'
   import { badgePreference, badgeSupported, refreshAppBadge, setBadgePreference } from '$lib/appBadge'
   import {
     getDaySettings,
@@ -287,18 +287,18 @@
   }
   const sections = [
     ['appearance', 'Appearance'],
-    ['reminders', 'Reminders'],
     ['quick-add', 'Quick add'],
-    ['guide', 'Usage guide'],
     ['general', 'Day and calendar'],
     ['capture-shortcut', 'Quick capture'],
+    ['reminders', 'Reminders and notifications'],
+    ['targets', 'Goals and targets'],
     ['profile', 'Profile'],
     ['account', 'Account and devices'],
-    ['targets', 'Productivity'],
-    ['calendar', 'Google Calendar'],
-    ['data', 'Data'],
-    ['about', 'About'],
+    ['calendar', 'Calendars'],
+    ['data', 'Backup and export'],
     ['advanced', 'Advanced'],
+    ['updates', 'Version and updates'],
+    ['about', 'About'],
   ]
 
   async function recordCaptureShortcut(event: KeyboardEvent) {
@@ -605,58 +605,6 @@
       </details>
     </section>
 
-    <section id="reminders" class="panel scroll-mt-4">
-      <h2 class="panel-title">Reminders</h2>
-      {#snippet notifyControl()}
-        <Checkbox
-          bind:checked={notify}
-          aria-label="Notify on this device"
-          onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))}
-        />
-      {/snippet}
-      {#snippet reminderControl()}
-        <div class="flex flex-wrap justify-end gap-1.5" role="group" aria-label="Default reminders">
-          {#each REMINDER_CHIPS as [m, label] (m)}
-            <Button
-              size="sm"
-              variant={defaultReminders.includes(m) ? 'on' : 'ghost'}
-              aria-pressed={defaultReminders.includes(m)}
-              onclick={() => toggleReminder(m)}>{label}</Button
-            >
-          {/each}
-          <Button
-            size="sm"
-            variant={defaultReminders.length === 0 ? 'on' : 'ghost'}
-            aria-pressed={defaultReminders.length === 0}
-            onclick={clearReminders}>None</Button
-          >
-        </div>
-      {/snippet}
-      {@render row('Notify on this device', 'Show system notifications for reminders here.', notifyControl)}
-      {@render row(
-        'Default reminders',
-        'Tasks with a time get a reminder at each chosen time before it.',
-        reminderControl,
-      )}
-      {#if badgeSupported()}
-        {#snippet badgeControl()}
-          <Checkbox
-            bind:checked={appBadge}
-            aria-label="Show due count on the app icon"
-            onCheckedChange={(v) => {
-              setBadgePreference(v === true)
-              void refreshAppBadge()
-            }}
-          />
-        {/snippet}
-        {@render row(
-          'Show due count on the app icon',
-          'Shows how many tasks are due today or overdue on the app icon, where the browser allows it.',
-          badgeControl,
-        )}
-      {/if}
-    </section>
-
     <section id="quick-add" class="panel scroll-mt-4">
       <h2 class="panel-title">Quick add</h2>
       {#snippet smartControl()}
@@ -701,11 +649,6 @@
       )}
       {@render row('Next week means', 'The day "next week" resolves to.', nextWeekControl)}
       {@render row('Weekend means', 'The day "weekend" resolves to.', weekendControl)}
-    </section>
-
-    <section id="guide" class="panel scroll-mt-4">
-      <h2 class="panel-title">Usage guide</h2>
-      <UsageGuide />
     </section>
 
     <section id="general" class="panel scroll-mt-4">
@@ -792,6 +735,113 @@
         </p>
       </section>
     {/if}
+
+    <section id="reminders" class="panel scroll-mt-4">
+      <h2 class="panel-title">Reminders and notifications</h2>
+      {#snippet notifyControl()}
+        <Checkbox
+          bind:checked={notify}
+          aria-label="Notify on this device"
+          onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))}
+        />
+      {/snippet}
+      {#snippet reminderControl()}
+        <div class="flex flex-wrap justify-end gap-1.5" role="group" aria-label="Default reminders">
+          {#each REMINDER_CHIPS as [m, label] (m)}
+            <Button
+              size="sm"
+              variant={defaultReminders.includes(m) ? 'on' : 'ghost'}
+              aria-pressed={defaultReminders.includes(m)}
+              onclick={() => toggleReminder(m)}>{label}</Button
+            >
+          {/each}
+          <Button
+            size="sm"
+            variant={defaultReminders.length === 0 ? 'on' : 'ghost'}
+            aria-pressed={defaultReminders.length === 0}
+            onclick={clearReminders}>None</Button
+          >
+        </div>
+      {/snippet}
+      {@render row('Notify on this device', 'Show system notifications for reminders here.', notifyControl)}
+      {@render row(
+        'Default reminders',
+        'Tasks with a time get a reminder at each chosen time before it.',
+        reminderControl,
+      )}
+      {#if badgeSupported()}
+        {#snippet badgeControl()}
+          <Checkbox
+            bind:checked={appBadge}
+            aria-label="Show due count on the app icon"
+            onCheckedChange={(v) => {
+              setBadgePreference(v === true)
+              void refreshAppBadge()
+            }}
+          />
+        {/snippet}
+        {@render row(
+          'Show due count on the app icon',
+          'Shows how many tasks are due today or overdue on the app icon, where the browser allows it.',
+          badgeControl,
+        )}
+      {/if}
+    </section>
+
+    <section id="targets" class="panel scroll-mt-4">
+      <h2 class="panel-title">Goals and targets</h2>
+      {#snippet gamControl()}
+        <Checkbox
+          bind:checked={gamification}
+          aria-label="Gamification"
+          onCheckedChange={(v) => setGamification(v === true)}
+        />
+      {/snippet}
+      {@render row('Gamification', 'Stardust, Levels, Badges and Patches.', gamControl)}
+      {#if targets}
+        {#snippet dailyControl()}
+          <Input
+            type="number"
+            min="1"
+            class="w-24"
+            aria-label="Daily target"
+            value={targets?.daily}
+            onchange={(e) => saveTargets({ target_daily: goal(e) })}
+          />
+        {/snippet}
+        {#snippet weeklyControl()}
+          <Input
+            type="number"
+            min="1"
+            class="w-24"
+            aria-label="Weekly target"
+            value={targets?.weekly}
+            onchange={(e) => saveTargets({ target_weekly: goal(e) })}
+          />
+        {/snippet}
+        {#snippet offControl()}
+          <div class="flex flex-wrap gap-x-3 gap-y-1">
+            {#each DAYS as name, d (d)}
+              <Label class="font-normal">
+                <Checkbox checked={targets?.days_off.includes(d)} onCheckedChange={() => toggleOff(d)} />
+                {name}
+              </Label>
+            {/each}
+          </div>
+        {/snippet}
+        {#snippet vacationControl()}
+          <Checkbox
+            checked={targets?.vacation}
+            aria-label="Vacation"
+            onCheckedChange={(v) => setVacation(v === true).then(loadTargets)}
+          />
+        {/snippet}
+        {@render row('Daily target', 'Tasks to finish each day.', dailyControl)}
+        {@render row('Weekly target', 'Tasks to finish each week.', weeklyControl)}
+        {@render row('Days off', 'Days that never break the streak.', offControl)}
+        {@render row('Vacation', 'Pause the target streak until you turn this off.', vacationControl)}
+      {/if}
+    </section>
 
     <section id="profile" class="panel scroll-mt-4">
       <h2 class="panel-title">Profile</h2>
@@ -890,65 +940,12 @@
       </details>
     </section>
 
-    <section id="targets" class="panel scroll-mt-4">
-      <h2 class="panel-title">Productivity</h2>
-      {#snippet gamControl()}
-        <Checkbox
-          bind:checked={gamification}
-          aria-label="Gamification"
-          onCheckedChange={(v) => setGamification(v === true)}
-        />
-      {/snippet}
-      {@render row('Gamification', 'Stardust, Levels, Badges and Patches.', gamControl)}
-      {#if targets}
-        {#snippet dailyControl()}
-          <Input
-            type="number"
-            min="1"
-            class="w-24"
-            aria-label="Daily target"
-            value={targets?.daily}
-            onchange={(e) => saveTargets({ target_daily: goal(e) })}
-          />
-        {/snippet}
-        {#snippet weeklyControl()}
-          <Input
-            type="number"
-            min="1"
-            class="w-24"
-            aria-label="Weekly target"
-            value={targets?.weekly}
-            onchange={(e) => saveTargets({ target_weekly: goal(e) })}
-          />
-        {/snippet}
-        {#snippet offControl()}
-          <div class="flex flex-wrap gap-x-3 gap-y-1">
-            {#each DAYS as name, d (d)}
-              <Label class="font-normal">
-                <Checkbox checked={targets?.days_off.includes(d)} onCheckedChange={() => toggleOff(d)} />
-                {name}
-              </Label>
-            {/each}
-          </div>
-        {/snippet}
-        {#snippet vacationControl()}
-          <Checkbox
-            checked={targets?.vacation}
-            aria-label="Vacation"
-            onCheckedChange={(v) => setVacation(v === true).then(loadTargets)}
-          />
-        {/snippet}
-        {@render row('Daily target', 'Tasks to finish each day.', dailyControl)}
-        {@render row('Weekly target', 'Tasks to finish each week.', weeklyControl)}
-        {@render row('Days off', 'Days that never break the streak.', offControl)}
-        {@render row('Vacation', 'Pause the target streak until you turn this off.', vacationControl)}
-      {/if}
-    </section>
-
     <section id="calendar" class="panel scroll-mt-4">
       <h2 class="panel-title">Calendars</h2>
       <CalendarFeeds />
     </section>
+
+    <TodoistImport />
 
     <section id="data" class="panel scroll-mt-4">
       <h2 class="panel-title">Backup and export</h2>
@@ -961,8 +958,49 @@
       {#if exportMsg}<p role="status" class="mt-2 {exportOk ? 'text-muted' : 'text-warn-text'}">{exportMsg}</p>{/if}
     </section>
 
-    <section id="about" class="panel scroll-mt-4">
-      <h2 class="panel-title">About Orbit</h2>
+    <details id="advanced" class="group panel scroll-mt-4">
+      <summary
+        class="flex cursor-pointer list-none items-center gap-2 text-base font-semibold [&::-webkit-details-marker]:hidden"
+      >
+        <ChevronRight size={16} class="shrink-0 text-icon transition-transform group-open:rotate-90" />
+        Advanced
+        <span class="text-sm font-normal text-muted">What's next windows</span>
+      </summary>
+      <div class="mt-3">
+        {#snippet deadlineControl()}
+          <Input
+            type="number"
+            min="0"
+            class="w-24"
+            aria-label="Deadline window in days"
+            bind:value={nextDeadline}
+            onchange={() => setNextSettings({ deadline_days: days(nextDeadline) })}
+          />
+        {/snippet}
+        {#snippet dueControl()}
+          <Input
+            type="number"
+            min="0"
+            class="w-24"
+            aria-label="Due window in days"
+            bind:value={nextDue}
+            onchange={() => setNextSettings({ due_days: days(nextDue) })}
+          />
+        {/snippet}
+        {#snippet p1Control()}
+          <Checkbox
+            checked={nextP1}
+            aria-label="Include undated P1 tasks"
+            onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
+          />
+        {/snippet}
+        {@render row('Deadline window', 'Days ahead a deadline counts as next.', deadlineControl)}
+        {@render row('Due window', 'Days ahead a due date counts as next.', dueControl)}
+        {@render row('Undated P1 tasks', "Include P1 tasks with no date in What's next.", p1Control)}
+      </div>
+    </details>
+    <section id="updates" class="panel scroll-mt-4">
+      <h2 class="panel-title">Version and updates</h2>
       <dl class="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
         <dt class="text-muted">App version</dt>
         <dd>{appVersion}</dd>
@@ -1013,48 +1051,6 @@
       {/if}
     </section>
 
-    <TodoistImport />
-
-    <details id="advanced" class="group panel scroll-mt-4">
-      <summary
-        class="flex cursor-pointer list-none items-center gap-2 text-base font-semibold [&::-webkit-details-marker]:hidden"
-      >
-        <ChevronRight size={16} class="shrink-0 text-icon transition-transform group-open:rotate-90" />
-        Advanced
-        <span class="text-sm font-normal text-muted">What's next windows</span>
-      </summary>
-      <div class="mt-3">
-        {#snippet deadlineControl()}
-          <Input
-            type="number"
-            min="0"
-            class="w-24"
-            aria-label="Deadline window in days"
-            bind:value={nextDeadline}
-            onchange={() => setNextSettings({ deadline_days: days(nextDeadline) })}
-          />
-        {/snippet}
-        {#snippet dueControl()}
-          <Input
-            type="number"
-            min="0"
-            class="w-24"
-            aria-label="Due window in days"
-            bind:value={nextDue}
-            onchange={() => setNextSettings({ due_days: days(nextDue) })}
-          />
-        {/snippet}
-        {#snippet p1Control()}
-          <Checkbox
-            checked={nextP1}
-            aria-label="Include undated P1 tasks"
-            onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
-          />
-        {/snippet}
-        {@render row('Deadline window', 'Days ahead a deadline counts as next.', deadlineControl)}
-        {@render row('Due window', 'Days ahead a due date counts as next.', dueControl)}
-        {@render row('Undated P1 tasks', "Include P1 tasks with no date in What's next.", p1Control)}
-      </div>
-    </details>
+    <AboutSection />
   </div>
 </div>
