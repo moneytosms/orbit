@@ -2,8 +2,11 @@
 use crate::token;
 use orbit_client::Client;
 use orbit_core::Op;
+use orbit_core::Uuid;
 use orbit_core::reminder::{self, Fire};
 use std::collections::HashSet;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
@@ -37,6 +40,86 @@ fn body(f: &Fire) -> String {
     }
 }
 
+/// A tap on a notification button: complete the task, or snooze its reminder by some minutes.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[derive(Debug, PartialEq)]
+enum Tap {
+    Complete(Uuid),
+    Snooze(Uuid, i64),
+}
+
+/// When a snooze of `minutes` from `now` lands, as local `YYYY-MM-DDTHH:MM`.
+fn snooze_at(now: chrono::NaiveDateTime, minutes: i64) -> String {
+    (now + chrono::TimeDelta::minutes(minutes))
+        .format("%Y-%m-%dT%H:%M")
+        .to_string()
+}
+
+/// Shows a reminder. Task reminders carry Complete and Snooze buttons where the platform's
+/// notification service supports them (Linux); a tap is sent back on `tx`.
+#[cfg(target_os = "linux")]
+fn show(app: &AppHandle, f: &Fire, tx: &Sender<Tap>) {
+    let mut n = notify_rust::Notification::new();
+    n.appname("Orbit").summary(&f.title).body(&body(f));
+    if f.task_id.is_some() {
+        n.action("complete", "Complete")
+            .action("snooze10", "Snooze 10 min")
+            .action("snooze60", "Snooze 1 h");
+    }
+    match (n.show(), f.task_id) {
+        (Ok(handle), Some(id)) => {
+            let tx = tx.clone();
+            // Blocks until the notification is closed, so it gets its own thread.
+            std::thread::spawn(move || {
+                handle.wait_for_action(|action| {
+                    let tap = match action {
+                        "complete" => Tap::Complete(id),
+                        "snooze10" => Tap::Snooze(id, 10),
+                        "snooze60" => Tap::Snooze(id, 60),
+                        _ => return,
+                    };
+                    let _ = tx.send(tap);
+                });
+            });
+        }
+        (Ok(_), None) => {}
+        (Err(_), _) => plain(app, f),
+    }
+}
+
+/// Windows and others: the notification plugin has no action buttons here.
+#[cfg(not(target_os = "linux"))]
+fn show(app: &AppHandle, f: &Fire, _tx: &Sender<Tap>) {
+    plain(app, f);
+}
+
+fn plain(app: &AppHandle, f: &Fire) {
+    let _ = app
+        .notification()
+        .builder()
+        .title(&f.title)
+        .body(body(f))
+        .show();
+}
+
+/// Writes a tapped button's change and syncs it.
+async fn apply(client: &mut Client, tap: Tap) {
+    let now = chrono::Local::now().naive_local();
+    let op = match tap {
+        Tap::Complete(id) => Op::TaskComplete {
+            id,
+            today: Some(now.format("%Y-%m-%d").to_string()),
+        },
+        Tap::Snooze(task_id, minutes) => Op::ReminderSnooze {
+            task_id,
+            at: snooze_at(now, minutes),
+        },
+    };
+    if client.enqueue(op, now_ms()).is_ok() {
+        let _ = client.sync(now_ms()).await;
+    }
+}
+
 fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64
 }
@@ -47,6 +130,7 @@ async fn tick(
     client: &mut Client,
     fired: &mut HashSet<String>,
     device: &str,
+    taps: &Sender<Tap>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let trace = std::env::var_os("ORBIT_SYNC_TRACE")
         .is_some_and(|value| value == std::ffi::OsStr::new("1"));
@@ -70,12 +154,7 @@ async fn tick(
     let fires = reminder::schedule(&rows, &now_local, &cfg);
     let mut spent = false;
     for f in due_now(fires, &now_local, fired) {
-        let _ = app
-            .notification()
-            .builder()
-            .title(&f.title)
-            .body(body(&f))
-            .show();
+        show(app, &f, taps);
         if let (Some(task_id), Some(id)) = (f.task_id, f.reminder_id) {
             // Offsets re-apply per occurrence and core may refuse; `fired` already stops repeats.
             spent |= client
@@ -93,6 +172,8 @@ async fn tick(
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut fired = HashSet::new();
+        let (taps, rx) = mpsc::channel::<Tap>();
+        let rx = Arc::new(Mutex::new(rx));
         let mut open: Option<(Client, String)> = None;
         loop {
             match token::load() {
@@ -102,21 +183,32 @@ pub fn start(app: AppHandle) {
                         open = open_client(&t).map(|c| (c, t.token.clone()));
                     }
                     if let Some((client, _)) = open.as_mut()
-                        && let Err(e) = tick(&app, client, &mut fired, &t.device).await
+                        && let Err(e) = tick(&app, client, &mut fired, &t.device, &taps).await
                     {
                         eprintln!("orbit reminders: {e}");
                     }
                 }
             }
-            tokio_sleep().await;
+            // Waits a minute, or less when a notification button is tapped.
+            if let Some(tap) = next_tap(&rx).await
+                && let Some((client, _)) = open.as_mut()
+            {
+                apply(client, tap).await;
+            }
         }
     });
 }
 
-async fn tokio_sleep() {
-    // Tauri's runtime is tokio; sleep on a blocking thread to avoid a direct tokio dependency.
-    let _ =
-        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(Duration::from_secs(60))).await;
+async fn next_tap(rx: &Arc<Mutex<Receiver<Tap>>>) -> Option<Tap> {
+    // Tauri's runtime is tokio; wait on a blocking thread to avoid a direct tokio dependency.
+    let rx = Arc::clone(rx);
+    tauri::async_runtime::spawn_blocking(move || {
+        let rx = rx.lock().ok()?;
+        rx.recv_timeout(Duration::from_secs(60)).ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn open_client(t: &token::Stored) -> Option<Client> {
@@ -142,6 +234,16 @@ mod tests {
             late: false,
             title: "T".into(),
         }
+    }
+
+    #[test]
+    fn snooze_lands_in_local_time_across_midnight() {
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 11, 30)
+            .unwrap()
+            .and_hms_opt(23, 55, 0)
+            .unwrap();
+        assert_eq!(snooze_at(now, 10), "2026-12-01T00:05");
+        assert_eq!(snooze_at(now, 60), "2026-12-01T00:55");
     }
 
     #[test]
