@@ -20,6 +20,7 @@
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import { knownJson, quickAddPrefs } from '$lib/captureKnown'
   import { deadlineLabel, dueLabel, durationLabel } from '$lib/captureEdit'
+  import { commandsFirst, matchCommands } from '$lib/palette'
   import SearchIcon from '@lucide/svelte/icons/search'
   import SquareCheck from '@lucide/svelte/icons/square-check'
   import FolderIcon from '@lucide/svelte/icons/folder'
@@ -94,6 +95,39 @@
       h.kind === 'view' ? `#/view/${h.id}` : h.kind === 'routine' ? '#/routines' : (await linkTarget(h.id))?.href
     if (href) location.hash = href
   }
+  // Palette-only command: the tour's replay is a window event (see AboutSection), not an action in the registry.
+  const tourCommand: Action = {
+    id: 'tour.replay',
+    name: 'Replay tour',
+    group: 'App',
+    run: () => window.dispatchEvent(new CustomEvent('orbit-tour')),
+  }
+  const runCommand = (a: Action) => async () => {
+    open = false
+    await a.run()
+  }
+  /**
+   * Commands an unprefixed query finds too, and whether they go above the task results (exact or prefix title).
+   * A failed registry read leaves only the palette's own commands.
+   */
+  async function commandSection(t: string): Promise<{ section: Section; lead: boolean } | null> {
+    const registry = await actions().catch(() => [] as Action[])
+    const matched = matchCommands([...registry, tourCommand], t)
+    if (!matched.length) return null
+    return {
+      section: {
+        title: 'Commands',
+        items: matched.map(({ item: a }) => ({
+          key: a.id,
+          label: a.name,
+          hint: 'Command',
+          icon: ZapIcon,
+          run: runCommand(a),
+        })),
+      },
+      lead: commandsFirst(matched),
+    }
+  }
   const hitItem = (h: Hit): Item => ({
     key: h.id,
     label: h.title || 'Untitled',
@@ -108,14 +142,10 @@
     let out: Section[] = []
     if (t.startsWith('>')) {
       const list = filterActions(await actions(), t.slice(1))
-      const run = (a: Action) => async () => {
-        open = false
-        await a.run()
-      }
       out = [
         {
           title: 'Actions',
-          items: list.map((a) => ({ key: a.id, label: a.name, hint: a.group, icon: ZapIcon, run: run(a) })),
+          items: list.map((a) => ({ key: a.id, label: a.name, hint: a.group, icon: ZapIcon, run: runCommand(a) })),
         },
       ]
     } else if (t.startsWith('+')) {
@@ -193,11 +223,13 @@
     } else {
       await searchReady()
       const hits = search().query(t, 30)
-      out = t.trim()
+      const groups: Section[] = t.trim()
         ? groupHits(hits).map((g) => ({ title: KIND_LABEL[g.kind] ?? g.kind, items: g.hits.map(hitItem) }))
         : hits.length
           ? [{ title: 'Recent', items: hits.map(hitItem) }]
           : []
+      const cmds = t.trim() ? await commandSection(t) : null
+      out = cmds ? (cmds.lead ? [cmds.section, ...groups] : [...groups, cmds.section]) : groups
     }
     if (mine !== stamp) return
     sections = out
