@@ -18,6 +18,7 @@
   import EntityMenu from './EntityMenu.svelte'
   import { favorites, resolveFavorites, type FavoriteEntry } from '$lib/favorites'
   import Palette from './Palette.svelte'
+  import { canOpenOverlay } from '$lib/tour'
   import { runAction, setFocusedTask, ui } from '$lib/actions'
   import { refreshAppBadge } from '$lib/appBadge'
   import { clearCursor, isTyping, matcher } from '$lib/keys'
@@ -234,6 +235,8 @@
   ui.openPalette = openPalette
   ui.openHelp = () => (help = true)
   function openPalette() {
+    // The palette would render behind the tour's spotlight, so it waits until the tour is done.
+    if (!canOpenOverlay()) return
     drawer = false
     palette = true
   }

@@ -53,6 +53,13 @@
 
   let query = $state('')
   let open = $state(false)
+  // The text in the search box. It always shows the chosen option's label; typing is only a filter until an option is
+  // picked, so free text that is not an option is never left behind on blur, Escape or close.
+  let text = $state('')
+  const revert = () => (text = current?.label ?? '')
+  $effect(() => {
+    if (!open) text = current?.label ?? ''
+  })
   const shown = $derived(
     query.trim() ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase())) : options,
   )
@@ -136,10 +143,12 @@
     type="single"
     {disabled}
     bind:open
+    inputValue={text}
     value={enc(value)}
     onValueChange={(v) => v && set(dec(v))}
     onOpenChange={(o) => {
       if (o) query = ''
+      else revert()
     }}
     items={options.map((o) => ({ ...o, value: enc(o.value) }))}
   >
@@ -148,8 +157,15 @@
         {id}
         aria-label={ariaLabel}
         placeholder={current?.label ?? placeholder}
-        oninput={(e) => (query = e.currentTarget.value)}
+        oninput={(e) => {
+          text = e.currentTarget.value
+          query = text
+        }}
         onfocus={(e) => e.currentTarget.select()}
+        onblur={revert}
+        onkeydown={(e) => {
+          if (e.key === 'Escape') revert()
+        }}
         class={cn(triggerClass, 'w-full pr-7 placeholder:text-text')}
       />
       <Combobox.Trigger
