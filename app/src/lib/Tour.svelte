@@ -3,7 +3,7 @@
   // Each step dims the app and outlines one thing; Back, Next and Skip all work, and so do the arrow keys and Escape.
   import { onMount, tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import { cardPosition, STEPS, TOUR_KEY, visibleBox, type Box, type Step } from './tour'
+  import { cardPosition, STEPS, TOUR_KEY, tourOpen, visibleBox, type Box, type Step } from './tour'
 
   let open = $state(false)
   let index = $state(0)
@@ -17,6 +17,7 @@
 
   function finish() {
     open = false
+    tourOpen.set(false)
     try {
       localStorage.setItem(TOUR_KEY, '1')
     } catch {
@@ -54,6 +55,7 @@
     steps = STEPS
     index = 0
     open = true
+    tourOpen.set(true)
     void go(0)
   }
 
@@ -79,6 +81,7 @@
     return () => {
       clearTimeout(timer)
       window.removeEventListener('orbit-tour', replay)
+      tourOpen.set(false)
     }
   })
 </script>

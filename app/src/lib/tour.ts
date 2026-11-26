@@ -1,4 +1,13 @@
 // The first-run tour: what each step points at, and where its card sits. Pure so it can be tested.
+import { get, writable } from 'svelte/store'
+
+/** True while the spotlight tour is on screen. Set by Tour.svelte; other openers (Ctrl+K, search) check it. */
+export const tourOpen = writable(false)
+
+/** Whether a new overlay such as the command palette may open now: not while the tour is showing. */
+export function canOpenOverlay(isTourOpen: boolean = get(tourOpen)): boolean {
+  return !isTourOpen
+}
 export type Step = {
   title: string
   body: string

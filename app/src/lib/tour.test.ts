@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, test } from 'vitest'
-import { cardPosition, STEPS, visibleBox } from './tour'
+import { canOpenOverlay, cardPosition, STEPS, tourOpen, visibleBox } from './tour'
 
 test('a card goes below its target when it fits and above when it does not', () => {
   const view = { width: 1000, height: 700 }
@@ -31,4 +31,13 @@ test('every step has a title and body, and optional steps name a target', () => 
     expect(s.body.length).toBeGreaterThan(0)
     if (s.optional) expect(s.target).toBeTruthy()
   }
+})
+
+test('other overlays stay shut while the tour is open', () => {
+  expect(canOpenOverlay(false)).toBe(true)
+  expect(canOpenOverlay(true)).toBe(false)
+  tourOpen.set(true)
+  expect(canOpenOverlay()).toBe(false)
+  tourOpen.set(false)
+  expect(canOpenOverlay()).toBe(true)
 })
