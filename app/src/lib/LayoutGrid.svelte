@@ -117,7 +117,11 @@
   }
 
   function key(ev: KeyboardEvent, w: Widget) {
-    if (!canEdit || ev.target !== ev.currentTarget) return
+    // Arrow keys work on the tile itself and on its Move and Resize buttons (Resize always resizes).
+    const el = ev.target as HTMLElement
+    const onResize = el.dataset.handle === 'se'
+    const onMove = el.dataset.kbdMove !== undefined
+    if (!canEdit || !(ev.target === ev.currentTarget || onResize || onMove)) return
     const d: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0],
       ArrowRight: [1, 0],
@@ -129,7 +133,7 @@
     ev.preventDefault()
     apply((list) => {
       const t = list.find((o) => o.id === w.id) ?? w
-      return ev.shiftKey
+      return ev.shiftKey || onResize
         ? resize(list, w.id, t.w + step[0], t.h + step[1], cols)
         : move(list, w.id, t.x + step[0], t.y + step[1], cols)
     })
@@ -254,6 +258,7 @@
           <button
             type="button"
             aria-label="Move {label(w)}"
+            data-kbd-move
             class="{iconBtn} -ml-1 cursor-grab touch-none"
             onpointerdown={(e) => start(e, w, 'move')}><GripVertical size={15} /></button
           >

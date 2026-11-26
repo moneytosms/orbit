@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (1.0.0)
+## 1.0.0 - 2026-11-26
 
 ### Features
 
@@ -21,12 +21,19 @@
 
 ### Changes
 
+- The command palette also finds commands (Go to Settings, Archive & Trash, Replay tour) without the `>` prefix
+- New views ask for a name first; label chips read `#name` everywhere
+- Snooze has its own labelled row in the task panel and confirms the time; the quick-add preview shows dates in plain words; Backlinks reads "Linked from" and Start view reads "Open Orbit on"
+- Touch screens get 44px tap areas on completion circles, Undo, Check in, tile links and sidebar rows
+- Tiles have a minimum height, resize handles sit on the tile border instead of over its content, and the Home breadcrumb no longer shows twice
 - One dropdown everywhere: flat segmented choices for a few options, a popover for more and a search box for long lists
 - One switch for on/off settings instead of checkboxes
 - Project menus moved from the sidebar to the project page
 
 ### Fixes
 
+- The timezone box kept stray typed text; it now reverts to the chosen value
+- Ctrl+K no longer opens the palette behind the replayed tour; arrow keys also work from a tile's Move and Resize buttons
 - Renaming a project did nothing: `project.update` had no `name` field (it has one now)
 - Area pages logged an endless effect loop on open
 - Quick add added the same task twice on a fast double submit
