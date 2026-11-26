@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased (1.0.0)
+
+### Features
+
+- Labels can be renamed and deleted from Settings, with a count of the tasks that use each (new `label.rename` and `label.delete` operations)
+- Area and Project pages have a proper header with Overview, List, Board and Table tabs and a ⋯ menu (favourite, rename, archive, delete, layout)
+- Home, Areas and Projects share one layout editor behind the ⋯ menu: a bar above the grid, snap to a 12-column grid with a drop preview, corner resize, arrow keys, and a layout that reflows on tablet and phone
+- Upcoming is a week strip with a day agenda, an overdue banner and a Later list
+- Your profile sits at the bottom of the sidebar; the arrow beside it opens Settings and Archive & Trash. Those two also appear on the Profile page
+- Trash is now Archive & Trash, with Archive first
+- Deleting or archiving folds the row away with an Undo toast
+- A spotlight tour runs on first launch and can be replayed from Settings > About
+- Settings has an About section with links, the quick add guide and keyboard shortcuts; the guide left the Settings list
+- A more polished command palette with icons, a mode badge and key hints
+
+### Changes
+
+- One dropdown everywhere: flat segmented choices for a few options, a popover for more and a search box for long lists
+- One switch for on/off settings instead of checkboxes
+- Project menus moved from the sidebar to the project page
+
+### Fixes
+
+- The "Orbit update available" notice had no background and an unstyled button
+- Selected sidebar rows no longer paint a second highlight
+
 ## 0.9.0 - 2026-11-26
 
 ### Features

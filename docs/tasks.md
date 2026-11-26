@@ -5,7 +5,7 @@ For daily users who want to capture a task in one line and know what Orbit under
 ## Before you start
 
 - Orbit installed on at least one device ([Install](install.md)) and signed in.
-- Know the names of your Areas, Projects, Goals, Pages and Labels. Names are matched case-insensitively and keep their stored casing.
+- Know the names of your Areas, Projects, Goals, Pages and Labels. Names are matched case-insensitively and keep their stored casing. Rename or delete a label under **Settings > Labels**: a rename shows everywhere at once, and a delete takes the label off every task that carries it (the tasks stay).
 
 ## Steps
 
