@@ -15,6 +15,7 @@
   import Trash from './lib/screens/Trash.svelte'
   import Completed from './lib/screens/Completed.svelte'
   import View from './lib/screens/View.svelte'
+  import Upcoming from './lib/screens/Upcoming.svelte'
   import Profile from './lib/screens/Profile.svelte'
   import Stub from './lib/screens/Stub.svelte'
   import { hasDevice, needsSetup } from './lib/auth'
@@ -211,7 +212,7 @@
             <View id={screen.id} {areas} onchange={refresh} />
           {/key}
         {:else if screen.name === 'upcoming'}
-          <View id={VIEW_UPCOMING} {areas} onchange={refresh} />
+          <Upcoming {areas} onchange={refresh} />
         {:else if screen.name === 'area'}
           {#key screen.id}
             {@const areaId = screen.id}
