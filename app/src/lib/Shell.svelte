@@ -351,7 +351,7 @@
       <Icon size={16} class="text-icon group-aria-[current=page]:text-accent" />
     {/if}
     <span class="min-w-0 flex-1 truncate"
-      >{r === 'profile' && profile.display_name ? `Signed in as ${profile.display_name}` : routes[r].label}</span
+      >{r === 'profile' && profile.display_name ? profile.display_name : routes[r].label}</span
     >
     {#if count}<span class="text-[0.7812rem] text-muted">{count}</span>{/if}
   </a>
