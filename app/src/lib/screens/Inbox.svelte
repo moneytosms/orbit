@@ -50,11 +50,17 @@
     title,
     rows,
     onchange,
+    layout: forced,
+    bare = false,
   }: {
     parentId: string
     title: string
     rows: Entry[]
     onchange: () => void
+    /** An Area or Project page picks List, Board or Table in its own tabs and passes it here. */
+    layout?: 'list' | 'board' | 'table'
+    /** No title and no layout pills: the page around the list has its own header. */
+    bare?: boolean
   } = $props()
   let openId = $state<string | null>(null)
   let names = $state(new Map<string, string>())
@@ -77,6 +83,7 @@
       layoutFor = parentId
       layout = readLayout(parentId)
     }
+    if (forced) layout = forced
   })
   function setLayout(next: string) {
     layout = next
@@ -318,24 +325,28 @@
   </div>
 {/snippet}
 
-<div class="mb-2 flex items-center gap-2">
-  <h1 class="page-title flex-1">{title}</h1>
-</div>
+{#if !bare}
+  <div class="mb-2 flex items-center gap-2">
+    <h1 class="page-title flex-1">{title}</h1>
+  </div>
+{/if}
 <OverdueBanner tasks={rows.map((r) => r.task)} {onchange} />
 <div class="mb-4">
   <Composer {parentId} autofocus={false} />
 </div>
 
-<div role="group" aria-label="Layout" class="mb-3 flex gap-1">
-  {#each [['list', 'List'], ['board', 'Board'], ['table', 'Table']] as [value, text] (value)}
-    <Button
-      size="sm"
-      variant={layout === value ? 'on' : 'default'}
-      aria-pressed={layout === value}
-      onclick={() => setLayout(value)}>{text}</Button
-    >
-  {/each}
-</div>
+{#if !bare}
+  <div role="group" aria-label="Layout" class="mb-3 flex gap-1">
+    {#each [['list', 'List'], ['board', 'Board'], ['table', 'Table']] as [value, text] (value)}
+      <Button
+        size="sm"
+        variant={layout === value ? 'on' : 'default'}
+        aria-pressed={layout === value}
+        onclick={() => setLayout(value)}>{text}</Button
+      >
+    {/each}
+  </div>
+{/if}
 
 {#if layout === 'list'}
   <div role="group" aria-label="Display" class="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted">

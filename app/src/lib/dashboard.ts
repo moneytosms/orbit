@@ -25,6 +25,49 @@ export const KINDS: { kind: string; title: string; w: number; h: number }[] = [
 ]
 export const titleOf = (kind: string) => KINDS.find((k) => k.kind === kind)?.title ?? 'View'
 
+export type PageKind = 'area' | 'project'
+
+/** Tiles an Area or Project page can show, with the pages that offer each. */
+export const PAGE_KINDS: { kind: string; title: string; w: number; h: number; on: PageKind[] }[] = [
+  { kind: 'stats', title: 'Overview', w: 12, h: 1, on: ['area', 'project'] },
+  { kind: 'tasks', title: 'Tasks', w: 6, h: 4, on: ['area', 'project'] },
+  { kind: 'next', title: 'Next up', w: 6, h: 2, on: ['area', 'project'] },
+  { kind: 'goals', title: 'Goals', w: 6, h: 2, on: ['area'] },
+  { kind: 'routines', title: 'Routines', w: 6, h: 2, on: ['area', 'project'] },
+  { kind: 'pages', title: 'Pages', w: 6, h: 2, on: ['area', 'project'] },
+  { kind: 'projects', title: 'Projects', w: 6, h: 2, on: ['area'] },
+  { kind: 'roadmaps', title: 'Roadmaps', w: 6, h: 2, on: ['area', 'project'] },
+]
+export const pageKinds = (page: PageKind) => PAGE_KINDS.filter((k) => k.on.includes(page))
+export const pageTitleOf = (kind: string) => PAGE_KINDS.find((k) => k.kind === kind)?.title ?? kind
+
+const pageAt = (kind: string, x: number, y: number, h?: number): Widget => {
+  const k = PAGE_KINDS.find((k) => k.kind === kind)!
+  return { id: kind, kind, x, y, w: k.w, h: h ?? k.h, hidden: false }
+}
+
+/** The layout of an Area or Project page before the user changes anything. */
+export const defaultPageLayout = (page: PageKind): Widget[] =>
+  page === 'area'
+    ? [
+        pageAt('stats', 0, 0),
+        pageAt('tasks', 0, 1),
+        pageAt('next', 6, 1),
+        pageAt('goals', 6, 3),
+        pageAt('routines', 0, 5),
+        pageAt('projects', 6, 5),
+        pageAt('pages', 0, 7),
+        pageAt('roadmaps', 6, 7),
+      ]
+    : [
+        pageAt('stats', 0, 0),
+        pageAt('tasks', 0, 1),
+        pageAt('next', 6, 1),
+        pageAt('routines', 6, 3),
+        pageAt('pages', 0, 5),
+        pageAt('roadmaps', 6, 5),
+      ]
+
 const at = (kind: string, x: number, y: number): Widget => {
   const k = KINDS.find((k) => k.kind === kind)!
   return { id: kind, kind, x, y, w: k.w, h: k.h, hidden: false }
@@ -64,17 +107,17 @@ function settle(widgets: Widget[], fixed: Widget): Widget[] {
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
 /** Moves a widget to cell (x, y), kept inside the 12 columns; whatever it lands on moves down. */
-export function move(widgets: Widget[], id: string, x: number, y: number): Widget[] {
+export function move(widgets: Widget[], id: string, x: number, y: number, cols = COLS): Widget[] {
   const w = widgets.find((w) => w.id === id)
   if (!w) return widgets
-  return settle(widgets, { ...w, x: clamp(Math.round(x), 0, COLS - w.w), y: Math.max(0, Math.round(y)) })
+  return settle(widgets, { ...w, x: clamp(Math.round(x), 0, Math.max(0, cols - w.w)), y: Math.max(0, Math.round(y)) })
 }
 
 /** Resizes a widget to w × h cells (at least 1 × 1, within the columns); whatever it grows over moves down. */
-export function resize(widgets: Widget[], id: string, w: number, h: number): Widget[] {
+export function resize(widgets: Widget[], id: string, w: number, h: number, cols = COLS): Widget[] {
   const t = widgets.find((t) => t.id === id)
   if (!t) return widgets
-  const nw = clamp(Math.round(w), 1, COLS - t.x)
+  const nw = clamp(Math.round(w), 1, Math.max(1, cols - t.x))
   return settle(widgets, { ...t, w: nw, h: Math.max(1, Math.round(h)) })
 }
 
@@ -88,6 +131,57 @@ export function place(widgets: Widget[], widget: Widget): Widget[] {
 /** The visible widgets on a phone: one column, by y then x. */
 export const phoneOrder = (widgets: Widget[]): Widget[] =>
   widgets.filter((w) => !w.hidden).sort((a, b) => a.y - b.y || a.x - b.x)
+
+export type Rect = { x: number; y: number; w: number; h: number }
+
+/** Whether `rect` is a legal spot for tile `id`: inside the `cols` columns and clear of every other visible tile. */
+export const fits = (widgets: Widget[], id: string, rect: Rect, cols = COLS): boolean =>
+  rect.x >= 0 &&
+  rect.y >= 0 &&
+  rect.w >= 1 &&
+  rect.h >= 1 &&
+  rect.x + rect.w <= cols &&
+  !widgets.some((o) => o.id !== id && !o.hidden && hit({ ...o, ...rect }, o))
+
+/** Columns for a viewport width: 12 on desktop, 6 on tablet (< 1024px), 2 on phone (< 640px). */
+export const colsFor = (width: number) => (width < 640 ? 2 : width < 1024 ? 6 : COLS)
+
+/** Narrowest a tile may get on a tablet (in tablet columns). */
+export const TABLET_MIN_W = 2
+
+/**
+ * The visible tiles laid out for `cols` columns, from the one saved 12-column layout. Desktop is the layout as saved
+ * (reading order); on a tablet x and w scale to the column count (w at least 2) and tiles that would collide move
+ * down; on a phone every tile is full width and they stack in reading order.
+ */
+export function reflow(widgets: Widget[], cols: number): Widget[] {
+  const visible = phoneOrder(widgets)
+  if (cols >= COLS) return visible
+  if (cols < 4) {
+    let y = 0
+    return visible.map((w) => {
+      const out = { ...w, x: 0, w: cols, y }
+      y += w.h
+      return out
+    })
+  }
+  const placed: Widget[] = []
+  for (const w of visible) {
+    const nw = clamp(Math.round((w.w * cols) / COLS), Math.min(TABLET_MIN_W, cols), cols)
+    let next = { ...w, w: nw, x: clamp(Math.round((w.x * cols) / COLS), 0, cols - nw) }
+    while (placed.some((p) => hit(p, next))) next = { ...next, y: next.y + 1 }
+    placed.push(next)
+  }
+  return placed
+}
+
+/** Maps tiles edited in a `cols`-column view back onto the saved 12 columns, keeping hidden tiles and saved order. */
+export function expand(edited: Widget[], cols: number, saved: Widget[]): Widget[] {
+  if (cols >= COLS) return edited
+  const f = COLS / cols
+  const by = new Map(edited.map((w) => [w.id, { ...w, x: w.x * f, w: w.w * f }]))
+  return saved.map((w) => by.get(w.id) ?? w)
+}
 
 /** Share of today's Tasks finished, 0..1; an empty day counts as complete. */
 export const doneShare = (done: number, left: number) => (done + left === 0 ? 1 : done / (done + left))

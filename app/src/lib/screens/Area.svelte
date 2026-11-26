@@ -1,258 +1,213 @@
 <script lang="ts">
-  import CircleCheck from '@lucide/svelte/icons/circle-check'
-  import FileText from '@lucide/svelte/icons/file-text'
-  import Empty from '$lib/Empty.svelte'
-  import FolderKanban from '@lucide/svelte/icons/folder-kanban'
   import type { Snippet } from 'svelte'
-  import EntityCreateMenu from '$lib/EntityCreateMenu.svelte'
-  import EntityMenu from '$lib/EntityMenu.svelte'
-  import { Button } from '$lib/components/ui/button'
-  import { Input } from '$lib/components/ui/input'
-  import Banner from '$lib/Banner.svelte'
   import Backlinks from '$lib/Backlinks.svelte'
-  import { areaStats, openCounts, roadmapsIn, upNextIn, type AreaStats } from '$lib/area'
-  import {
-    createGoal,
-    createPage,
-    goalProgress,
-    localDay,
-    pagesOf,
-    updateArea,
-    visibleSnapshot,
-    whatsNext,
-    type Goal,
-    type NextItem,
-    type Page,
-    type Roadmap,
-    type tree,
-  } from '$lib/sync'
+  import Banner from '$lib/Banner.svelte'
+  import EntityCreateMenu from '$lib/EntityCreateMenu.svelte'
+  import LayoutBar from '$lib/LayoutBar.svelte'
+  import LayoutGrid from '$lib/LayoutGrid.svelte'
+  import PageHeader from '$lib/PageHeader.svelte'
+  import { defaultPageLayout, pageKinds, pageTitleOf, place, type PageKind, type Widget } from '$lib/dashboard'
+  import { getPageLayout, setPageLayout, updateArea, updateProject, type tree } from '$lib/sync'
+  import GoalProgress from '$lib/widgets/GoalProgress.svelte'
+  import NextList from '$lib/widgets/NextList.svelte'
+  import PagePages from '$lib/widgets/PagePages.svelte'
+  import PageProjects from '$lib/widgets/PageProjects.svelte'
+  import PageRoadmaps from '$lib/widgets/PageRoadmaps.svelte'
+  import PageStats from '$lib/widgets/PageStats.svelte'
+  import PageTasks from '$lib/widgets/PageTasks.svelte'
+  import RoutineTicks from '$lib/widgets/RoutineTicks.svelte'
 
+  /** The page of an Area or a Project: header, view tabs, then the Overview widgets or the task list. */
   let {
     id,
+    kind = 'area',
     areas,
     onchange,
     tasks,
     onnewtask,
   }: {
     id: string
+    kind?: PageKind
     areas: Awaited<ReturnType<typeof tree>>
     onchange: () => void
-    tasks: Snippet
+    /** The task list for the List, Board and Table tabs; it is told which one to show. */
+    tasks: Snippet<['list' | 'board' | 'table']>
     onnewtask: (prefill: string) => void
   } = $props()
 
-  const area = $derived(areas.find((a) => a.area.id === id))
-  const projects = $derived(area?.projects ?? [])
+  const areaRow = $derived(kind === 'area' ? areas.find((a) => a.area.id === id) : undefined)
+  const projectRow = $derived(
+    kind === 'project'
+      ? (() => {
+          const a = areas.find((a) => a.projects.some((p) => p.id === id))
+          return a ? { area: a.area, project: a.projects.find((p) => p.id === id)! } : undefined
+        })()
+      : undefined,
+  )
+  const item = $derived(areaRow?.area ?? projectRow?.project)
+  const projects = $derived(areaRow?.projects ?? [])
 
-  let tab = $state<'tasks' | 'pages'>('tasks')
-  let stats = $state<AreaStats>({ open: 0, completedThisWeek: 0, overdue: 0, activeGoals: 0 })
-  let goalList = $state<{ goal: Goal; pct: number }[]>([])
-  let next = $state<NextItem[]>([])
-  let counts = $state(new Map<string, number>())
-  let maps = $state<Roadmap[]>([])
-  let pageList = $state<Page[]>([])
+  type Tab = 'overview' | 'list' | 'board' | 'table'
+  const TABS: { value: Tab; label: string }[] = [
+    { value: 'overview', label: 'Overview' },
+    { value: 'list', label: 'List' },
+    { value: 'board', label: 'Board' },
+    { value: 'table', label: 'Table' },
+  ]
+  // Remembered per page on this device; List, Board and Table share the key the list itself used before.
+  const tabKey = (pid: string) => `orbit.layout.${pid}`
+  const readTab = (pid: string): Tab => {
+    try {
+      const v = localStorage.getItem(tabKey(pid))
+      return v === 'list' || v === 'board' || v === 'table' || v === 'overview' ? v : 'overview'
+    } catch {
+      return 'overview'
+    }
+  }
+  let tab = $state<Tab>('overview')
+  let tabFor = ''
+  $effect(() => {
+    if (tabFor !== id) {
+      tabFor = id
+      tab = readTab(id)
+    }
+  })
+  function setTab(next: string) {
+    tab = next as Tab
+    try {
+      localStorage.setItem(tabKey(id), next)
+    } catch {
+      // Storage unavailable: the choice only lasts this session.
+    }
+  }
 
-  // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
+  // Tiles reload whenever the shell refreshes (`areas` is a fresh array after every sync).
+  let version = $state(0)
   $effect(() => {
     void areas
-    void id
-    load()
+    version++
   })
 
-  async function load() {
-    const rows = await visibleSnapshot()
-    const today = await localDay()
-    stats = areaStats(rows, id, today, Date.now())
-    const under = rows.filter((r): r is Goal => r.kind === 'goal' && r.completed_at === null && r.parent_id === id)
-    goalList = await Promise.all(
-      under
-        .sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0))
-        .map(async (goal) => ({ goal, pct: Math.round((await goalProgress(goal.id)).progress * 100) })),
-    )
-    next = upNextIn(await whatsNext(), rows, id, 5)
-    counts = openCounts(
-      rows,
-      projects.map((p) => p.id),
-    )
-    maps = roadmapsIn(
-      rows,
-      rows.filter((r): r is Roadmap => r.kind === 'roadmap'),
-      id,
-    )
-    pageList = await pagesOf(id)
-  }
+  let layout = $state<Widget[]>(defaultPageLayout('area'))
+  let editing = $state(false)
+  let summaries = $state<Record<string, string>>({})
+  $effect(() => {
+    void version
+    const pid = id
+    getPageLayout(pid, kind).then((w) => {
+      if (pid === id) layout = w as Widget[]
+    })
+  })
+  $effect(() => {
+    void id
+    editing = false
+  })
 
-  let goalName = $state('')
-  async function addGoal(e: SubmitEvent) {
-    e.preventDefault()
-    const name = goalName.trim()
-    if (!name) return
-    goalName = ''
-    await createGoal(id, name)
-    await load()
+  const save = (next: Widget[]) => {
+    layout = next
+    void setPageLayout(id, next)
+  }
+  const offered = $derived(pageKinds(kind))
+  const hidden = $derived(layout.filter((w) => w.hidden && offered.some((k) => k.kind === w.kind)))
+  function addKind(k: string) {
+    const spec = offered.find((o) => o.kind === k)!
+    const existing = layout.find((w) => w.kind === k)
+    save(place(layout, existing ?? { id: k, kind: k, x: 0, y: 0, w: spec.w, h: spec.h, hidden: false }))
+  }
+  function reset() {
+    layout = defaultPageLayout(kind)
+    void setPageLayout(id, null)
+  }
+  function startEditing() {
+    setTab('overview')
+    editing = true
+  }
+  const setSummary = (wid: string, value: string) => (summaries = { ...summaries, [wid]: value })
+
+  const crumbs = $derived(projectRow ? [{ label: projectRow.area.name, href: `#/area/${projectRow.area.id}` }] : [])
+  const bannerSave = async (patch: { icon?: string; cover?: string }) => {
+    if (kind === 'area') await updateArea(id, patch)
+    else await updateProject(id, patch)
     onchange()
   }
-  async function newPage() {
-    const pid = await createPage(id, 'Untitled')
-    onchange()
-    location.hash = `#/page/${pid}`
-  }
-
-  const stat = (label: string, n: number) => ({ label, n })
-  const tiles = $derived([
-    stat('Open tasks', stats.open),
-    stat('Done this week', stats.completedThisWeek),
-    stat('Overdue', stats.overdue),
-    stat('Active goals', stats.activeGoals),
-  ])
-  const tabClass = (on: boolean) =>
-    `h-[2.125rem] rounded-md px-3 text-sm ${on ? 'bg-accent-soft text-accent-text' : 'text-muted hover:bg-hover'}`
 </script>
 
-{#if area}
-  <Banner
-    icon={area.area.icon}
-    cover={area.area.cover}
-    onsave={async (patch) => {
-      await updateArea(id, patch)
-      onchange()
+{#if item}
+  <Banner icon={item.icon} cover={item.cover} onsave={bannerSave} />
+  <PageHeader
+    title={item.name}
+    {crumbs}
+    newTaskText="@{item.name}"
+    entity={{
+      id,
+      kind,
+      name: item.name,
+      fallbackHref: projectRow ? `#/area/${projectRow.area.id}` : '#/home',
+      archiveable: true,
     }}
-  />
-  <div class="flex items-center gap-1">
-    <h1 class="page-title min-w-0 flex-1">{area.area.name}</h1>
-    <EntityCreateMenu ownerId={id} ownerName={area.area.name} ownerKind="area" {areas} {onchange} {onnewtask} />
-    <EntityMenu {id} name={area.area.name} kind="area" fallbackHref="#/home" archiveable {onchange} />
-  </div>
+    {onchange}
+    onedit={startEditing}
+    onreset={reset}
+    tabs={TABS}
+    {tab}
+    ontab={setTab}
+  >
+    {#snippet actions()}
+      <EntityCreateMenu ownerId={id} ownerName={item.name} ownerKind={kind} {areas} {onchange} {onnewtask} />
+    {/snippet}
+  </PageHeader>
 
-  <div class="flex flex-col gap-4">
-    <ul class="grid grid-cols-2 gap-2 desk:grid-cols-4">
-      {#each tiles as t (t.label)}
-        <li class="rounded-2xl border border-line bg-surface p-3 shadow-1">
-          <div class="text-xl font-semibold">{t.n}</div>
-          <div class="text-xs text-muted">{t.label}</div>
-        </li>
-      {/each}
-    </ul>
-
-    <section class="panel">
-      <h2 class="panel-title">Goals</h2>
-      <ul class="grid gap-2">
-        {#each goalList as g (g.goal.id)}
-          <li>
-            <div class="flex items-center gap-2 text-sm">
-              <span class="flex-1">{g.goal.name}</span>
-              <span class="text-xs text-muted">{g.pct}%</span>
-            </div>
-            <div
-              role="progressbar"
-              aria-label="{g.goal.name} progress"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-valuenow={g.pct}
-              class="mt-1 h-2 overflow-hidden rounded-full bg-sunk"
-            >
-              <div class="h-full rounded-full bg-accent" style="width: {g.pct}%"></div>
-            </div>
-          </li>
-        {/each}
-      </ul>
-      <form class="mt-3" onsubmit={addGoal}>
-        <Input bind:value={goalName} placeholder="Add a goal" aria-label="New goal" />
-      </form>
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">Up next</h2>
-      {#if next.length}
-        <ul class="grid gap-1">
-          {#each next as i (i.id)}
-            <li class="flex items-center gap-2 text-sm">
-              <span class="task-title-1 flex-1" title={i.title}>{i.title}</span>
-              <span class="shrink-0 rounded-full bg-accent-soft px-2 py-px text-xs text-accent-text">{i.reason}</span>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <Empty icon={CircleCheck} text="Nothing needs you here right now." />
-      {/if}
-    </section>
-
-    <section class="panel">
-      <h2 class="panel-title">Projects</h2>
-      {#if projects.length}
-        <ul class="grid gap-2 sm:grid-cols-2">
-          {#each projects as p (p.id)}
-            <li>
-              <a
-                href="#/project/{p.id}"
-                class="flex items-center gap-2 rounded-xl border border-line bg-surface p-3 hover:bg-hover"
-              >
-                <span class="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
-                <span class="text-xs text-muted">{counts.get(p.id) ?? 0} open</span>
-              </a>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <Empty
-          icon={FolderKanban}
-          text="Projects group the tasks for one outcome in this Area. Create one from the title menu or sidebar."
-        />
-      {/if}
-    </section>
-
-    {#if maps.length}
-      <section class="panel">
-        <h2 class="panel-title">Roadmaps</h2>
-        <ul class="grid gap-1">
-          {#each maps as r (r.id)}
-            <li><a href="#/roadmap/{r.id}" class="link text-sm">{r.name}</a></li>
-          {/each}
-        </ul>
-      </section>
+  {#if tab === 'overview'}
+    {#if editing}
+      <LayoutBar
+        kinds={offered}
+        hidden={hidden.map((w) => ({ id: w.id, title: pageTitleOf(w.kind) }))}
+        onadd={addKind}
+        onshow={(wid) => {
+          const w = layout.find((o) => o.id === wid)
+          if (w) save(place(layout, w))
+        }}
+        onreset={reset}
+        ondone={() => (editing = false)}
+      />
     {/if}
+    <LayoutGrid
+      widgets={layout.filter((w) => offered.some((k) => k.kind === w.kind))}
+      {editing}
+      label={(w) => pageTitleOf(w.kind)}
+      onchange={(next) => save([...next, ...layout.filter((w) => !next.some((n) => n.id === w.id))])}
+    >
+      {#snippet renderTile(w)}
+        {#if w.kind === 'stats'}
+          <PageStats parentId={id} {version} />
+        {:else}
+          <header class="mb-2 min-w-0">
+            <h2 class="truncate text-[0.9062rem] font-semibold">{pageTitleOf(w.kind)}</h2>
+            <p class="truncate text-xs text-muted">{summaries[w.id] ?? 'Loading…'}</p>
+          </header>
+          <div class="min-h-0 flex-1 overflow-auto">
+            {#if w.kind === 'tasks'}
+              <PageTasks parentId={id} name={item.name} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'next'}
+              <NextList parentId={id} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'goals'}
+              <GoalProgress parentId={id} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'routines'}
+              <RoutineTicks parentId={id} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'pages'}
+              <PagePages parentId={id} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'projects'}
+              <PageProjects {projects} {version} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'roadmaps'}
+              <PageRoadmaps parentId={id} {version} onmeta={(v) => setSummary(w.id, v)} />
+            {/if}
+          </div>
+        {/if}
+      {/snippet}
+    </LayoutGrid>
+  {:else}
+    {@render tasks(tab)}
+  {/if}
 
-    <div>
-      <div class="mb-3 flex gap-1" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'tasks'}
-          class={tabClass(tab === 'tasks')}
-          onclick={() => (tab = 'tasks')}>Tasks</button
-        >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'pages'}
-          class={tabClass(tab === 'pages')}
-          onclick={() => (tab = 'pages')}>Pages</button
-        >
-      </div>
-      {#if tab === 'tasks'}
-        <div class="[&_h1]:sr-only">{@render tasks()}</div>
-      {:else}
-        <div class="mb-2 flex items-center">
-          <h2 class="flex-1 text-sm font-medium text-muted">Pages</h2>
-          <Button variant="ghost" size="sm" onclick={newPage}>New page</Button>
-        </div>
-        <ul class="grid gap-0.5">
-          {#each pageList as p (p.id)}
-            <li><a href="#/page/{p.id}" class="text-sm underline">{p.title}</a></li>
-          {:else}
-            <li>
-              <Empty
-                icon={FileText}
-                text="Pages hold notes and docs for this Area."
-                label="New page"
-                onclick={newPage}
-              />
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-
-    <Backlinks id={area.area.id} />
-  </div>
+  <div class="mt-4"><Backlinks {id} /></div>
 {/if}

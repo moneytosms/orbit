@@ -31,7 +31,7 @@ import {
 import { req, tx } from './db'
 import { uploadPending } from './blobs'
 import type { LinkItem, LinkTarget } from './Mention'
-import { defaultLayout } from './dashboard'
+import { defaultLayout, defaultPageLayout, type PageKind } from './dashboard'
 import { duplicatePlan, type PlanRow } from './duplicate'
 import { clearUpgrade, setUpgrade, type UpgradeRequired } from './updates'
 
@@ -129,6 +129,7 @@ export type Settings = {
   vacation?: boolean | null
   week_start?: number | null
   dashboard?: DashboardWidget[] | null
+  page_layouts?: Record<string, DashboardWidget[]> | null
   vacation_from?: string | null
   vacations?: [string, string][] | null
   gamification?: boolean | null
@@ -1720,6 +1721,20 @@ export async function getDashboard(): Promise<DashboardWidget[]> {
   return row?.dashboard ?? defaultLayout()
 }
 export const setDashboard = (dashboard: DashboardWidget[]) => enqueue('settings.update', { dashboard })
+
+/** One Area's or Project's page layout; that page's default while it has none saved. */
+export async function getPageLayout(id: string, kind: PageKind): Promise<DashboardWidget[]> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  return row?.page_layouts?.[id] ?? defaultPageLayout(kind)
+}
+/** Saves one page's layout; the whole map is one synced field (last write wins), so the other pages' layouts ride along. */
+export async function setPageLayout(id: string, layout: DashboardWidget[] | null): Promise<void> {
+  const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
+  const page_layouts = { ...row?.page_layouts }
+  if (layout) page_layouts[id] = layout
+  else delete page_layouts[id]
+  await enqueue('settings.update', { page_layouts })
+}
 
 /** Turns vacation on from today, or off, keeping the finished range for the target streak. */
 export async function setVacation(on: boolean): Promise<void> {

@@ -1,10 +1,19 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
   import Target from '@lucide/svelte/icons/target'
-  import { goalProgress, goals } from '$lib/sync'
+  import { Input } from '$lib/components/ui/input'
+  import { underArea } from '$lib/area'
+  import { createGoal, goalProgress, goals, visibleSnapshot } from '$lib/sync'
   import WidgetSkeleton from './WidgetSkeleton.svelte'
 
-  let { version = 0, onmeta }: { version?: number; onmeta?: (value: string) => void } = $props()
+  /** With `parentId` only the Goals under that Area (or Project) show, and a field adds one there. */
+  let {
+    version = 0,
+    parentId,
+    onmeta,
+    onchange,
+  }: { version?: number; parentId?: string; onmeta?: (value: string) => void; onchange?: () => void } = $props()
+  let draft = $state('')
   let items = $state<{ id: string; name: string; pct: number; behind: boolean }[]>([])
   let loaded = $state(false)
 
@@ -14,7 +23,8 @@
   })
   async function load() {
     const out = []
-    for (const g of await goals()) {
+    const under = parentId ? underArea(await visibleSnapshot(), parentId) : null
+    for (const g of (await goals()).filter((g) => !under || under.has(g.id))) {
       const { progress, behind } = await goalProgress(g.id)
       out.push({ id: g.id, name: g.name, pct: Math.round(progress * 100), behind })
     }
@@ -22,10 +32,23 @@
     loaded = true
     onmeta?.(`${items.length} active goal${items.length === 1 ? '' : 's'}`)
   }
+  async function add(e: SubmitEvent) {
+    e.preventDefault()
+    const name = draft.trim()
+    if (!name || !parentId) return
+    draft = ''
+    await createGoal(parentId, name)
+    await load()
+    onchange?.()
+  }
 </script>
 
 {#if loaded && items.length === 0}
-  <Empty icon={Target} text="Goals show your progress toward something you want." label="Add a goal" href="#/goals" />
+  {#if parentId}
+    <Empty icon={Target} text="Goals show your progress toward something you want here." />
+  {:else}
+    <Empty icon={Target} text="Goals show your progress toward something you want." label="Add a goal" href="#/goals" />
+  {/if}
 {:else if !loaded}
   <WidgetSkeleton />
 {:else}
@@ -50,4 +73,9 @@
       </li>
     {/each}
   </ul>
+{/if}
+{#if parentId && loaded}
+  <form class="mt-3" onsubmit={add}>
+    <Input bind:value={draft} placeholder="Add a goal" aria-label="New goal" />
+  </form>
 {/if}

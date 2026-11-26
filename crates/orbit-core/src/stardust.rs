@@ -432,6 +432,7 @@ mod tests {
             vacation: None,
             week_start: None,
             dashboard: None,
+            page_layouts: None,
             vacation_from: None,
             vacations: None,
             gamification: None,

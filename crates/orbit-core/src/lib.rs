@@ -314,6 +314,9 @@ pub struct Settings {
     /// Home dashboard widgets; `None` = the default layout.
     #[serde(default)]
     pub dashboard: Option<Vec<Widget>>,
+    /// Area and Project page layouts keyed by the Area/Project id; a missing key = that page's default layout.
+    #[serde(default)]
+    pub page_layouts: Option<BTreeMap<String, Vec<Widget>>>,
     /// First day of the vacation in progress (`YYYY-MM-DD`).
     #[serde(default)]
     pub vacation_from: Option<String>,
@@ -746,6 +749,8 @@ pub enum Op {
         week_start: Option<u8>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dashboard: Option<Vec<Widget>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        page_layouts: Option<BTreeMap<String, Vec<Widget>>>,
         /// Empty clears it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         vacation_from: Option<String>,
@@ -1388,6 +1393,7 @@ impl Op {
                 vacation,
                 week_start,
                 dashboard,
+                page_layouts,
                 vacation_from,
                 vacations,
                 gamification,
@@ -1413,6 +1419,7 @@ impl Op {
                 ("vacation", vacation.is_some()),
                 ("week_start", week_start.is_some()),
                 ("dashboard", dashboard.is_some()),
+                ("page_layouts", page_layouts.is_some()),
                 ("vacation_from", vacation_from.is_some()),
                 ("vacations", vacations.is_some()),
                 ("gamification", gamification.is_some()),
@@ -2336,6 +2343,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
             vacation,
             week_start,
             dashboard,
+            page_layouts,
             vacation_from,
             vacations,
             gamification,
@@ -2372,6 +2380,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     vacation: None,
                     week_start: None,
                     dashboard: None,
+                    page_layouts: None,
                     vacation_from: None,
                     vacations: None,
                     gamification: None,
@@ -2400,6 +2409,7 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                 vacation: vacation.or(old.vacation),
                 week_start: week_start.or(old.week_start),
                 dashboard: dashboard.clone().or(old.dashboard),
+                page_layouts: page_layouts.clone().or(old.page_layouts),
                 vacation_from: match vacation_from {
                     Some(d) if d.is_empty() => None,
                     Some(d) => Some(d.clone()),
@@ -3719,6 +3729,7 @@ mod tests {
                 vacation: None,
                 week_start: None,
                 dashboard: None,
+                page_layouts: None,
                 vacation_from: None,
                 vacations: None,
                 gamification: None,
@@ -3825,6 +3836,51 @@ mod tests {
             (old.smart_dates, old.next_week_day, old.weekend_day),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn page_layouts_replace_as_one_field_and_old_rows_load() {
+        let up = |args| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000e4",
+                "settings.update",
+                args,
+                1000,
+            )
+        };
+        let tile = |id: &str| serde_json::json!({ "id": id, "kind": "tasks", "x": 0, "y": 0, "w": 6, "h": 3 });
+        let Row::Settings(s) = apply(
+            None,
+            &up(serde_json::json!({ "page_layouts": { "a1": [tile("t")] } })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(s.page_layouts.as_ref().unwrap()["a1"].len(), 1);
+        assert_eq!(s.dashboard, None);
+        // Another field leaves it alone; the field itself is replaced whole.
+        let Row::Settings(s) = apply(
+            Some(Row::Settings(s)),
+            &up(serde_json::json!({ "theme": "x" })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        assert!(s.page_layouts.as_ref().unwrap().contains_key("a1"));
+        let Row::Settings(s) = apply(
+            Some(Row::Settings(s)),
+            &up(serde_json::json!({ "page_layouts": { "b2": [tile("u")] } })),
+        )
+        .unwrap() else {
+            panic!()
+        };
+        let m = s.page_layouts.unwrap();
+        assert_eq!(m.keys().collect::<Vec<_>>(), ["b2"]);
+        let old: Settings = serde_json::from_value(serde_json::json!({
+            "id": SETTINGS, "theme": "legacy", "accent": "", "start_view": ""
+        }))
+        .unwrap();
+        assert_eq!(old.page_layouts, None);
     }
 
     #[test]
