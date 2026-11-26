@@ -200,7 +200,7 @@ pub fn start(app: AppHandle) {
 }
 
 async fn next_tap(rx: &Arc<Mutex<Receiver<Tap>>>) -> Option<Tap> {
-    // Tauri's runtime is tokio; wait on a blocking thread to avoid a direct tokio dependency.
+    // The wait blocks, so it runs on a blocking thread rather than stalling the async runtime.
     let rx = Arc::clone(rx);
     tauri::async_runtime::spawn_blocking(move || {
         let rx = rx.lock().ok()?;
