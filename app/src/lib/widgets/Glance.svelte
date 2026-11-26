@@ -31,7 +31,7 @@
 
 {#if g}
   {@const share = doneShare(g.done, g.dueToday)}
-  <div class="grid grid-cols-2 gap-2 desk:grid-cols-4">
+  <div class="grid h-full grid-cols-2 gap-2 desk:grid-cols-4">
     <a href="#/upcoming" class="{tile} border-line bg-sunk hover:border-line-strong">
       <div class="flex items-center gap-3">
         <svg viewBox="0 0 48 48" class="size-12 shrink-0 -rotate-90" aria-hidden="true">

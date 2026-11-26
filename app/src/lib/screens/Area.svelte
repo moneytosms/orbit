@@ -135,7 +135,6 @@
   }
   const setSummary = (wid: string, value: string) => untrack(() => (summaries = { ...summaries, [wid]: value }))
 
-  const crumbs = $derived(projectRow ? [{ label: projectRow.area.name, href: `#/area/${projectRow.area.id}` }] : [])
   const bannerSave = async (patch: { icon?: string; cover?: string }) => {
     if (kind === 'area') await updateArea(id, patch)
     else await updateProject(id, patch)
@@ -147,7 +146,6 @@
   <Banner icon={item.icon} cover={item.cover} onsave={bannerSave} />
   <PageHeader
     title={item.name}
-    {crumbs}
     newTaskText="@{item.name}"
     entity={{
       id,

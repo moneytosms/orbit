@@ -12,7 +12,6 @@
   type Entity = { id: string; kind: 'area' | 'project'; name: string; fallbackHref: string; archiveable?: boolean }
   let {
     title,
-    crumbs = [],
     newTaskText,
     entity,
     onchange,
@@ -24,8 +23,6 @@
     actions,
   }: {
     title: string
-    /** Muted trail above the title, such as the Area of a Project. */
-    crumbs?: { label: string; href: string }[]
     /** Text typed into the capture window by the primary + Task button, e.g. `@Health`; no button without it. */
     newTaskText?: string
     /** The Area or Project the page is about: adds favourite, rename, archive and delete to the menu. */
@@ -89,16 +86,6 @@
 </script>
 
 <header class="mb-4">
-  {#if crumbs.length}
-    <nav aria-label="Breadcrumb" class="mb-1 flex items-center gap-1 text-xs text-muted">
-      {#each crumbs as c, i (c.href)}
-        {#if i > 0}<span aria-hidden="true">›</span>{/if}
-        <a href={c.href} class="hover:text-text hover:underline">{c.label}</a>
-      {/each}
-      <span aria-hidden="true">›</span>
-      <span aria-current="page">{title}</span>
-    </nav>
-  {/if}
   <div class="flex items-center gap-2">
     <h1 class="page-title mb-0 min-w-0 flex-1 truncate">{title}</h1>
     {#if newTaskText}

@@ -9,6 +9,7 @@ import {
   dragRect,
   expand,
   fits,
+  minHeight,
   pageKinds,
   reflow,
   doneShare,
@@ -65,7 +66,10 @@ test('resize clamps to the columns and pushes widgets below it down', () => {
   expect(r.find((x) => x.id === 'b')?.y).toBe(2)
   expect(r.find((x) => x.id === 'c')?.y).toBe(2)
   expect(overlaps(r)).toBe(false)
-  expect(resize(ws, 'a', 0, 0).find((x) => x.id === 'a')).toMatchObject({ w: 1, h: 1 })
+  // A content tile keeps its minimum of two rows; only Quick add and the stats may be one row.
+  expect(resize(ws, 'a', 0, 0).find((x) => x.id === 'a')).toMatchObject({ w: 1, h: 2 })
+  const quick = [{ id: 'q', kind: 'quickadd', x: 0, y: 0, w: 6, h: 1, hidden: false }]
+  expect(resize(quick, 'q', 6, 0)[0].h).toBe(1)
 })
 
 test('hidden widgets neither block nor get pushed', () => {
@@ -185,6 +189,26 @@ test('page layouts: each kind has a default without overlaps, only with tiles it
   }
   expect(defaultPageLayout('area').map((x) => x.kind)).toContain('goals')
   expect(defaultPageLayout('project').map((x) => x.kind)).not.toContain('goals')
+})
+
+describe('minimum tile height', () => {
+  test('content tiles are at least two rows, Quick add and the stats one', () => {
+    expect(minHeight('routines')).toBe(2)
+    expect(minHeight('glance')).toBe(2)
+    expect(minHeight('quickadd')).toBe(1)
+    expect(minHeight('stats')).toBe(1)
+  })
+  test('a drag cannot make a content tile shorter than two rows', () => {
+    const base = { x: 6, y: 2, w: 6, h: 2 }
+    expect(dragRect(base, 's', 0, -5, 12, 2)).toEqual({ x: 6, y: 2, w: 6, h: 2 })
+    expect(dragRect(base, 'n', 0, 5, 12, 2)).toEqual({ x: 6, y: 2, w: 6, h: 2 })
+    expect(dragRect(base, 'n', 0, 5, 12, 1)).toEqual({ x: 6, y: 3, w: 6, h: 1 })
+  })
+  test('setRect keeps a Routines tile at two rows', () => {
+    const list: Widget[] = [{ id: 'routines', kind: 'routines', x: 6, y: 2, w: 6, h: 2, hidden: false }]
+    const r = setRect(list, 'routines', { x: 6, y: 2, w: 6, h: 1 })
+    expect(r[0]).toMatchObject({ h: 2 })
+  })
 })
 
 describe('dragRect and setRect', () => {
