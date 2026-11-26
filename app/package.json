@@ -33,14 +33,14 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.6",
     "vite-plugin-pwa": "^2.0.0",
-    "workbox-window": "7.4.1",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "workbox-window": "7.4.1"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.5",
     "@tiptap/core": "^3.34.0",
-    "@tiptap/extension-mention": "^3.34.0",
     "@tiptap/extension-list": "^3.34.0",
+    "@tiptap/extension-mention": "^3.34.0",
     "@tiptap/extension-paragraph": "^3.34.0",
     "@tiptap/extension-table": "^3.34.0",
     "@tiptap/extension-task-item": "^3.34.0",
@@ -51,7 +51,6 @@
     "@tiptap/suggestion": "^3.34.0",
     "fullcalendar": "7.1.5",
     "svelte-dnd-action": "^0.9.80",
-    "svelte-tiptap": "^3.0.2",
-    "temporal-polyfill": "1.0.8"
+    "svelte-tiptap": "^3.0.2"
   }
 }
