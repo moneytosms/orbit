@@ -140,17 +140,23 @@ export function move(widgets: Widget[], id: string, x: number, y: number, cols =
   return settle(widgets, { ...w, x: clamp(Math.round(x), 0, Math.max(0, cols - w.w)), y: Math.max(0, Math.round(y)) })
 }
 
-/** Resizes a widget to w × h cells (at least 1 × 1, within the columns); whatever it grows over moves down. */
+/** Resizes a widget to w × h cells (within the columns and its minimum height); whatever it grows over moves down. */
 export function resize(widgets: Widget[], id: string, w: number, h: number, cols = COLS): Widget[] {
   const t = widgets.find((t) => t.id === id)
   if (!t) return widgets
   const nw = clamp(Math.round(w), 1, Math.max(1, cols - t.x))
-  return settle(widgets, { ...t, w: nw, h: Math.max(1, Math.round(h)) })
+  return settle(widgets, { ...t, w: nw, h: Math.max(minHeight(t.kind), Math.round(h)) })
 }
 
 /** Smallest a tile may be dragged to, in cells. */
 export const MIN_W = 2
 export const MIN_H = 1
+
+/**
+ * Shortest a tile of this kind may be, in rows. A tile with a title and some content needs two rows: at one row its
+ * summary and first items are cut off. Quick add (a single input) and the Overview stats fit in one.
+ */
+export const minHeight = (kind: string) => (kind === 'quickadd' || kind === 'stats' ? 1 : 2)
 
 /**
  * Puts widget `id` at `rect` (a move, a resize from any edge or corner, or both), clamped to the grid and to the
@@ -161,7 +167,7 @@ export function setRect(widgets: Widget[], id: string, rect: Rect, cols = COLS):
   if (!t) return widgets
   const minW = Math.min(MIN_W, cols)
   const w = clamp(Math.round(rect.w), minW, cols)
-  const h = Math.max(MIN_H, Math.round(rect.h))
+  const h = Math.max(minHeight(t.kind), Math.round(rect.h))
   const x = clamp(Math.round(rect.x), 0, cols - w)
   const y = Math.max(0, Math.round(rect.y))
   return settle(widgets, { ...t, x, y, w, h })
@@ -170,8 +176,9 @@ export function setRect(widgets: Widget[], id: string, rect: Rect, cols = COLS):
 /**
  * The rectangle a drag from `handle` (any of n, s, e, w, ne, nw, se, sw) gives a tile that started as `base`,
  * after the pointer moved `dx` cells across and `dy` cells down. The edge opposite the handle stays put.
+ * `minH` is the shortest the tile may be (see `minHeight`).
  */
-export function dragRect(base: Rect, handle: string, dx: number, dy: number, cols = COLS): Rect {
+export function dragRect(base: Rect, handle: string, dx: number, dy: number, cols = COLS, minH = MIN_H): Rect {
   const minW = Math.min(MIN_W, cols)
   let { x, y, w, h } = base
   if (handle.includes('e')) w = base.w + dx
@@ -181,11 +188,11 @@ export function dragRect(base: Rect, handle: string, dx: number, dy: number, col
     w = base.w + (base.x - x)
   }
   if (handle.includes('n')) {
-    y = clamp(base.y + dy, 0, base.y + base.h - MIN_H)
+    y = clamp(base.y + dy, 0, base.y + base.h - minH)
     h = base.h + (base.y - y)
   }
   w = clamp(w, minW, cols - x)
-  return { x, y, w, h: Math.max(MIN_H, h) }
+  return { x, y, w, h: Math.max(minH, h) }
 }
 
 /** Where a widget goes when added or shown again: the first free row at the bottom, full size. */

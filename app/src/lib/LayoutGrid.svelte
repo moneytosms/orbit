@@ -6,9 +6,10 @@
     COLS,
     ROW_PX,
     colsFor,
+    compact,
     dragRect,
     expand,
-    compact,
+    minHeight,
     move,
     reflow,
     resize,
@@ -78,7 +79,9 @@
       const gx = Math.round((e.clientX - sx) / cw)
       const gy = Math.round((e.clientY - sy) / ch)
       const rect: Rect =
-        handle === 'move' ? { ...base, x: base.x + gx, y: base.y + gy } : dragRect(base, handle, gx, gy, cols)
+        handle === 'move'
+          ? { ...base, x: base.x + gx, y: base.y + gy }
+          : dragRect(base, handle, gx, gy, cols, minHeight(w.kind))
       drag = {
         id: w.id,
         handle,
@@ -138,16 +141,66 @@
   const iconBtn =
     'grid size-7 shrink-0 place-items-center rounded-md text-icon hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-accent'
 
-  // Eight handles, like an image: a dot on each corner and a short bar on each edge.
-  const HANDLES: { h: Handle; spot: string; cursor: string; bar: string }[] = [
-    { h: 'nw', spot: 'top-0 left-0', cursor: 'cursor-nwse-resize', bar: 'size-3 rounded-full' },
-    { h: 'n', spot: 'top-0 left-1/2 -translate-x-1/2', cursor: 'cursor-ns-resize', bar: 'h-1.5 w-8 rounded-full' },
-    { h: 'ne', spot: 'top-0 right-0', cursor: 'cursor-nesw-resize', bar: 'size-3 rounded-full' },
-    { h: 'e', spot: 'top-1/2 right-0 -translate-y-1/2', cursor: 'cursor-ew-resize', bar: 'h-8 w-1.5 rounded-full' },
-    { h: 'se', spot: 'right-0 bottom-0', cursor: 'cursor-nwse-resize', bar: 'size-3 rounded-full' },
-    { h: 's', spot: 'bottom-0 left-1/2 -translate-x-1/2', cursor: 'cursor-ns-resize', bar: 'h-1.5 w-8 rounded-full' },
-    { h: 'sw', spot: 'bottom-0 left-0', cursor: 'cursor-nesw-resize', bar: 'size-3 rounded-full' },
-    { h: 'w', spot: 'top-1/2 left-0 -translate-y-1/2', cursor: 'cursor-ew-resize', bar: 'h-8 w-1.5 rounded-full' },
+  // Eight handles on the tile's border, like an image: a small dot on each corner and a thin bar on each edge.
+  // Each sits centred on the border, so only a sliver lands inside the tile's padding and no content is covered.
+  // The button around it is a larger transparent hit area that reaches across the border, so it stays easy to grab.
+  const HANDLES: { h: Handle; spot: string; hit: string; cursor: string; bar: string }[] = [
+    {
+      h: 'nw',
+      spot: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
+      hit: 'size-6',
+      cursor: 'cursor-nwse-resize',
+      bar: 'size-2.5 rounded-full',
+    },
+    {
+      h: 'n',
+      spot: 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2',
+      hit: 'h-5 w-14',
+      cursor: 'cursor-ns-resize',
+      bar: 'h-1 w-7 rounded-full',
+    },
+    {
+      h: 'ne',
+      spot: 'top-0 right-0 translate-x-1/2 -translate-y-1/2',
+      hit: 'size-6',
+      cursor: 'cursor-nesw-resize',
+      bar: 'size-2.5 rounded-full',
+    },
+    {
+      h: 'e',
+      spot: 'top-1/2 right-0 translate-x-1/2 -translate-y-1/2',
+      hit: 'h-14 w-5',
+      cursor: 'cursor-ew-resize',
+      bar: 'h-7 w-1 rounded-full',
+    },
+    {
+      h: 'se',
+      spot: 'right-0 bottom-0 translate-x-1/2 translate-y-1/2',
+      hit: 'size-6',
+      cursor: 'cursor-nwse-resize',
+      bar: 'size-2.5 rounded-full',
+    },
+    {
+      h: 's',
+      spot: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2',
+      hit: 'h-5 w-14',
+      cursor: 'cursor-ns-resize',
+      bar: 'h-1 w-7 rounded-full',
+    },
+    {
+      h: 'sw',
+      spot: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2',
+      hit: 'size-6',
+      cursor: 'cursor-nesw-resize',
+      bar: 'size-2.5 rounded-full',
+    },
+    {
+      h: 'w',
+      spot: 'top-1/2 left-0 -translate-x-1/2 -translate-y-1/2',
+      hit: 'h-14 w-5',
+      cursor: 'cursor-ew-resize',
+      bar: 'h-7 w-1 rounded-full',
+    },
   ]
 </script>
 
@@ -222,7 +275,7 @@
             tabindex={h.h === 'se' ? 0 : -1}
             aria-label={h.h === 'se' ? `Resize ${label(w)}` : undefined}
             aria-hidden={h.h === 'se' ? undefined : 'true'}
-            class="absolute z-20 grid size-7 touch-none place-items-center {h.spot} {h.cursor}"
+            class="absolute z-20 grid touch-none place-items-center {h.hit} {h.spot} {h.cursor}"
             onpointerdown={(e) => start(e, w, h.h)}
           >
             <span class="block border-2 border-accent bg-surface shadow-1 {h.bar}"></span>
