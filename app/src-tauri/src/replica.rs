@@ -322,7 +322,7 @@ pub fn view_sources(dir: &str) -> Result<Value> {
                 Row::Project(p) if p.trashed_at.is_none() => out.push(
                     json!({ "kind": "project", "id": p.id, "name": p.name, "prefill": format!("@{}", p.name) }),
                 ),
-                Row::Label(l) => out.push(
+                Row::Label(l) if !l.deleted => out.push(
                     json!({ "kind": "label", "id": l.id, "name": l.name, "prefill": format!("#{}", l.name) }),
                 ),
                 _ => {}

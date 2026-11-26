@@ -37,8 +37,22 @@
   }
 </script>
 
-<h1 class="page-title">Trash</h1>
+<h1 class="page-title">Archive &amp; Trash</h1>
 <div class="flex flex-col gap-4">
+  <section class="panel" aria-label="Archived">
+    <h2 class="panel-title">Archived</h2>
+    {#each shelved as r (r.id)}
+      <div class="flex items-center gap-3 py-1.5">
+        <span class="flex-1">{r.name}</span>
+        <span class="text-xs text-muted">{r.kind}</span>
+        <Button variant="default" size="sm" aria-label="Unarchive {r.name}" onclick={() => unarchive(r.id)}>
+          Unarchive
+        </Button>
+      </div>
+    {:else}
+      <Empty icon={Archive} text="Archived Areas, Projects, Goals and Roadmaps are kept here until you need them." />
+    {/each}
+  </section>
   <section class="panel" aria-label="Trash">
     <h2 class="panel-title">Trash</h2>
     {#each items as r (r.id)}
@@ -53,20 +67,6 @@
       </div>
     {:else}
       <Empty icon={Trash2} text="Deleted items wait here for 30 days before they are gone for good." />
-    {/each}
-  </section>
-  <section class="panel" aria-label="Archived">
-    <h2 class="panel-title">Archived</h2>
-    {#each shelved as r (r.id)}
-      <div class="flex items-center gap-3 py-1.5">
-        <span class="flex-1">{r.name}</span>
-        <span class="text-xs text-muted">{r.kind}</span>
-        <Button variant="default" size="sm" aria-label="Unarchive {r.name}" onclick={() => unarchive(r.id)}>
-          Unarchive
-        </Button>
-      </div>
-    {:else}
-      <Empty icon={Archive} text="Archived Areas, Projects, Goals and Roadmaps are kept here until you need them." />
     {/each}
   </section>
 </div>

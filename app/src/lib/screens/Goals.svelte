@@ -122,7 +122,7 @@
 {#snippet card(goal: Goal, sub: boolean)}
   {@const v = views.get(goal.id)}
   {#if v}
-    <article class="rounded-2xl border border-line bg-surface p-4 {sub ? 'ml-6 mt-2' : ''}">
+    <article data-row-id={goal.id} class="rounded-2xl border border-line bg-surface p-4 {sub ? 'ml-6 mt-2' : ''}">
       <div class="flex flex-wrap items-center gap-2">
         <h3 class="flex-1 text-[0.9375rem] font-medium">{goal.name}</h3>
         <EntityMenu id={goal.id} name={goal.name} kind="goal" fallbackHref="#/goals" archiveable onchange={load} />

@@ -50,6 +50,7 @@
   import { inbox_id } from '../wasm/orbit_wasm'
   import UpdateNotice from './lib/UpdateNotice.svelte'
   import CaptureOverlay from './lib/CaptureOverlay.svelte'
+  import Tour from './lib/Tour.svelte'
   import { inTauri, isAndroidTauri } from './lib/platform'
 
   const captureOverlay = inTauri() && !isAndroidTauri() && getCurrentWindow().label === 'capture'
@@ -275,6 +276,7 @@
   {/if}
 
   {#if !import.meta.env.VITE_DEMO}<UpdateNotice />{/if}
+  <Tour />
 
   {#if toast}
     <p

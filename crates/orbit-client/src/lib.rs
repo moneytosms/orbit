@@ -110,7 +110,7 @@ impl Client {
                 Row::Project(p) => known.areas.push(p.name.clone()),
                 Row::Goal(g) => known.goals.push(g.name.clone()),
                 Row::Page(p) => known.pages.push(p.title.clone()),
-                Row::Label(l) => known.labels.push(l.name.clone()),
+                Row::Label(l) if !l.deleted => known.labels.push(l.name.clone()),
                 _ => {}
             }
         }
@@ -169,7 +169,7 @@ impl Client {
         let label_ids: Vec<Uuid> = rows
             .iter()
             .filter_map(|r| match r {
-                Row::Label(l) if parsed.labels.contains(&l.name) => Some(l.id),
+                Row::Label(l) if !l.deleted && parsed.labels.contains(&l.name) => Some(l.id),
                 _ => None,
             })
             .collect();

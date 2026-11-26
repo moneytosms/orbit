@@ -9,6 +9,9 @@
   import MonitorSmartphone from '@lucide/svelte/icons/monitor-smartphone'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
+  import { Select } from '$lib/components/ui/select'
+  import LabelManager from '$lib/LabelManager.svelte'
+  import { Switch } from '$lib/components/ui/switch'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { checkServerVersion, currentUpdates, onUpdates, uiHash, type UpdateState } from '$lib/updates'
@@ -288,6 +291,7 @@
   const sections = [
     ['appearance', 'Appearance'],
     ['quick-add', 'Quick add'],
+    ['labels', 'Labels'],
     ['general', 'Day and calendar'],
     ['capture-shortcut', 'Quick capture'],
     ['reminders', 'Reminders and notifications'],
@@ -605,42 +609,51 @@
       </details>
     </section>
 
+    <section id="labels" class="panel scroll-mt-4">
+      <h2 class="panel-title">Labels</h2>
+      <p class="mb-3 text-sm text-muted">
+        The #tags you put on tasks. Rename one to fix a typo everywhere, or delete it to take it off every task.
+      </p>
+      <LabelManager />
+    </section>
+
     <section id="quick-add" class="panel scroll-mt-4">
       <h2 class="panel-title">Quick add</h2>
       {#snippet smartControl()}
-        <Checkbox
+        <Switch
           bind:checked={smartDates}
           aria-label="Recognise dates in quick add"
           onCheckedChange={(v) => setQuickAddSettings({ smart_dates: v === true })}
         />
       {/snippet}
       {#snippet nextWeekControl()}
-        <select
+        <Select
           bind:value={nextWeekDay}
           onchange={() => setQuickAddSettings({ next_week_day: Number(nextWeekDay) })}
           aria-label="Next week means"
-          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-        >
-          <option value="0">Monday</option>
-          <option value="1">Tuesday</option>
-          <option value="2">Wednesday</option>
-          <option value="3">Thursday</option>
-          <option value="4">Friday</option>
-          <option value="5">Saturday</option>
-          <option value="6">Sunday</option>
-        </select>
+          class="w-48"
+          options={[
+            { value: '0', label: 'Monday' },
+            { value: '1', label: 'Tuesday' },
+            { value: '2', label: 'Wednesday' },
+            { value: '3', label: 'Thursday' },
+            { value: '4', label: 'Friday' },
+            { value: '5', label: 'Saturday' },
+            { value: '6', label: 'Sunday' },
+          ]}
+        />
       {/snippet}
       {#snippet weekendControl()}
-        <select
+        <Select
           bind:value={weekendDay}
           onchange={() => setQuickAddSettings({ weekend_day: Number(weekendDay) })}
           aria-label="Weekend means"
-          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-        >
-          <option value="4">Friday</option>
-          <option value="5">Saturday</option>
-          <option value="6">Sunday</option>
-        </select>
+          options={[
+            { value: '4', label: 'Friday' },
+            { value: '5', label: 'Saturday' },
+            { value: '6', label: 'Sunday' },
+          ]}
+        />
       {/snippet}
       {@render row(
         'Recognise dates in quick add',
@@ -654,30 +667,30 @@
     <section id="general" class="panel scroll-mt-4">
       <h2 class="panel-title">Day and calendar</h2>
       {#snippet startControl()}
-        <select
+        <Select
           bind:value={startView}
           onchange={() => setStartView(startView)}
           aria-label="Start view"
-          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-        >
-          <option value="">Inbox</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="goals">Goals</option>
-          {#each startOptions as v (v.id)}
-            <option value="view:{v.id}">{v.name}</option>
-          {/each}
-        </select>
+          class="w-48"
+          segmented={false}
+          options={[
+            { value: '', label: 'Inbox' },
+            { value: 'upcoming', label: 'Upcoming' },
+            { value: 'goals', label: 'Goals' },
+            ...startOptions.map((v) => ({ value: `view:${v.id}`, label: v.name })),
+          ]}
+        />
       {/snippet}
       {#snippet weekControl()}
-        <select
+        <Select
           bind:value={weekStart}
           onchange={() => setWeekStart(Number(weekStart))}
           aria-label="Week starts on"
-          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-        >
-          <option value="1">Monday</option>
-          <option value="0">Sunday</option>
-        </select>
+          options={[
+            { value: '1', label: 'Monday' },
+            { value: '0', label: 'Sunday' },
+          ]}
+        />
       {/snippet}
       {#snippet dayControl()}
         <input
@@ -689,17 +702,14 @@
         />
       {/snippet}
       {#snippet zoneControl()}
-        <select
+        <Select
           bind:value={timezone}
           onchange={() => setTimezone(timezone)}
           aria-label="Timezone"
-          class="h-[2.125rem] w-48 rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none focus-visible:border-accent-line"
-        >
-          <option value="">This device</option>
-          {#each zones as z (z)}
-            <option value={z}>{z}</option>
-          {/each}
-        </select>
+          class="w-48"
+          segmented={false}
+          options={[{ value: '', label: 'This device' }, ...zones.map((z) => ({ value: z, label: z }))]}
+        />
       {/snippet}
       {@render row('Start view', 'Where Orbit opens when you launch it.', startControl)}
       {@render row('Week starts on', 'First day of the Calendar week.', weekControl)}
@@ -739,7 +749,7 @@
     <section id="reminders" class="panel scroll-mt-4">
       <h2 class="panel-title">Reminders and notifications</h2>
       {#snippet notifyControl()}
-        <Checkbox
+        <Switch
           bind:checked={notify}
           aria-label="Notify on this device"
           onCheckedChange={async (v) => (notify = await setNotifyEnabled(v === true))}
@@ -771,7 +781,7 @@
       )}
       {#if badgeSupported()}
         {#snippet badgeControl()}
-          <Checkbox
+          <Switch
             bind:checked={appBadge}
             aria-label="Show due count on the app icon"
             onCheckedChange={(v) => {
@@ -791,7 +801,7 @@
     <section id="targets" class="panel scroll-mt-4">
       <h2 class="panel-title">Goals and targets</h2>
       {#snippet gamControl()}
-        <Checkbox
+        <Switch
           bind:checked={gamification}
           aria-label="Gamification"
           onCheckedChange={(v) => setGamification(v === true)}
@@ -830,7 +840,7 @@
           </div>
         {/snippet}
         {#snippet vacationControl()}
-          <Checkbox
+          <Switch
             checked={targets?.vacation}
             aria-label="Vacation"
             onCheckedChange={(v) => setVacation(v === true).then(loadTargets)}
@@ -988,7 +998,7 @@
           />
         {/snippet}
         {#snippet p1Control()}
-          <Checkbox
+          <Switch
             checked={nextP1}
             aria-label="Include undated P1 tasks"
             onCheckedChange={(c) => setNextSettings({ undated_p1: (nextP1 = c === true) })}
@@ -1035,7 +1045,7 @@
       >
       {#if isDesktopTauri()}
         {#snippet updateChecksControl()}
-          <Checkbox
+          <Switch
             checked={autoUpdates}
             aria-label="Automatically check for desktop updates"
             onCheckedChange={(value) => void setAutoUpdates(value === true)}

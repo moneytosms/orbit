@@ -4,6 +4,9 @@
   import Plus from '@lucide/svelte/icons/plus'
   import Check from '@lucide/svelte/icons/check'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
+  import Archive from '@lucide/svelte/icons/archive'
+  import Settings from '@lucide/svelte/icons/settings'
+  import { DropdownMenu } from 'bits-ui'
   import ChevronRight from '@lucide/svelte/icons/chevron-right'
   import X from '@lucide/svelte/icons/x'
   import { onMount, tick, type Snippet } from 'svelte'
@@ -247,6 +250,10 @@
     e.preventDefault()
     runAction(id)
   }
+  function accountGo(hash: string) {
+    drawer = false
+    location.hash = hash
+  }
   const isHidden = (id: string) => hiddenViews.some((v) => v.id === id)
   // Two tabs each side of the add button. Search and the full menu live in the header.
   let tabs: (Route | 'add')[] = $derived(
@@ -434,7 +441,6 @@
                   >
                     {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
                   </a>
-                  <EntityMenu id={p.id} name={p.name} kind="project" fallbackHref="#/home" {onchange} />
                 </div>
               </DropTarget>
             {/each}
@@ -493,7 +499,7 @@
         {/each}
       </section>
     {/if}
-    <nav class="flex flex-col gap-0.5" aria-label="Main">
+    <nav class="flex flex-col gap-0.5" aria-label="Main" data-tour="nav">
       {@render row('home')}
       {#if !isHidden(VIEW_INBOX)}
         <DropTarget parentId={inbox_id()}>{@render row('inbox', inboxCount)}</DropTarget>
@@ -569,11 +575,51 @@
         </details>
       {/if}
     </section>
-    <nav class="mt-auto flex flex-col gap-0.5" aria-label="Account">
-      {@render row('profile')}
-      {@render row('trash')}
-      {@render row('settings')}
-    </nav>
+    <div class="mt-auto flex items-center gap-0.5 border-t border-line pt-2" aria-label="Account" data-tour="account">
+      <a
+        href="#/profile"
+        onclick={() => (drawer = false)}
+        aria-current={screen.name === 'profile' ? 'page' : undefined}
+        class="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2.5 hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+      >
+        <ProfileAvatar name={profile.display_name} avatar={profile.avatar} {device} size="size-5 text-[0.625rem]" />
+        <span class="min-w-0 flex-1 truncate">{profile.display_name || 'Profile'}</span>
+      </a>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger
+          type="button"
+          aria-label="Account menu"
+          class="group grid size-9 shrink-0 place-items-center rounded-[7px] text-muted outline-none hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent-line"
+        >
+          <ChevronDown
+            size={16}
+            aria-hidden="true"
+            class="transition-transform duration-150 group-data-[state=open]:rotate-180"
+          />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            side="top"
+            align="end"
+            sideOffset={6}
+            class="z-[60] min-w-48 rounded-xl border border-line-strong bg-surface p-1 text-sm shadow-2"
+          >
+            <DropdownMenu.Item
+              class="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-highlighted:bg-hover"
+              onSelect={() => accountGo('#/settings')}
+            >
+              <Settings size={15} class="text-icon" aria-hidden="true" /> Settings
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              class="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-highlighted:bg-hover"
+              onSelect={() => accountGo('#/trash')}
+            >
+              <Archive size={15} class="text-icon" aria-hidden="true" /> Archive &amp; Trash
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
   </div>
 {/snippet}
 
@@ -618,7 +664,7 @@
           />
         {/if}
       </div>
-      <Button variant="ghost" class="hidden desk:inline-flex" onclick={newTask}>
+      <Button variant="ghost" class="hidden desk:inline-flex" data-tour="add" onclick={newTask}>
         <Plus /> New task <kbd class="rounded-sm bg-sunk px-1.5 text-[0.7188rem] text-muted">Q</kbd>
       </Button>
       <Button variant="ghost" size="icon" aria-label="Search" onclick={openPalette}>
@@ -655,6 +701,7 @@
     <button
       type="button"
       aria-label="New task"
+      data-tour="add"
       onclick={newTask}
       class="grid size-12 place-items-center rounded-[15px] bg-accent text-accent-ink shadow-[0_4px_12px_rgba(0,0,0,.18)]"
     >

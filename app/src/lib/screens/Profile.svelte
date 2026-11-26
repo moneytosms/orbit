@@ -3,6 +3,9 @@
   import { getProfile } from '$lib/sync'
   import { deviceId } from '$lib/auth'
   import ProfileAvatar from '$lib/ProfileAvatar.svelte'
+  import ArchiveIcon from '@lucide/svelte/icons/archive'
+  import SettingsIcon from '@lucide/svelte/icons/settings'
+  import { Button } from '$lib/components/ui/button'
   import BadgeIcon from '$lib/BadgeIcon.svelte'
 
   let { version = 0 }: { version?: number } = $props()
@@ -36,7 +39,15 @@
     new Date(d + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 </script>
 
-<h1 class="page-title">Profile</h1>
+<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+  <h1 class="page-title !mb-0">Profile</h1>
+  <div class="flex items-center gap-1">
+    <Button variant="ghost" size="sm" href="#/settings" class="text-muted"><SettingsIcon size={15} /> Settings</Button>
+    <Button variant="ghost" size="sm" href="#/trash" class="text-muted"
+      ><ArchiveIcon size={15} /> Archive &amp; Trash</Button
+    >
+  </div>
+</div>
 <section class="panel mb-4 flex flex-col items-center gap-3 px-4 py-6 text-center" aria-label="Profile">
   <div class="relative size-28">
     {#if gamification && data}

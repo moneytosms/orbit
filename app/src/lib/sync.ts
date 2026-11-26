@@ -107,7 +107,7 @@ export type Section = {
   order: string
   trashed_at: number | null
 }
-export type Label = { kind: 'label'; id: string; name: string }
+export type Label = { kind: 'label'; id: string; name: string; deleted?: boolean }
 export type Settings = {
   kind: 'settings'
   id: string
@@ -548,9 +548,31 @@ export async function createLabel(name: string): Promise<string> {
   await enqueue('label.create', { id, name })
   return id
 }
-/** All Labels, sorted by name. */
+/** All Labels that have not been deleted, sorted by name. */
 export async function labels(): Promise<Label[]> {
-  return (await allRows()).filter((r): r is Label => r.kind === 'label').sort((a, b) => a.name.localeCompare(b.name))
+  return (await allRows())
+    .filter((r): r is Label => r.kind === 'label' && !r.deleted)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+/** Each live Label with how many open Tasks carry it, for the Settings manager. */
+export async function labelUsage(): Promise<{ label: Label; tasks: number }[]> {
+  const rows = await allRows()
+  const count = new Map<string, number>()
+  for (const r of rows) {
+    if (r.kind === 'task' && !r.trashed_at && !r.completed_at)
+      for (const id of r.label_ids ?? []) count.set(id, (count.get(id) ?? 0) + 1)
+  }
+  return (await labels()).map((label) => ({ label, tasks: count.get(label.id) ?? 0 }))
+}
+export const renameLabel = (id: string, name: string) => enqueue('label.rename', { id, name: name.trim() })
+/** Retires a Label and takes its id off every Task that carries it, so nothing keeps a dangling tag. */
+export async function deleteLabel(id: string) {
+  const rows = await allRows()
+  for (const r of rows) {
+    if (r.kind === 'task' && r.label_ids?.includes(id))
+      await updateTask(r.id, { label_ids: r.label_ids.filter((x) => x !== id) })
+  }
+  await enqueue('label.delete', { id })
 }
 
 /** The Settings row's appearance, or null before any Device set one. An empty field is unset. */
