@@ -100,7 +100,9 @@
     id: 'tour.replay',
     name: 'Replay tour',
     group: 'App',
-    run: () => window.dispatchEvent(new CustomEvent('orbit-tour')),
+    run: () => {
+      window.dispatchEvent(new CustomEvent('orbit-tour'))
+    },
   }
   const runCommand = (a: Action) => async () => {
     open = false
