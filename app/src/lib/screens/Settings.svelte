@@ -670,7 +670,7 @@
         <Select
           bind:value={startView}
           onchange={() => setStartView(startView)}
-          aria-label="Start view"
+          aria-label="Open Orbit on"
           class="w-48"
           segmented={false}
           options={[
@@ -711,7 +711,7 @@
           options={[{ value: '', label: 'This device' }, ...zones.map((z) => ({ value: z, label: z }))]}
         />
       {/snippet}
-      {@render row('Start view', 'Where Orbit opens when you launch it.', startControl)}
+      {@render row('Open Orbit on', 'The page Orbit shows when you launch it.', startControl)}
       {@render row('Week starts on', 'First day of the Calendar week.', weekControl)}
       {@render row('Day starts at', 'Routines roll over to a new day at this time.', dayControl)}
       {@render row('Timezone', 'Days and due times are read in this zone.', zoneControl)}

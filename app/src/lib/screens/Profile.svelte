@@ -118,7 +118,8 @@
         <span class="text-sm font-normal text-muted">{data.targets.streak === 1 ? 'day' : 'days'}</span>
       </p>
       <p class="mt-2 text-xs text-muted">
-        {data.targets.vacation ? 'Vacation is on. ' : ''}Targets, days off and vacation in
+        Days in a row you hit your daily target. {data.targets.vacation ? 'Vacation is on. ' : ''}Targets, days off and
+        vacation in
         <a class="link" href="#/settings" onclick={() => sessionStorage.setItem('orbit.jump', 'targets')}>Settings</a>.
       </p>
     </div>
@@ -127,6 +128,9 @@
   {#if gamification && shelf}
     <section class="panel mb-4" aria-label="Badges">
       <h2 class="panel-title">Badges · {shelf.patches} Patch{shelf.patches === 1 ? '' : 'es'}</h2>
+      <p class="mb-3 text-xs text-muted">
+        Badges are achievements you earn in five tiers. Patches are one-off awards for finishing a Roadmap.
+      </p>
       <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {#each shelf.badges as b (b.id)}
           <li
@@ -151,6 +155,9 @@
 
     <section class="panel" aria-label="Stardust history">
       <h2 class="panel-title">Last 30 days</h2>
+      <p class="mb-3 text-xs text-muted">
+        Stardust earned each day, from finished Tasks, Milestones, Goals and Check-ins.
+      </p>
       <div
         class="flex h-28 items-end gap-[3px] border-b border-line"
         role="img"

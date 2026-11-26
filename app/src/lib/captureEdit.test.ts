@@ -7,6 +7,7 @@ import {
   deadlineText,
   dueLabel,
   durationLabel,
+  whenLabel,
   durationText,
   monthGrid,
   setToken,
@@ -76,6 +77,9 @@ test('reminders toggle by minutes', () => {
 test('due label', () => {
   expect(dueLabel({ date: '2026-11-20', time: '18:00' })).toBe('Fri 20 Nov, 18:00')
   expect(dueLabel({ date: '2026-11-20', time: null })).toBe('Fri 20 Nov')
+  // The preview shows the parser's ISO value as a date a person would say.
+  expect(whenLabel('2026-12-01T15:00:00')).toBe('Tue 1 Dec, 15:00')
+  expect(whenLabel('2026-12-01')).toBe('Tue 1 Dec')
 })
 
 test('month grid starts on Monday and covers six weeks', () => {

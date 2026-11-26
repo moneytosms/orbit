@@ -16,6 +16,7 @@
   import CaptureBar from './CaptureBar.svelte'
   import { pasteLines, type PasteLine } from './pasteLines'
   import { DEFAULT_PREFS, knownJson, quickAddPrefs, type QuickAddPrefs } from '$lib/captureKnown'
+  import { whenLabel } from './captureEdit'
 
   let {
     prefill = '',
@@ -92,8 +93,8 @@
   }
   function note(t: Parsed['tokens'][number]) {
     if (t.known && t.kind === 'reminder')
-      return t.value.includes('T') ? `at ${t.value.replace('T', ' ')}` : `${t.value} min before`
-    if (t.known) return t.kind === 'date' ? `→ ${t.value}` : ''
+      return t.value.includes('T') ? `at ${whenLabel(t.value)}` : `${t.value} min before`
+    if (t.known) return t.kind === 'date' ? `→ ${whenLabel(t.value)}` : ''
     if (t.kind === 'label') return 'new label'
     if (t.kind === 'place') return 'no such area'
     return 'kept in title'

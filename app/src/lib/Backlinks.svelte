@@ -15,8 +15,8 @@
   })
 </script>
 
-<section aria-label="Backlinks" class="mt-4">
-  <h2 class="text-xs font-medium text-muted">Backlinks</h2>
+<section aria-label="Linked from" class="mt-4">
+  <h2 class="text-xs font-medium text-muted">Linked from</h2>
   {#each groups as g (g.kind)}
     <h3 class="mt-2 text-xs capitalize text-muted">{g.kind}s</h3>
     <ul class="text-sm">
@@ -27,6 +27,6 @@
       {/each}
     </ul>
   {:else}
-    <p class="text-sm text-muted">No backlinks yet.</p>
+    <p class="text-sm text-muted">Nothing links here yet.</p>
   {/each}
 </section>

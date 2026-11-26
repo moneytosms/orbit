@@ -90,6 +90,12 @@ export const reminderQuick = [
   { label: '1 day before', minutes: '1440', text: '!1d' },
 ] as const
 
+/** A typed date or date-time, `2026-12-01` or `2026-12-01T15:00:00`, as `Tue 1 Dec, 15:00`. */
+export function whenLabel(value: string): string {
+  const [date, time] = value.split('T')
+  return dueLabel({ date, time: time ? time.slice(0, 5) : null })
+}
+
 /** `2026-11-20` and `18:00` as a short label like `Fri 20 Nov, 18:00`. */
 export function dueLabel(due: { date: string; time?: string | null }): string {
   const [y, m, d] = due.date.split('-').map(Number)
