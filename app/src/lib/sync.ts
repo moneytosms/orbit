@@ -565,7 +565,22 @@ export async function labelUsage(): Promise<{ label: Label; tasks: number }[]> {
   }
   return (await labels()).map((label) => ({ label, tasks: count.get(label.id) ?? 0 }))
 }
-export const renameLabel = (id: string, name: string) => enqueue('label.rename', { id, name: name.trim() })
+/** The custom Views made by `labelView` for this Label. */
+const labelViewsOf = async (labelId: string) =>
+  (await views()).filter(
+    (v) =>
+      !v.builtin &&
+      v.filter.type === 'group' &&
+      v.filter.children.length === 1 &&
+      v.filter.children.some((c) => c.type === 'cond' && c.path === 'label' && c.value === labelId),
+  )
+export async function renameLabel(id: string, name: string) {
+  const next = name.trim()
+  const old = (await labels()).find((l) => l.id === id)?.name
+  await enqueue('label.rename', { id, name: next })
+  // A Label's View is named after it; only the ones still carrying the old "#name" follow the rename.
+  for (const v of await labelViewsOf(id)) if (v.name === `#${old}`) await updateView(v.id, { name: `#${next}` })
+}
 /** Retires a Label and takes its id off every Task that carries it, so nothing keeps a dangling tag. */
 export async function deleteLabel(id: string) {
   const rows = await allRows()
@@ -573,6 +588,7 @@ export async function deleteLabel(id: string) {
     if (r.kind === 'task' && r.label_ids?.includes(id))
       await updateTask(r.id, { label_ids: r.label_ids.filter((x) => x !== id) })
   }
+  for (const v of await labelViewsOf(id)) await deleteItem(v.id)
   await enqueue('label.delete', { id })
 }
 
@@ -788,11 +804,7 @@ export async function createView(name: string, kind: View['entity']): Promise<st
 }
 /** The View listing open Tasks with a Label, made on first use and reused after; returns its id. */
 export async function labelView(labelId: string, name: string): Promise<string> {
-  const has = (v: View) =>
-    v.filter.type === 'group' &&
-    v.filter.children.length === 1 &&
-    v.filter.children.some((c) => c.type === 'cond' && c.path === 'label' && c.value === labelId)
-  const found = (await views()).find((v) => !v.builtin && v.entity === 'task' && has(v))
+  const found = (await labelViewsOf(labelId)).find((v) => v.entity === 'task')
   if (found) return found.id
   const id = await createView(`#${name}`, 'task')
   await updateView(id, {
