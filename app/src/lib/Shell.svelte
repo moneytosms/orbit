@@ -51,7 +51,7 @@
   import { inbox_id } from '../../wasm/orbit_wasm'
 
   type AreaItem = { id: string; area: Area; projects: Project[] }
-  type ViewPin = { id: string; name: string; builtin: string | null }
+  type ViewPin = { id: string; name: string; builtin: string | null; icon: string }
 
   let {
     screen,
@@ -156,7 +156,7 @@
   })
   let profile = $state({ display_name: '', avatar: '' })
   let device = $state('')
-  let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin })))
+  let viewOrder: ViewPin[] = $derived(pinned.map((v) => ({ id: v.id, name: v.name, builtin: v.builtin, icon: v.icon })))
 
   // Reloaded whenever the shell refreshes (`areas` is a fresh array after every sync).
   $effect(() => {
@@ -541,7 +541,8 @@
               aria-current={screen.name === 'view' && screen.id === v.id ? 'page' : undefined}
               class="flex h-full min-w-0 flex-1 items-center rounded-[7px] px-2.5 text-[0.8438rem] aria-[current=page]:font-semibold"
             >
-              {v.name}
+              {#if v.icon && !/^[a-z]+$/.test(v.icon)}<span aria-hidden="true" class="mr-1.5">{v.icon}</span
+                >{/if}{v.name}
             </a>
             {#if !v.builtin}
               <EntityMenu id={v.id} name={v.name} kind="view" fallbackHref="#/home" {onchange} />

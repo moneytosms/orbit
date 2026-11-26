@@ -786,6 +786,21 @@ export async function createView(name: string, kind: View['entity']): Promise<st
   await enqueue('view.create', { id, name, kind, order: orderAfter(last) })
   return id
 }
+/** The View listing open Tasks with a Label, made on first use and reused after; returns its id. */
+export async function labelView(labelId: string, name: string): Promise<string> {
+  const has = (v: View) =>
+    v.filter.type === 'group' &&
+    v.filter.children.length === 1 &&
+    v.filter.children.some((c) => c.type === 'cond' && c.path === 'label' && c.value === labelId)
+  const found = (await views()).find((v) => !v.builtin && v.entity === 'task' && has(v))
+  if (found) return found.id
+  const id = await createView(`#${name}`, 'task')
+  await updateView(id, {
+    icon: '🏷️',
+    filter: { type: 'group', all: true, children: [{ type: 'cond', path: 'label', op: 'contains', value: labelId }] },
+  })
+  return id
+}
 export type ViewPatch = Partial<
   Pick<
     View,

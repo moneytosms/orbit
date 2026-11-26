@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Select } from '$lib/components/ui/select'
   import Empty from '$lib/Empty.svelte'
+  import IconPicker from '$lib/IconPicker.svelte'
   import SearchX from '@lucide/svelte/icons/search-x'
   import AlertTriangle from '@lucide/svelte/icons/alert-triangle'
   import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down'
@@ -230,7 +231,15 @@
 {#if view}
   <div class="relative mb-3">
     <div class="flex flex-wrap items-center gap-2">
-      {#if icons[view.icon]}
+      {#if !view.builtin}
+        <IconPicker
+          icon={view.icon}
+          triggerClass={view.icon
+            ? 'grid size-9 place-items-center rounded-lg text-2xl leading-none hover:bg-hover'
+            : 'rounded-md px-2 py-1 text-sm text-muted hover:bg-hover'}
+          onselect={(icon) => save({ icon })}
+        />
+      {:else if icons[view.icon]}
         {@const Icon = icons[view.icon]}
         <Icon size={20} class="shrink-0 text-icon" />
       {/if}
