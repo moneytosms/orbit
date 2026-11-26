@@ -422,12 +422,15 @@
           <div id="area-projects-{instance}-{a.id}" class="flex flex-col gap-0.5" hidden={!areaIsExpanded(a)}>
             {#each a.projects.slice(0, 4) as p (p.id)}
               <DropTarget parentId={p.id}>
-                <div class="group flex h-8 items-center rounded-[7px] hover:bg-hover">
+                <div
+                  class="group flex h-8 items-center rounded-[7px] hover:bg-hover"
+                  class:bg-press={screen.name === 'project' && screen.id === p.id}
+                >
                   <a
                     href="#/project/{p.id}"
                     onclick={() => (drawer = false)}
                     aria-current={screen.name === 'project' && screen.id === p.id ? 'page' : undefined}
-                    class="flex min-w-0 flex-1 items-center rounded-[7px] pr-1 pl-6 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+                    class="flex h-full min-w-0 flex-1 items-center rounded-[7px] pr-1 pl-6 text-[0.8438rem] aria-[current=page]:font-semibold"
                   >
                     {#if p.icon}<span aria-hidden="true" class="mr-1.5">{p.icon}</span>{/if}{p.name}
                   </a>
@@ -520,12 +523,16 @@
         class="flex flex-col gap-0.5"
       >
         {#each viewOrder as v (v.id)}
-          <li class="group flex h-8 items-center rounded-[7px] hover:bg-hover">
+          <!-- One highlight, on the row: the drag list outlines its items on focus, and the link used to paint a second pill inside. -->
+          <li
+            class="group flex h-8 items-center rounded-[7px] outline-none hover:bg-hover"
+            class:bg-press={screen.name === 'view' && screen.id === v.id}
+          >
             <a
               href="#/view/{v.id}"
               onclick={() => (drawer = false)}
               aria-current={screen.name === 'view' && screen.id === v.id ? 'page' : undefined}
-              class="flex min-w-0 flex-1 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+              class="flex h-full min-w-0 flex-1 items-center rounded-[7px] px-2.5 text-[0.8438rem] aria-[current=page]:font-semibold"
             >
               {v.name}
             </a>
