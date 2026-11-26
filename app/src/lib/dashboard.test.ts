@@ -1,6 +1,12 @@
 import { expect, test } from 'vitest'
 import {
+  colsFor,
   defaultLayout,
+  defaultPageLayout,
+  expand,
+  fits,
+  pageKinds,
+  reflow,
   doneShare,
   move,
   phoneOrder,
@@ -98,4 +104,79 @@ test('a layout saved before the Calendar widget gets it appended once, without m
   expect(withCalendar(out)).toEqual(out)
   const hid = [...saved, { ...w('calendar', 0, 6, 6, 2), hidden: true }]
   expect(withCalendar(hid)).toEqual(hid)
+})
+
+test('colsFor is 12 on desktop, 6 on tablet and 2 on phone', () => {
+  expect([1440, 1024, 1023, 640, 639, 360].map(colsFor)).toEqual([12, 12, 6, 6, 2, 2])
+})
+
+test('reflow keeps the desktop layout, scales to 6 columns with a 2-column minimum, and stacks on a phone', () => {
+  const ws = [
+    w('a', 0, 0, 12, 2),
+    w('b', 0, 2, 6, 3),
+    w('c', 6, 2, 6, 3),
+    w('d', 10, 5, 1, 1),
+    w('h', 0, 9, 4, 2, true),
+  ]
+  expect(reflow(ws, 12).map((x) => x.id)).toEqual(['a', 'b', 'c', 'd'])
+  const t = reflow(ws, 6)
+  expect(t.map((x) => [x.id, x.x, x.w])).toEqual([
+    ['a', 0, 6],
+    ['b', 0, 3],
+    ['c', 3, 3],
+    ['d', 4, 2],
+  ])
+  expect(overlaps(t)).toBe(false)
+  expect(t.every((x) => x.x + x.w <= 6 && x.w >= 2)).toBe(true)
+  const p = reflow(ws, 2)
+  expect(p.map((x) => [x.id, x.x, x.w, x.y])).toEqual([
+    ['a', 0, 2, 0],
+    ['b', 0, 2, 2],
+    ['c', 0, 2, 5],
+    ['d', 0, 2, 8],
+  ])
+})
+
+test('reflow on a tablet pushes tiles that would collide down, in reading order', () => {
+  const t = reflow([w('a', 0, 0, 1, 2), w('b', 1, 0, 1, 2)], 6)
+  expect(overlaps(t)).toBe(false)
+  expect(t.map((x) => x.id)).toEqual(['a', 'b'])
+})
+
+test('expand maps a tablet edit back onto 12 columns and keeps hidden tiles', () => {
+  const saved = [w('a', 0, 0, 12, 2), w('b', 0, 2, 6, 3), w('h', 0, 9, 4, 2, true)]
+  const edited = reflow(saved, 6).map((x) => (x.id === 'b' ? { ...x, x: 3, y: 2 } : x))
+  const back = expand(edited, 6, saved)
+  expect(back.map((x) => x.id)).toEqual(['a', 'b', 'h'])
+  expect(back.find((x) => x.id === 'b')).toMatchObject({ x: 6, w: 6, y: 2 })
+  expect(back.find((x) => x.id === 'h')).toEqual(saved[2])
+  expect(expand(saved, 12, saved)).toBe(saved)
+})
+
+test('move and resize honour a narrower column count', () => {
+  const ws = [w('a', 0, 0, 2, 1)]
+  expect(move(ws, 'a', 9, 0, 6)[0].x).toBe(4)
+  expect(resize(ws, 'a', 9, 1, 6)[0].w).toBe(6)
+})
+
+test('fits is false off the grid or onto another visible tile, true for hidden ones and itself', () => {
+  const ws = [w('a', 0, 0, 4, 2), w('b', 4, 0, 4, 2), w('h', 8, 0, 4, 2, true)]
+  expect(fits(ws, 'a', { x: 0, y: 0, w: 4, h: 2 })).toBe(true)
+  expect(fits(ws, 'a', { x: 2, y: 0, w: 4, h: 2 })).toBe(false)
+  expect(fits(ws, 'a', { x: 9, y: 0, w: 4, h: 2 })).toBe(false)
+  expect(fits(ws, 'a', { x: -1, y: 0, w: 4, h: 2 })).toBe(false)
+  expect(fits(ws, 'a', { x: 8, y: 0, w: 4, h: 2 })).toBe(true)
+  expect(fits(ws, 'a', { x: 0, y: 0, w: 7, h: 2 }, 6)).toBe(false)
+})
+
+test('page layouts: each kind has a default without overlaps, only with tiles its page offers', () => {
+  for (const kind of ['area', 'project'] as const) {
+    const d = defaultPageLayout(kind)
+    expect(overlaps(d)).toBe(false)
+    expect(d.every((x) => x.x + x.w <= 12)).toBe(true)
+    const offered = pageKinds(kind).map((k) => k.kind)
+    expect(d.every((x) => offered.includes(x.kind))).toBe(true)
+  }
+  expect(defaultPageLayout('area').map((x) => x.kind)).toContain('goals')
+  expect(defaultPageLayout('project').map((x) => x.kind)).not.toContain('goals')
 })

@@ -2,8 +2,6 @@
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import Shell from './lib/Shell.svelte'
   import Auth from './lib/screens/Auth.svelte'
-  import Banner from './lib/Banner.svelte'
-  import Backlinks from './lib/Backlinks.svelte'
   import Area from './lib/screens/Area.svelte'
   import Goals from './lib/screens/Goals.svelte'
   import Roadmap from './lib/screens/Roadmap.svelte'
@@ -35,7 +33,6 @@
     tasksIn,
     tree,
     stardust,
-    updateProject,
     updateSettings,
     uncompleteTask,
     views,
@@ -218,32 +215,22 @@
           {#key screen.id}
             {@const areaId = screen.id}
             <Area id={areaId} {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
-              {#snippet tasks()}
-                <Inbox parentId={areaId} {title} {rows} onchange={refresh} />
+              {#snippet tasks(layout)}
+                <Inbox parentId={areaId} {title} {rows} {layout} bare onchange={refresh} />
+              {/snippet}
+            </Area>
+          {/key}
+        {:else if screen.name === 'project'}
+          {#key screen.id}
+            {@const projectId = screen.id}
+            <Area id={projectId} kind="project" {areas} onchange={refresh} onnewtask={(text) => add(text, true)}>
+              {#snippet tasks(layout)}
+                <Inbox parentId={projectId} {title} {rows} {layout} bare onchange={refresh} />
               {/snippet}
             </Area>
           {/key}
         {:else if parent}
-          {#if screen.name === 'project'}
-            {@const pid = screen.id}
-            {@const proj = areas.flatMap((a) => a.projects).find((p) => p.id === pid)}
-            {#if proj}
-              {#key proj.id}
-                <Banner
-                  icon={proj.icon}
-                  cover={proj.cover}
-                  onsave={async (patch) => {
-                    await updateProject(proj.id, patch)
-                    refresh()
-                  }}
-                />
-              {/key}
-            {/if}
-          {/if}
           <Inbox parentId={parent} {title} {rows} onchange={refresh} />
-          {#if screen.name === 'project'}
-            <Backlinks id={screen.id} {version} />
-          {/if}
         {:else if screen.name === 'goals'}
           <Goals {areas} />
         {:else if screen.name === 'routines'}

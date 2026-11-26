@@ -190,7 +190,9 @@ test('graph sync negotiates safely and keeps graph commands for an old server', 
   await createGraphEdge(roadmap, choice, outcome, 'decides', 'yes')
   await sync()
   expect(graphHeaders[0].get('x-orbit-graph')).toBe('v1')
-  expect(requests.flatMap((request) => request.commands).some((command) => command.type.startsWith('roadmap.node.'))).toBe(false)
+  expect(
+    requests.flatMap((request) => request.commands).some((command) => command.type.startsWith('roadmap.node.')),
+  ).toBe(false)
   expect(requests.flatMap((request) => request.commands).some((command) => command.type === 'task.create')).toBe(true)
   expect((await roadmapGraph(roadmap)).nodes.map((node) => node.title)).toContain('Choose')
   expect((await roadmapGraph(roadmap)).edges.map((edge) => edge.label)).toContain('yes')
@@ -198,10 +200,12 @@ test('graph sync negotiates safely and keeps graph commands for an old server', 
   expect(queued.some((command) => command.type === 'roadmap.node.create')).toBe(true)
   await tx(['outbox', 'rows'], async (s) => {
     for (const command of await req<{ uuid: string; type: string }[]>(s('outbox').getAll())) {
-      if (command.type.startsWith('roadmap.node.') || command.type.startsWith('roadmap.edge.')) s('outbox').delete(command.uuid)
+      if (command.type.startsWith('roadmap.node.') || command.type.startsWith('roadmap.edge.'))
+        s('outbox').delete(command.uuid)
     }
     for (const row of await req<{ id: string; kind: string; roadmap_id?: string }[]>(s('rows').getAll())) {
-      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap) s('rows').delete(row.id)
+      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap)
+        s('rows').delete(row.id)
     }
     for (const row of await req<{ id: string; kind: string; title?: string }[]>(s('rows').getAll())) {
       if (row.kind === 'task' && row.title === 'Still syncs with a legacy server') s('rows').delete(row.id)
@@ -215,11 +219,14 @@ test('graph commands flush only after the server returns a graph cursor', async 
   graphSupport = true
   await sync()
   expect(graphHeaders[0].get('x-orbit-graph')).toBe('v1')
-  expect(requests.flatMap((request) => request.commands).some((command) => command.type === 'roadmap.node.create')).toBe(true)
+  expect(
+    requests.flatMap((request) => request.commands).some((command) => command.type === 'roadmap.node.create'),
+  ).toBe(true)
   expect(graphHeaders.some((headers) => headers.get('x-orbit-graph-cursor')?.startsWith('v1:'))).toBe(true)
   await tx(['rows'], async (s) => {
     for (const row of await req<{ id: string; kind: string; roadmap_id?: string }[]>(s('rows').getAll())) {
-      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap) s('rows').delete(row.id)
+      if ((row.kind === 'graph_node' || row.kind === 'graph_edge') && row.roadmap_id === roadmap)
+        s('rows').delete(row.id)
     }
   })
 })
@@ -286,14 +293,16 @@ test('undo follows exact completion records through completed intermediates and 
   const independentAt = 5000
   await tx(['rows'], async (s) => {
     await req(s('rows').put({ ...midRow, completed_at: independentAt }))
-    await req(s('rows').put({
-      kind: 'completion',
-      id: completion_id(mid, independentSource),
-      item_id: mid,
-      at: independentAt,
-      source_id: independentSource,
-      completion_hlc: { wall: independentAt, counter: 1, device: '01900000-0000-7000-8000-0000000000d1' },
-    }))
+    await req(
+      s('rows').put({
+        kind: 'completion',
+        id: completion_id(mid, independentSource),
+        item_id: mid,
+        at: independentAt,
+        source_id: independentSource,
+        completion_hlc: { wall: independentAt, counter: 1, device: '01900000-0000-7000-8000-0000000000d1' },
+      }),
+    )
   })
 
   const undo = await completeTask(root)
@@ -686,14 +695,17 @@ test('a Page edit predicts the new body and bumps the rev; a stale base_rev keep
 test('a Page keeps block Markdown intact in local reload and sync commands', async () => {
   const area = (await tree()).find((t) => t.area.name === 'qa-goal-area')!.area.id
   const id = await createPage(area, 'Block notes')
-  const body = '\n| A   | B   |\n| --- | --- |\n| one | two |\n\n- [ ] Draft\n\n::: section sec_sync\n## Plan\n\nWrite it\n:::'
+  const body =
+    '\n| A   | B   |\n| --- | --- |\n| one | two |\n\n- [ ] Draft\n\n::: section sec_sync\n## Plan\n\nWrite it\n:::'
   await editPageBody(id, body, 0)
   expect((await getPage(id))?.body).toBe(body)
   await sync()
-  expect(requests.at(-1)!.commands).toContainEqual(expect.objectContaining({
-    type: 'page.edit_body',
-    args: expect.objectContaining({ id, body }),
-  }))
+  expect(requests.at(-1)!.commands).toContainEqual(
+    expect.objectContaining({
+      type: 'page.edit_body',
+      args: expect.objectContaining({ id, body }),
+    }),
+  )
 })
 
 test('delete hides a Task and its subtasks, Trash lists it and restore brings it back', async () => {
@@ -1169,6 +1181,23 @@ test('the dashboard layout is the default until set, then synced as one field', 
   expect(d.map((w) => w.kind)).toContain('glance')
   await setDashboard(d.map((w) => (w.kind === 'glance' ? { ...w, hidden: true } : w)))
   expect((await getDashboard()).find((w) => w.kind === 'glance')?.hidden).toBe(true)
+})
+
+test('page layouts default per kind, save per page as one synced map, and reset by deleting the key', async () => {
+  const { getPageLayout, setPageLayout } = await import('./sync')
+  const area = await getPageLayout('a1', 'area')
+  expect(area.map((w) => w.kind)).toContain('goals')
+  expect((await getPageLayout('p1', 'project')).map((w) => w.kind)).not.toContain('goals')
+  await setPageLayout(
+    'a1',
+    area.map((w) => (w.kind === 'tasks' ? { ...w, hidden: true } : w)),
+  )
+  await setPageLayout('p1', [{ id: 'tasks', kind: 'tasks', x: 0, y: 0, w: 12, h: 3, hidden: false }])
+  expect((await getPageLayout('a1', 'area')).find((w) => w.kind === 'tasks')?.hidden).toBe(true)
+  expect(await getPageLayout('p1', 'project')).toHaveLength(1)
+  await setPageLayout('a1', null)
+  expect((await getPageLayout('a1', 'area')).find((w) => w.kind === 'tasks')?.hidden).toBe(false)
+  expect(await getPageLayout('p1', 'project')).toHaveLength(1)
 })
 
 test('turning vacation off keeps no range when it began today, and clears vacation_from', async () => {

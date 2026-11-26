@@ -4,20 +4,24 @@
   import CircleCheck from '@lucide/svelte/icons/circle-check'
   import Check from '@lucide/svelte/icons/check'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
-  import { completeTask, setMilestoneDone, whatsNext, type NextItem } from '$lib/sync'
+  import { upNextIn } from '$lib/area'
+  import { completeTask, setMilestoneDone, visibleSnapshot, whatsNext, type NextItem } from '$lib/sync'
   import WidgetSkeleton from './WidgetSkeleton.svelte'
 
+  /** With `parentId` only items under that Area (or Project) show. */
   let {
     version = 0,
+    parentId,
     onchange,
     onmeta,
-  }: { version?: number; onchange?: () => void; onmeta?: (value: string) => void } = $props()
+  }: { version?: number; parentId?: string; onchange?: () => void; onmeta?: (value: string) => void } = $props()
   let items = $state<NextItem[]>([])
   let loaded = $state(false)
   let openId = $state<string | null>(null)
 
   async function load() {
-    items = (await whatsNext()).slice(0, 5)
+    const all = await whatsNext()
+    items = parentId ? upNextIn(all, await visibleSnapshot(), parentId, 5) : all.slice(0, 5)
     loaded = true
     onmeta?.(`${items.length} items · ${items.filter((i) => i.reason === 'Overdue').length} overdue`)
   }

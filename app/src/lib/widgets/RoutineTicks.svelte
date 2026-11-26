@@ -1,6 +1,7 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
   import Repeat from '@lucide/svelte/icons/repeat'
+  import { underArea } from '$lib/area'
   import {
     checkIn,
     clearCheckIn,
@@ -8,16 +9,19 @@
     routines,
     routineIcon,
     routineStats,
+    visibleSnapshot,
     type DayState,
     type Routine,
   } from '$lib/sync'
   import WidgetSkeleton from './WidgetSkeleton.svelte'
 
+  /** With `parentId` only the Routines under that Area (or Project) show. */
   let {
     version = 0,
+    parentId,
     onmeta,
     onchange,
-  }: { version?: number; onmeta?: (value: string) => void; onchange?: () => void } = $props()
+  }: { version?: number; parentId?: string; onmeta?: (value: string) => void; onchange?: () => void } = $props()
   type Entry = { routine: Routine; today: DayState; current: number }
   let entries = $state<Entry[]>([])
   let today = $state('')
@@ -32,7 +36,8 @@
   async function load() {
     today = await localDay()
     const next: Entry[] = []
-    for (const routine of await routines()) {
+    const under = parentId ? underArea(await visibleSnapshot(), parentId) : null
+    for (const routine of (await routines()).filter((r) => !under || under.has(r.parent_id))) {
       const stats = await routineStats(routine.id, today)
       const day = stats.days.find(([d]) => d === today)?.[1]
       if (day && day !== 'off' && day !== 'paused') next.push({ routine, today: day, current: stats.current_streak })
