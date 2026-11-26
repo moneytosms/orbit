@@ -24,8 +24,10 @@ abstract class PickerConfigActivity : Activity() {
             finish()
             return
         }
-        val list = ListView(this)
-        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, labels())
+        setContentView(R.layout.activity_list_widget_config)
+        findViewById<android.widget.TextView>(R.id.config_title).text = title
+        val list = findViewById<ListView>(R.id.config_list)
+        list.adapter = ArrayAdapter(this, R.layout.item_picker, labels())
         list.setOnItemClickListener { _, _, pos, _ ->
             pick(widget, pos)
             setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widget))
@@ -34,7 +36,6 @@ abstract class PickerConfigActivity : Activity() {
         // Android 15 draws edge to edge: keep the first row out from under the status bar.
         list.clipToPadding = false
         list.padForSystemBars()
-        setContentView(list)
         barIconsFollowTheme() // needs the decor view, so after setContentView
     }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
+  import { ui } from '$lib/actions'
   import CircleCheck from '@lucide/svelte/icons/circle-check'
   import Check from '@lucide/svelte/icons/check'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
@@ -42,7 +43,7 @@
     icon={CircleCheck}
     text="Nothing needs you right now. Overdue and soon-due tasks show up here."
     label="Add a task"
-    href="#/inbox"
+    onclick={() => ui.newTask()}
   />
 {:else if !loaded}
   <WidgetSkeleton />

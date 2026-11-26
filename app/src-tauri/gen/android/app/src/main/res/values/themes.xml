@@ -4,4 +4,10 @@
         <!-- Fills the strip the system bar padding leaves under the web nav, in the nav's colour. -->
         <item name="android:windowBackground">#ffffff</item>
     </style>
+    <!-- Widget pickers: the widgets' own panel colours, so a dark phone gets a dark sheet with readable text. -->
+    <style name="Theme.Orbit.Picker" parent="Theme.Material3.DayNight.Dialog">
+        <item name="android:windowBackground">@drawable/picker_bg</item>
+        <item name="android:textColorPrimary">@color/widget_text</item>
+        <item name="android:textColor">@color/widget_text</item>
+    </style>
 </resources>

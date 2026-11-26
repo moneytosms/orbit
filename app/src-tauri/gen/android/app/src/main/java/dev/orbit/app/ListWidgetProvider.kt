@@ -200,10 +200,17 @@ class ListWidgetProvider : AppWidgetProvider() {
             val entries = ListWidget.load(ctx, src)
             val views = RemoteViews(ctx.packageName, R.layout.widget_list)
             views.setTextViewText(R.id.list_title, src.optString("name"))
+            // A quiet count of what is left, beside the + button.
+            val left = entries.count { e ->
+                val r = e.row
+                r != null && !r.optBoolean("completed") && ListWidget.pendingDeadline(ctx, r.optString("id")) == 0L
+            }
+            views.setTextViewText(R.id.list_count, if (left > 0) left.toString() else "")
+            views.setViewVisibility(R.id.list_count, if (left > 0) View.VISIBLE else View.GONE)
             val config = Intent(ctx, ListWidgetConfigActivity::class.java)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
             views.setOnClickPendingIntent(R.id.list_title, ListWidget.activity(ctx, 200000 + id, config))
-            val add = QuickAddActivity.intent(ctx, src.optString("prefill"))
+            val add = Link.capture(ctx, src.optString("prefill"))
             views.setOnClickPendingIntent(R.id.list_add, ListWidget.activity(ctx, 100000 + id, add))
 
             val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(2)

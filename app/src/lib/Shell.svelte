@@ -226,6 +226,7 @@
     open()
   }
   ui.newTask = newTask
+  ui.capture = (text) => open(text ? `${text} ` : '')
   ui.openPalette = openPalette
   ui.openHelp = () => (help = true)
   function openPalette() {

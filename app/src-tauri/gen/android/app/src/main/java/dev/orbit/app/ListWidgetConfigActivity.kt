@@ -22,6 +22,7 @@ class ListWidgetConfigActivity : Activity() {
             finish()
             return
         }
+        findViewById<android.widget.TextView>(R.id.config_title).text = title
         val list = findViewById<ListView>(R.id.config_list)
         list.clipToPadding = false
         list.padForSystemBars()
@@ -31,7 +32,7 @@ class ListWidgetConfigActivity : Activity() {
             val all = ListWidget.sources(applicationContext)
             val items = (0 until (all?.length() ?: 0)).map { all!!.getJSONObject(it) }
             runOnUiThread {
-                list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, items.map { it.optString("name") })
+                list.adapter = ArrayAdapter(this, R.layout.item_picker, items.map { it.optString("name") })
                 list.setOnItemClickListener { _, _, pos, _ -> pick(items[pos]) }
             }
         }.start()

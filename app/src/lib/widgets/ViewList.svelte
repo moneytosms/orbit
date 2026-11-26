@@ -1,5 +1,6 @@
 <script lang="ts">
   import Empty from '$lib/Empty.svelte'
+  import { ui } from '$lib/actions'
   import ListChecks from '@lucide/svelte/icons/list-checks'
   import { taskIsUpcoming } from '$lib/dashboard'
   import { localDay, runView, type Row } from '$lib/sync'
@@ -43,7 +44,7 @@
 </script>
 
 {#if loaded && rows.length === 0}
-  <Empty icon={ListChecks} text="This view has no items yet." label="Add a task" href="#/inbox" />
+  <Empty icon={ListChecks} text="This view has no items yet." label="Add a task" onclick={() => ui.newTask()} />
 {:else if !loaded}
   <WidgetSkeleton />
 {:else}

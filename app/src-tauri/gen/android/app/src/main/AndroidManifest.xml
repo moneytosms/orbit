@@ -77,19 +77,10 @@
                 android:resource="@xml/widget_list_info" />
         </receiver>
         <activity
-            android:name=".QuickAddActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:label="@string/quick_add_title"
-            android:noHistory="true"
-            android:taskAffinity=""
-            android:theme="@style/Theme.Material3.DayNight.Dialog"
-            android:windowSoftInputMode="stateVisible|adjustResize" />
-        <activity
             android:name=".ListWidgetConfigActivity"
             android:exported="true"
             android:label="@string/list_config_title"
-            android:theme="@style/Theme.Material3.DayNight.Dialog">
+            android:theme="@style/Theme.Orbit.Picker">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
@@ -119,6 +110,8 @@
         </receiver>
         <activity
             android:name=".RoutinesConfigActivity"
+            android:label="@string/routines_config_title"
+            android:theme="@style/Theme.Orbit.Picker"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
@@ -126,6 +119,8 @@
         </activity>
         <activity
             android:name=".GoalConfigActivity"
+            android:label="@string/goal_config_title"
+            android:theme="@style/Theme.Orbit.Picker"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />

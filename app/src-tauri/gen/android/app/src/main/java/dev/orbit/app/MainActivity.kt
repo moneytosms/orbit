@@ -5,7 +5,9 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
@@ -34,7 +36,9 @@ class MainActivity : TauriActivity() {
     val link = Link.set(intent) ?: return
     val page = web ?: return
     Link.take()
-    page.post { page.evaluateJavascript("location.hash = '$link'", null) }
+    val js = if (link.startsWith("#/new")) "window.dispatchEvent(new CustomEvent('orbit-link', { detail: '$link' }))"
+    else "location.hash = '$link'"
+    page.post { page.evaluateJavascript(js, null) }
   }
 
   override fun onStart() {
@@ -56,12 +60,20 @@ class MainActivity : TauriActivity() {
 object Link {
   @Volatile private var pending: String? = null
   private val id = Regex("[0-9a-f-]{36}")
+  const val EXTRA_CAPTURE = "orbit_capture"
+
+  /** Opens the app's own capture window (the one the + button uses); `prefill` is a source's text such as `@Home`. */
+  fun capture(ctx: Context, prefill: String): Intent =
+    Intent(ctx, MainActivity::class.java).putExtra(EXTRA_CAPTURE, prefill).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
   /** The hash route a widget tap asked for, or null. Ids are checked: the extra is not ours to trust. */
   fun set(intent: Intent?): String? {
     val link = intent?.getStringExtra(ListWidget.EXTRA_LINK)?.removePrefix("orbit://task/")
     val goal = intent?.getStringExtra(GoalWidgetProvider.EXTRA_OPEN)
+    val capture = intent?.getStringExtra(EXTRA_CAPTURE)
     val route = when {
+      // The text rides in the route percent-encoded, so it cannot break out of the JS string it is handed to.
+      capture != null -> "#/new?q=" + Uri.encode(capture.take(200)).replace("'", "%27")
       link != null && id.matches(link) -> "#/task/$link"
       goal != null && goal.startsWith("goal:") && id.matches(goal.removePrefix("goal:")) -> "#/goals"
       else -> return null

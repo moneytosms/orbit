@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ListView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/config_list"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical">
+    <TextView
+        android:id="@+id/config_title"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
+        android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="20dp" android:paddingBottom="8dp"
+        android:textColor="@color/widget_muted" android:textSize="13sp" />
+    <ListView
+        android:id="@+id/config_list"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:divider="@color/widget_line" android:dividerHeight="1dp"
+        android:paddingBottom="8dp" android:clipToPadding="false" />
+</LinearLayout>

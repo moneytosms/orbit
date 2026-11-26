@@ -24,11 +24,20 @@ async function provisionToken() {
   }
 }
 
+/** A widget link: `#/new?q=<text>` opens the capture window, anything else is a hash route. */
+function openLink(link: string) {
+  if (link.startsWith('#/new')) {
+    const q = new URLSearchParams(link.slice(link.indexOf('?') + 1)).get('q') ?? ''
+    return ui.capture(link.includes('?') ? q : '')
+  }
+  location.hash = link
+}
+
 /** Android: a widget tap leaves a link (`#/task/<id>`) for the app to open once the window is up. */
 async function takeLink(retries = 0) {
   try {
     const link = await invoke<string>('take_link')
-    if (link) return void (location.hash = link)
+    if (link) return openLink(link)
   } catch {
     return // Not Android, or not signed in yet.
   }
@@ -41,6 +50,7 @@ export function startDesktop() {
   started = true
   void listen('orbit://capture', () => ui.newTask())
   void listen('orbit://sync', () => void sync())
+  window.addEventListener('orbit-link', (e) => openLink(String((e as CustomEvent).detail)))
   void provisionToken()
   const android = navigator.userAgent.includes('Android')
   if (android) void takeLink()

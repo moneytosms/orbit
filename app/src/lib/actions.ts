@@ -42,6 +42,8 @@ export type Action = {
 /** Hooks the shell fills in for actions that open UI. */
 export const ui = {
   newTask: () => {},
+  /** Opens the capture window with `text` already typed, such as `@Home` from a widget. */
+  capture: (_text: string) => {},
   openPalette: () => {},
   openHelp: () => {},
   /** Shows a short confirmation; the shell fills it in. */
