@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { KINDS, defaultLayout, place, titleOf, withCalendar, type Widget } from '$lib/dashboard'
   import LayoutBar from '$lib/LayoutBar.svelte'
   import LayoutGrid from '$lib/LayoutGrid.svelte'
@@ -56,7 +57,7 @@
           : w.kind === 'view'
             ? `#/view/${w.view_id}`
             : '#/upcoming'
-  const setSummary = (id: string, value: string) => (summaries = { ...summaries, [id]: value })
+  const setSummary = (id: string, value: string) => untrack(() => (summaries = { ...summaries, [id]: value }))
 
   async function loadViews() {
     viewChoices = await views()

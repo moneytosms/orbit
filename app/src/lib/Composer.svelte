@@ -133,14 +133,21 @@
     inputEl?.focus()
   }
 
+  let adding = false
   async function save(e: SubmitEvent) {
     e.preventDefault()
-    if (!quickTitle(parsed).trim()) return
-    await quickAdd(parsed, parentId, forceParent)
-    draft = ''
-    caret = 0
-    await loadKnown()
-    onsaved?.()
+    if (!quickTitle(parsed).trim() || adding) return
+    // A second Enter or click before the first lands would add the same Task twice.
+    adding = true
+    try {
+      await quickAdd(parsed, parentId, forceParent)
+      draft = ''
+      caret = 0
+      await loadKnown()
+      onsaved?.()
+    } finally {
+      adding = false
+    }
   }
 </script>
 

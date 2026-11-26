@@ -8,6 +8,7 @@
     colsFor,
     dragRect,
     expand,
+    compact,
     move,
     reflow,
     resize,
@@ -58,7 +59,7 @@
   function apply(fn: (list: Widget[]) => Widget[]) {
     const base = cols === COLS ? widgets : view
     const next = fn(base)
-    onchange(cols === COLS ? next : expand(next, cols, widgets))
+    onchange(cols === COLS ? compact(next) : expand(next, cols, widgets))
   }
 
   function start(ev: PointerEvent, w: Widget, handle: Handle) {

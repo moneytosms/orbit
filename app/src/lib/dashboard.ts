@@ -102,7 +102,7 @@ export const withCalendar = (widgets: Widget[]): Widget[] =>
 
 const hit = (a: Widget, b: Widget) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 
-/** Keeps `fixed` where it is and pushes any widget it overlaps down, in reading order. Hidden ones don't collide. */
+/** Keeps `fixed` where it is, pushes any widget it overlaps down and lets the rest rise to close gaps, in reading order. Hidden ones don't collide. */
 function settle(widgets: Widget[], fixed: Widget): Widget[] {
   const placed: Widget[] = [fixed]
   const out = new Map<string, Widget>([[fixed.id, fixed]])
@@ -110,6 +110,21 @@ function settle(widgets: Widget[], fixed: Widget): Widget[] {
   for (const w of [...rest].sort((a, b) => a.y - b.y || a.x - b.x).filter((w) => !w.hidden)) {
     let next = w
     while (placed.some((p) => hit(p, next))) next = { ...next, y: next.y + 1 }
+    // Gravity: a gap left by a tile that was dragged away closes up, so no empty band is left behind.
+    while (next.y > 0 && !placed.some((p) => hit(p, { ...next, y: next.y - 1 }))) next = { ...next, y: next.y - 1 }
+    placed.push(next)
+    out.set(next.id, next)
+  }
+  return widgets.map((w) => out.get(w.id) ?? w)
+}
+
+/** Lets every visible tile rise until it rests on the top or on another tile, so a finished edit leaves no empty band. */
+export function compact(widgets: Widget[]): Widget[] {
+  const placed: Widget[] = []
+  const out = new Map<string, Widget>()
+  for (const w of widgets.filter((w) => !w.hidden).sort((a, b) => a.y - b.y || a.x - b.x)) {
+    let next = w
+    while (next.y > 0 && !placed.some((p) => hit(p, { ...next, y: next.y - 1 }))) next = { ...next, y: next.y - 1 }
     placed.push(next)
     out.set(next.id, next)
   }

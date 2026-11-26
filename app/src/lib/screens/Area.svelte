@@ -133,7 +133,7 @@
     setTab('overview')
     editing = true
   }
-  const setSummary = (wid: string, value: string) => (summaries = { ...summaries, [wid]: value })
+  const setSummary = (wid: string, value: string) => untrack(() => (summaries = { ...summaries, [wid]: value }))
 
   const crumbs = $derived(projectRow ? [{ label: projectRow.area.name, href: `#/area/${projectRow.area.id}` }] : [])
   const bannerSave = async (patch: { icon?: string; cover?: string }) => {

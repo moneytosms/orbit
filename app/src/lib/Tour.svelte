@@ -36,10 +36,17 @@
     // Steps whose target is not on screen (the page menu on a screen without one) are skipped.
     const dir = next >= index ? 1 : -1
     let i = next
-    while (steps[i]?.optional && steps[i].target && !visibleBox(steps[i].target!)) i += dir
+    const skipped: Step[] = []
+    while (steps[i]?.optional && steps[i].target && !visibleBox(steps[i].target!)) {
+      skipped.push(steps[i])
+      i += dir
+    }
     if (i < 0) i = 0
     if (i >= steps.length) return finish()
-    index = i
+    // Dropping the skipped steps keeps the "n of N" counter honest.
+    const target = steps[i]
+    if (skipped.length) steps = steps.filter((s) => !skipped.includes(s))
+    index = steps.indexOf(target)
     await place()
   }
 

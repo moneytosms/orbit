@@ -565,6 +565,8 @@ pub enum Op {
         )]
         goal_id: Option<Option<Uuid>>,
         #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
         color: Option<String>,
         #[serde(default)]
         icon: Option<String>,
@@ -1306,12 +1308,14 @@ impl Op {
             Op::PageEditBody { .. } => vec!["body", "rev", "links", "blobs"],
             Op::ProjectUpdate {
                 goal_id,
+                name,
                 color,
                 icon,
                 cover,
                 ..
             } => [
                 ("goal_id", goal_id.is_some()),
+                ("name", name.is_some()),
                 ("color", color.is_some()),
                 ("icon", icon.is_some()),
                 ("cover", cover.is_some()),
@@ -2003,15 +2007,22 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
         },
         Op::ProjectUpdate {
             goal_id,
+            name,
             color,
             icon,
             cover,
             ..
         } => match existing {
             Some(Row::Project(p)) => {
+                let name = match name.as_deref().map(str::trim) {
+                    Some("") => return Err(ErrorCode::TitleRequired),
+                    Some(n) => n.to_string(),
+                    None => p.name.clone(),
+                };
                 let (color, icon, cover) =
                     restyle(color, icon, cover, &p.color, &p.icon, &p.cover)?;
                 Ok(Row::Project(Project {
+                    name,
                     goal_id: goal_id.unwrap_or(p.goal_id),
                     color,
                     icon,
@@ -4045,5 +4056,32 @@ mod tests {
         assert!(matches!(&row, Row::Area(a) if a.name == "Work"));
         assert!(apply(Some(row), &upd(" ", 3000)).is_err());
         assert!(apply(None, &upd("X", 3000)).is_err());
+    }
+
+    #[test]
+    fn project_update_renames_and_rejects_blank() {
+        let mut clocks = Clocks::new();
+        let row = apply_lww(
+            None,
+            &mut clocks,
+            &cmd(
+                "01900000-0000-7000-8000-0000000000d1",
+                "project.create",
+                serde_json::json!({ "id": uid(2), "parent_id": uid(1), "name": "Spring", "order": "a" }),
+                1000,
+            ),
+        )
+        .unwrap();
+        let upd = |name: &str, wall| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000d2",
+                "project.update",
+                serde_json::json!({ "id": uid(2), "name": name }),
+                wall,
+            )
+        };
+        let row = apply_lww(Some(row), &mut clocks, &upd(" Autumn ", 2000)).unwrap();
+        assert!(matches!(&row, Row::Project(p) if p.name == "Autumn"));
+        assert!(apply(Some(row), &upd(" ", 3000)).is_err());
     }
 }

@@ -12,6 +12,7 @@ import {
   pageKinds,
   reflow,
   doneShare,
+  compact,
   move,
   phoneOrder,
   place,
@@ -247,4 +248,13 @@ test('default layouts are unchanged', () => {
     'roadmaps',
   ])
   expect(ids(defaultPageLayout('project'))).toEqual(['stats', 'tasks', 'next', 'routines', 'pages', 'roadmaps'])
+})
+
+describe('gravity', () => {
+  test('dragging the top tile down lets the others rise into its gap', () => {
+    const next = setRect([w('a', 0, 0, 12, 2), w('b', 0, 2, 6, 2)], 'a', { x: 0, y: 6, w: 12, h: 2 })
+    expect(next.find((t) => t.id === 'b')!.y).toBe(0)
+    expect(next.find((t) => t.id === 'a')!.y).toBe(6)
+    expect(compact(next).find((t) => t.id === 'a')!.y).toBe(2)
+  })
 })
