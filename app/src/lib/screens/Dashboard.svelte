@@ -195,7 +195,7 @@
       {/if}
     </div>
     {#if w.kind !== 'glance'}
-      <a href={href(w)} class="mt-2 self-start text-xs text-muted hover:text-text">Open →</a>
+      <a href={href(w)} class="tap-44 mt-2 self-start text-xs text-muted hover:text-text">Open →</a>
     {/if}
   {/snippet}
 </LayoutGrid>

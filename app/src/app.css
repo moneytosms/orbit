@@ -208,6 +208,22 @@
     0 0 0 4px var(--accent);
 }
 
+/* Touch: a small control gets a 44px hit area (a ::before, so its box and the layout stay put). Desktop is untouched. */
+@media (pointer: coarse) {
+  .tap-44 {
+    position: relative;
+  }
+  .tap-44::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* Density is per Device; theme.ts sets it on <html>. Shrinks list rows. */
 [data-density='compact'] li.min-h-\[42px\] {
   min-height: 34px;

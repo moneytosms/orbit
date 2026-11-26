@@ -77,7 +77,7 @@
           aria-label="Check in {e.routine.name}"
           aria-pressed={e.today === 'done'}
           onclick={() => tick(e)}
-          class="grid size-10 shrink-0 place-items-center rounded-full border text-sm {e.today === 'done'
+          class="tap-44 grid size-10 shrink-0 place-items-center rounded-full border text-sm {e.today === 'done'
             ? 'border-accent bg-accent text-white'
             : e.today === 'skipped'
               ? 'border-line-strong text-muted'

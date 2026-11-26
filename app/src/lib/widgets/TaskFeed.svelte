@@ -91,7 +91,7 @@
             type="button"
             aria-label="Complete {t.title}"
             onclick={() => done(t)}
-            class="grid size-[1.125rem] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
+            class="tap-44 grid size-[1.125rem] shrink-0 place-items-center rounded-full border-[1.5px] border-line-strong text-transparent hover:border-ok hover:text-ok"
             ><Check size={12} strokeWidth={3} /></button
           >
         {/if}
