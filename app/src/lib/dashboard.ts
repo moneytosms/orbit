@@ -121,6 +121,46 @@ export function resize(widgets: Widget[], id: string, w: number, h: number, cols
   return settle(widgets, { ...t, w: nw, h: Math.max(1, Math.round(h)) })
 }
 
+/** Smallest a tile may be dragged to, in cells. */
+export const MIN_W = 2
+export const MIN_H = 1
+
+/**
+ * Puts widget `id` at `rect` (a move, a resize from any edge or corner, or both), clamped to the grid and to the
+ * minimum size; whatever it lands on moves down. A tablet's narrower grid passes its own `cols`.
+ */
+export function setRect(widgets: Widget[], id: string, rect: Rect, cols = COLS): Widget[] {
+  const t = widgets.find((o) => o.id === id)
+  if (!t) return widgets
+  const minW = Math.min(MIN_W, cols)
+  const w = clamp(Math.round(rect.w), minW, cols)
+  const h = Math.max(MIN_H, Math.round(rect.h))
+  const x = clamp(Math.round(rect.x), 0, cols - w)
+  const y = Math.max(0, Math.round(rect.y))
+  return settle(widgets, { ...t, x, y, w, h })
+}
+
+/**
+ * The rectangle a drag from `handle` (any of n, s, e, w, ne, nw, se, sw) gives a tile that started as `base`,
+ * after the pointer moved `dx` cells across and `dy` cells down. The edge opposite the handle stays put.
+ */
+export function dragRect(base: Rect, handle: string, dx: number, dy: number, cols = COLS): Rect {
+  const minW = Math.min(MIN_W, cols)
+  let { x, y, w, h } = base
+  if (handle.includes('e')) w = base.w + dx
+  if (handle.includes('s')) h = base.h + dy
+  if (handle.includes('w')) {
+    x = clamp(base.x + dx, 0, base.x + base.w - minW)
+    w = base.w + (base.x - x)
+  }
+  if (handle.includes('n')) {
+    y = clamp(base.y + dy, 0, base.y + base.h - MIN_H)
+    h = base.h + (base.y - y)
+  }
+  w = clamp(w, minW, cols - x)
+  return { x, y, w, h: Math.max(MIN_H, h) }
+}
+
 /** Where a widget goes when added or shown again: the first free row at the bottom, full size. */
 export function place(widgets: Widget[], widget: Widget): Widget[] {
   const bottom = Math.max(0, ...widgets.filter((w) => !w.hidden && w.id !== widget.id).map((w) => w.y + w.h))

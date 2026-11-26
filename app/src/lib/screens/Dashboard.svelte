@@ -80,7 +80,15 @@
     save()
   }
   function addView(view_id: string) {
-    layout = place(layout, { id: crypto.randomUUID(), kind: 'view', view_id, x: 0, y: 0, w: 6, h: 3, hidden: false })
+    const existing = layout.find((w) => w.kind === 'view' && w.view_id === view_id)
+    layout = place(
+      layout,
+      existing ?? { id: crypto.randomUUID(), kind: 'view', view_id, x: 0, y: 0, w: 6, h: 3, hidden: false },
+    )
+    save()
+  }
+  function hideTile(id: string) {
+    layout = layout.map((w) => (w.id === id ? { ...w, hidden: true } : w))
     save()
   }
   function show(w: Widget) {
@@ -104,14 +112,11 @@
 {#if editing}
   <LayoutBar
     kinds={KINDS}
-    hidden={hidden.map((w) => ({ id: w.id, title: title(w) }))}
+    widgets={layout}
     views={viewChoices}
     onadd={addKind}
     onaddview={addView}
-    onshow={(id) => {
-      const w = layout.find((o) => o.id === id)
-      if (w) show(w)
-    }}
+    onhide={hideTile}
     onreset={reset}
     ondone={() => (editing = false)}
   />

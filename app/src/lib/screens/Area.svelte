@@ -162,12 +162,9 @@
     {#if editing}
       <LayoutBar
         kinds={offered}
-        hidden={hidden.map((w) => ({ id: w.id, title: pageTitleOf(w.kind) }))}
+        widgets={layout}
         onadd={addKind}
-        onshow={(wid) => {
-          const w = layout.find((o) => o.id === wid)
-          if (w) save(place(layout, w))
-        }}
+        onhide={(wid) => save(layout.map((w) => (w.id === wid ? { ...w, hidden: true } : w)))}
         onreset={reset}
         ondone={() => (editing = false)}
       />

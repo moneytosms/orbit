@@ -1,8 +1,9 @@
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import {
   colsFor,
   defaultLayout,
   defaultPageLayout,
+  dragRect,
   expand,
   fits,
   pageKinds,
@@ -12,6 +13,7 @@ import {
   phoneOrder,
   place,
   resize,
+  setRect,
   taskIsUpcoming,
   withCalendar,
   type Widget,
@@ -179,4 +181,33 @@ test('page layouts: each kind has a default without overlaps, only with tiles it
   }
   expect(defaultPageLayout('area').map((x) => x.kind)).toContain('goals')
   expect(defaultPageLayout('project').map((x) => x.kind)).not.toContain('goals')
+})
+
+describe('dragRect and setRect', () => {
+  const base = { x: 4, y: 2, w: 4, h: 3 }
+  test('the east and south handles grow the tile and keep its corner', () => {
+    expect(dragRect(base, 'e', 2, 0)).toEqual({ x: 4, y: 2, w: 6, h: 3 })
+    expect(dragRect(base, 'se', 1, 2)).toEqual({ x: 4, y: 2, w: 5, h: 5 })
+  })
+  test('the west and north handles move the near edge and keep the far one', () => {
+    expect(dragRect(base, 'w', -2, 0)).toEqual({ x: 2, y: 2, w: 6, h: 3 })
+    expect(dragRect(base, 'nw', -1, -1)).toEqual({ x: 3, y: 1, w: 5, h: 4 })
+  })
+  test('a handle never shrinks past the minimum or off the grid', () => {
+    expect(dragRect(base, 'e', -9, 0).w).toBe(2)
+    expect(dragRect(base, 'w', 9, 0)).toEqual({ x: 6, y: 2, w: 2, h: 3 })
+    expect(dragRect(base, 'n', 0, 9)).toEqual({ x: 4, y: 4, w: 4, h: 1 })
+    expect(dragRect(base, 'w', -9, 0)).toEqual({ x: 0, y: 2, w: 8, h: 3 })
+    expect(dragRect(base, 'e', 9, 0).w).toBe(8)
+  })
+  test('setRect clamps and pushes the tiles it lands on down', () => {
+    const list: Widget[] = [
+      { id: 'a', kind: 'next', x: 0, y: 0, w: 6, h: 2, hidden: false },
+      { id: 'b', kind: 'goals', x: 6, y: 0, w: 6, h: 2, hidden: false },
+    ]
+    const out = setRect(list, 'a', { x: 5, y: 0, w: 9, h: 2 })
+    const a = out.find((w) => w.id === 'a')!
+    expect(a.x + a.w).toBeLessThanOrEqual(12)
+    expect(out.find((w) => w.id === 'b')!.y).toBeGreaterThanOrEqual(2)
+  })
 })

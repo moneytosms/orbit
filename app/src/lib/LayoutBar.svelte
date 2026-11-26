@@ -1,34 +1,34 @@
 <script lang="ts">
-  import { Select } from '$lib/components/ui/select'
-  import Plus from '@lucide/svelte/icons/plus'
+  import LayoutGrid from '@lucide/svelte/icons/layout-grid'
   import { Button } from '$lib/components/ui/button'
-  import { colsFor } from '$lib/dashboard'
+  import WidgetGallery from '$lib/WidgetGallery.svelte'
+  import { colsFor, type Widget } from '$lib/dashboard'
 
   let {
     kinds,
-    hidden = [],
+    widgets,
     views,
     onadd,
     onaddview,
-    onshow,
+    onhide,
     onreset,
     ondone,
   }: {
-    /** Tile kinds the page offers in the Add widget menu. */
+    /** Tile kinds the page offers in the gallery. */
     kinds: { kind: string; title: string }[]
-    /** Tiles taken off the page, to put back. */
-    hidden?: { id: string; title: string }[]
+    /** The saved layout, hidden tiles included. */
+    widgets: Widget[]
     /** Saved Views to add as tiles (Home only). */
     views?: { id: string; name: string }[]
     onadd: (kind: string) => void
     onaddview?: (viewId: string) => void
-    onshow: (id: string) => void
+    onhide: (id: string) => void
     onreset: () => void
     ondone: () => void
   } = $props()
 
   let width = $state(1280)
-  let adding = $state(false)
+  let gallery = $state(false)
   const phone = $derived(colsFor(width) < 4)
 </script>
 
@@ -42,55 +42,15 @@
   {#if phone}
     <p class="min-w-0 flex-1 text-sm text-muted">Edit layouts on a larger screen</p>
   {:else}
-    <p class="min-w-0 flex-1 text-sm text-muted">Drag to move, pull the corner to resize. Tiles snap to the grid.</p>
-    <div class="relative">
-      <Button variant="default" size="sm" aria-expanded={adding} aria-haspopup="menu" onclick={() => (adding = !adding)}
-        ><Plus size={15} /> Add widget</Button
-      >
-      {#if adding}
-        <div class="panel absolute right-0 z-20 mt-1 grid w-60 gap-0.5 p-2" role="menu" aria-label="Add widget">
-          {#each kinds as k (k.kind)}
-            <button
-              type="button"
-              role="menuitem"
-              class="rounded-md px-2 py-1.5 text-left hover:bg-hover"
-              onclick={() => {
-                adding = false
-                onadd(k.kind)
-              }}>{k.title}</button
-            >
-          {/each}
-          {#if views && onaddview}
-            <label class="mt-1 grid gap-1 px-2 text-sm text-muted">
-              View…
-              <Select
-                aria-label="Add a View widget"
-                value=""
-                segmented={false}
-                placeholder="Pick a View"
-                onchange={(id) => {
-                  if (!id) return
-                  adding = false
-                  onaddview(id)
-                }}
-                options={[{ value: '', label: 'Pick a View' }, ...views.map((v) => ({ value: v.id, label: v.name }))]}
-              />
-            </label>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    <p class="min-w-0 flex-1 text-sm text-muted">
+      Drag a tile to move it, pull its edges or corners to resize. Everything snaps to the grid.
+    </p>
+    <Button variant="default" size="sm" aria-haspopup="dialog" onclick={() => (gallery = true)}
+      ><LayoutGrid size={15} /> Widgets</Button
+    >
     <Button variant="default" size="sm" onclick={onreset}>Reset</Button>
   {/if}
   <Button variant="primary" size="sm" onclick={ondone}>Done</Button>
-  {#if hidden.length && !phone}
-    <ul class="flex w-full flex-wrap items-center gap-2" aria-label="Hidden widgets">
-      <li class="text-xs text-muted">Hidden</li>
-      {#each hidden as h (h.id)}
-        <li>
-          <Button variant="default" size="sm" onclick={() => onshow(h.id)}><Plus size={14} /> {h.title}</Button>
-        </li>
-      {/each}
-    </ul>
-  {/if}
 </div>
+
+<WidgetGallery bind:open={gallery} {kinds} {widgets} {views} {onadd} {onaddview} {onhide} />

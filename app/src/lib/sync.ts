@@ -1742,7 +1742,9 @@ export async function getDashboard(): Promise<DashboardWidget[]> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
   return row?.dashboard ?? defaultLayout()
 }
-export const setDashboard = (dashboard: DashboardWidget[]) => enqueue('settings.update', { dashboard })
+// Layouts come from reactive state, whose proxies cannot be stored: save plain copies.
+const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v))
+export const setDashboard = (dashboard: DashboardWidget[]) => enqueue('settings.update', { dashboard: plain(dashboard) })
 
 /** One Area's or Project's page layout; that page's default while it has none saved. */
 export async function getPageLayout(id: string, kind: PageKind): Promise<DashboardWidget[]> {
@@ -1753,7 +1755,7 @@ export async function getPageLayout(id: string, kind: PageKind): Promise<Dashboa
 export async function setPageLayout(id: string, layout: DashboardWidget[] | null): Promise<void> {
   const row = await tx(['rows'], (s) => req<Settings | undefined>(s('rows').get(SETTINGS)))
   const page_layouts = { ...row?.page_layouts }
-  if (layout) page_layouts[id] = layout
+  if (layout) page_layouts[id] = plain(layout)
   else delete page_layouts[id]
   await enqueue('settings.update', { page_layouts })
 }
