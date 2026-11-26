@@ -97,6 +97,7 @@
         out.unshift({ label: area.area.name, href: `#/area/${area.area.id}` })
         break
       }
+      if (!id) break
       const page = await getPage(id)
       if (!page) break
       out.unshift({ label: page.title || 'Untitled', href: `#/page/${page.id}` })

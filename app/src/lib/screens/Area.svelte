@@ -96,11 +96,13 @@
   let layout = $state<Widget[]>(defaultPageLayout('area'))
   let editing = $state(false)
   let summaries = $state<Record<string, string>>({})
+  // A re-read that lands while one of our own saves is still being written would put the old layout back.
+  let saving = 0
   $effect(() => {
     void version
     const pid = id
     getPageLayout(pid, kind).then((w) => {
-      if (pid === id) layout = w as Widget[]
+      if (pid === id && saving === 0) layout = w as Widget[]
     })
   })
   $effect(() => {
@@ -108,9 +110,13 @@
     editing = false
   })
 
+  const write = (next: Widget[] | null) => {
+    saving++
+    void setPageLayout(id, next).finally(() => saving--)
+  }
   const save = (next: Widget[]) => {
     layout = next
-    void setPageLayout(id, next)
+    write(next)
   }
   const offered = $derived(pageKinds(kind))
   const hidden = $derived(layout.filter((w) => w.hidden && offered.some((k) => k.kind === w.kind)))
@@ -121,7 +127,7 @@
   }
   function reset() {
     layout = defaultPageLayout(kind)
-    void setPageLayout(id, null)
+    write(null)
   }
   function startEditing() {
     setTab('overview')

@@ -43,13 +43,13 @@
 <Sheet.Root bind:open>
   <Sheet.Content
     side={wide ? 'right' : 'bottom'}
-    class="w-full max-w-md gap-0 overflow-y-auto p-0 {wide ? '' : 'max-h-[85vh] max-w-none rounded-t-2xl'}"
+    class="gap-0 overflow-y-auto p-0 {wide ? 'w-[min(26rem,100vw)] sm:max-w-none' : 'max-h-[85vh] rounded-t-2xl'}"
   >
     <div class="border-b border-line px-5 py-4">
       <Sheet.Title class="text-base font-semibold">Widgets</Sheet.Title>
       <p class="mt-0.5 text-sm text-muted">Switch on what you want on this page. Drag to arrange them.</p>
     </div>
-    <ul class="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2" aria-label="Widgets">
+    <ul class="grid grid-cols-1 gap-2 p-4" aria-label="Widgets">
       {#each kinds as k (k.kind)}
         {@const w = tileOf(k.kind)}
         {@const on = isOn(w)}
@@ -88,7 +88,7 @@
 
     {#if views.length && onaddview}
       <h3 class="px-5 pt-1 pb-2 text-[0.7812rem] font-medium tracking-wide text-muted uppercase">Saved views</h3>
-      <ul class="grid grid-cols-1 gap-2 px-4 pb-5 sm:grid-cols-2" aria-label="Saved views">
+      <ul class="grid grid-cols-1 gap-2 px-4 pb-5" aria-label="Saved views">
         {#each views as v (v.id)}
           {@const w = viewTile(v.id)}
           {@const on = isOn(w)}

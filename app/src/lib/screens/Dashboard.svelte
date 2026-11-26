@@ -31,7 +31,9 @@
 
   $effect(() => {
     void version
-    getDashboard().then((w) => (layout = withCalendar(w as Widget[])))
+    getDashboard().then((w) => {
+      if (saving === 0) layout = withCalendar(w as Widget[])
+    })
   })
   // Open Tasks for the overdue banner; reloaded with the rest of the Home screen.
   const loadTasks = () =>
@@ -75,7 +77,12 @@
     })
   })
 
-  const save = () => setDashboard(layout)
+  // A re-read that lands while one of our own saves is still being written would put the old layout back.
+  let saving = 0
+  const save = () => {
+    saving++
+    void setDashboard(layout).finally(() => saving--)
+  }
 
   function addKind(kind: string) {
     const k = KINDS.find((k) => k.kind === kind)!
