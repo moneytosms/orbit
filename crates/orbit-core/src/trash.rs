@@ -257,6 +257,7 @@ mod tests {
             color: String::new(),
             id: uid(1),
             name: "x".into(),
+            deleted: false,
         });
         assert_eq!(apply(Some(label), &del), Err(ErrorCode::BadField));
     }

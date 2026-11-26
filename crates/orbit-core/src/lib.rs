@@ -257,6 +257,9 @@ pub struct Label {
     /// `#rrggbb`, or empty for none.
     #[serde(default)]
     pub color: String,
+    /// Set by `label.delete`. A deleted Label stays as a row (so every device agrees) but is no longer offered.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -708,6 +711,12 @@ pub enum Op {
         #[serde(default)]
         color: String,
     },
+    /// Renames a Label; every Task that carries it follows, because Tasks hold the id.
+    #[serde(rename = "label.rename")]
+    LabelRename { id: Uuid, name: String },
+    /// Retires a Label. Tasks still holding its id simply stop showing it.
+    #[serde(rename = "label.delete")]
+    LabelDelete { id: Uuid },
     /// Creates the Settings row if missing; only the fields present change.
     #[serde(rename = "settings.update")]
     SettingsUpdate {
@@ -1144,6 +1153,8 @@ impl Op {
             | Op::CheckinSet { id, .. }
             | Op::CheckinClear { id }
             | Op::LabelCreate { id, .. }
+            | Op::LabelRename { id, .. }
+            | Op::LabelDelete { id }
             | Op::ItemPin { id, .. }
             | Op::ItemNotToday { id, .. }
             | Op::RoadmapCreate { id, .. }
@@ -1231,6 +1242,8 @@ impl Op {
             | Op::RoadmapEdgeCreate { .. }
             | Op::LabelCreate { .. }
             | Op::AwardGrant { .. } => vec![],
+            Op::LabelRename { .. } => vec!["name"],
+            Op::LabelDelete { .. } => vec!["deleted"],
             Op::ViewDelete { .. } => vec!["trashed_at"],
             Op::ViewReset { .. } => vec![
                 "name",
@@ -2282,9 +2295,28 @@ pub fn apply(existing: Option<Row>, cmd: &Command) -> Result<Row, ErrorCode> {
                     id: *id,
                     name: name.into(),
                     color: color.clone(),
+                    deleted: false,
                 }))
             }
         }
+        Op::LabelRename { name, .. } => match existing {
+            Some(Row::Label(l)) if !l.deleted => {
+                let name = name.trim();
+                if name.is_empty() {
+                    Err(ErrorCode::TitleRequired)
+                } else {
+                    Ok(Row::Label(Label {
+                        name: name.into(),
+                        ..l
+                    }))
+                }
+            }
+            _ => Err(ErrorCode::NotFound),
+        },
+        Op::LabelDelete { .. } => match existing {
+            Some(Row::Label(l)) => Ok(Row::Label(Label { deleted: true, ..l })),
+            _ => Err(ErrorCode::NotFound),
+        },
         Op::ItemPin { date, .. } | Op::ItemNotToday { date, .. } => {
             if date.as_deref().is_some_and(|d| !is_date(d)) {
                 return Err(ErrorCode::BadField);
@@ -3678,12 +3710,55 @@ mod tests {
             Row::Label(Label {
                 color: String::new(),
                 id: uid(8),
-                name: "errand".into()
+                name: "errand".into(),
+                deleted: false,
             })
         );
         assert_eq!(check_parent(&row, None), Ok(()));
         assert_eq!(apply(None, &create(" ")), Err(ErrorCode::TitleRequired));
         assert_eq!(apply(Some(row), &create("x")), Err(ErrorCode::Exists));
+    }
+
+    #[test]
+    fn label_rename_and_delete() {
+        let make = |name: &str| {
+            apply(
+                None,
+                &cmd(
+                    "01900000-0000-7000-8000-0000000000e1",
+                    "label.create",
+                    serde_json::json!({ "id": uid(8), "name": name }),
+                    1000,
+                ),
+            )
+            .unwrap()
+        };
+        let rename = |name: &str| {
+            cmd(
+                "01900000-0000-7000-8000-0000000000e3",
+                "label.rename",
+                serde_json::json!({ "id": uid(8), "name": name }),
+                2000,
+            )
+        };
+        let delete = cmd(
+            "01900000-0000-7000-8000-0000000000e4",
+            "label.delete",
+            serde_json::json!({ "id": uid(8) }),
+            3000,
+        );
+        let renamed = apply(Some(make("erand")), &rename("  errand ")).unwrap();
+        assert!(matches!(&renamed, Row::Label(l) if l.name == "errand" && !l.deleted));
+        assert_eq!(
+            apply(Some(renamed.clone()), &rename(" ")),
+            Err(ErrorCode::TitleRequired)
+        );
+        assert_eq!(apply(None, &rename("x")), Err(ErrorCode::NotFound));
+        let gone = apply(Some(renamed), &delete).unwrap();
+        assert!(matches!(&gone, Row::Label(l) if l.deleted && l.name == "errand"));
+        // Deleting twice is harmless; a deleted Label cannot be renamed.
+        assert_eq!(apply(Some(gone.clone()), &delete), Ok(gone.clone()));
+        assert_eq!(apply(Some(gone), &rename("y")), Err(ErrorCode::NotFound));
     }
 
     #[test]
