@@ -4,13 +4,17 @@
   import * as Dialog from '$lib/components/ui/dialog'
   import { Button } from '$lib/components/ui/button'
   import { favorites, toggleFavorite } from '$lib/favorites'
+  import { findRow, foldAway } from '$lib/foldAway'
+  import { pushRestore } from '$lib/undo'
   import {
     archiveItem,
     deleteItem,
     deleteSection,
     renamePage,
     renameRoadmap,
+    restoreItem,
     rowsSnapshot,
+    unarchiveItem,
     updateArea,
     updateGoal,
     updateProject,
@@ -90,17 +94,33 @@
 
   async function remove() {
     const navigate = await routeIsAffected()
+    await foldAway(findRow(id))
     if (kind === 'section') await deleteSection(id)
     else await deleteItem(id)
     open = false
     onchange()
+    pushRestore({
+      text: `"${name}" moved to Trash`,
+      restore: async () => {
+        await restoreItem(id)
+        onchange()
+      },
+    })
     if (navigate) location.hash = fallbackHref
   }
 
   async function archive() {
     const navigate = await routeIsAffected()
+    await foldAway(findRow(id))
     await archiveItem(id)
     onchange()
+    pushRestore({
+      text: `"${name}" archived`,
+      restore: async () => {
+        await unarchiveItem(id)
+        onchange()
+      },
+    })
     if (navigate) location.hash = fallbackHref
   }
 </script>
