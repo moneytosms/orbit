@@ -9,7 +9,7 @@ axum = "0.8.9"
 fs4 = "0.6.6"
 getrandom = "0.4.3"
 hex = "0.4.3"
-orbit-core = { version = "0.8.0", path = "../orbit-core" }
+orbit-core = { version = "0.9.0", path = "../orbit-core" }
 reqwest = { version = "0.13.5", features = ["json", "query"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
