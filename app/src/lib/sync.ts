@@ -1744,7 +1744,8 @@ export async function getDashboard(): Promise<DashboardWidget[]> {
 }
 // Layouts come from reactive state, whose proxies cannot be stored: save plain copies.
 const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v))
-export const setDashboard = (dashboard: DashboardWidget[]) => enqueue('settings.update', { dashboard: plain(dashboard) })
+export const setDashboard = (dashboard: DashboardWidget[]) =>
+  enqueue('settings.update', { dashboard: plain(dashboard) })
 
 /** One Area's or Project's page layout; that page's default while it has none saved. */
 export async function getPageLayout(id: string, kind: PageKind): Promise<DashboardWidget[]> {

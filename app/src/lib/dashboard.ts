@@ -22,6 +22,12 @@ export const KINDS: { kind: string; title: string; w: number; h: number }[] = [
   { kind: 'goals', title: 'Goal progress', w: 6, h: 3 },
   { kind: 'streaks', title: 'Routine streaks', w: 6, h: 2 },
   { kind: 'calendar', title: 'Calendar', w: 6, h: 2 },
+  { kind: 'today', title: 'Due today', w: 6, h: 3 },
+  { kind: 'overdue', title: 'Overdue', w: 6, h: 3 },
+  { kind: 'done', title: 'Recently done', w: 6, h: 3 },
+  { kind: 'progress', title: 'Progress', w: 4, h: 2 },
+  { kind: 'quickadd', title: 'Quick add', w: 6, h: 1 },
+  { kind: 'labels', title: 'Labels', w: 6, h: 2 },
 ]
 export const titleOf = (kind: string) => KINDS.find((k) => k.kind === kind)?.title ?? 'View'
 
@@ -37,6 +43,12 @@ export const PAGE_KINDS: { kind: string; title: string; w: number; h: number; on
   { kind: 'pages', title: 'Pages', w: 6, h: 2, on: ['area', 'project'] },
   { kind: 'projects', title: 'Projects', w: 6, h: 2, on: ['area'] },
   { kind: 'roadmaps', title: 'Roadmaps', w: 6, h: 2, on: ['area', 'project'] },
+  { kind: 'today', title: 'Due today', w: 6, h: 3, on: ['area', 'project'] },
+  { kind: 'overdue', title: 'Overdue', w: 6, h: 3, on: ['area', 'project'] },
+  { kind: 'done', title: 'Recently done', w: 6, h: 3, on: ['area', 'project'] },
+  { kind: 'progress', title: 'Progress', w: 4, h: 2, on: ['area', 'project'] },
+  { kind: 'quickadd', title: 'Quick add', w: 6, h: 1, on: ['area', 'project'] },
+  { kind: 'labels', title: 'Labels', w: 6, h: 2, on: ['area', 'project'] },
 ]
 export const pageKinds = (page: PageKind) => PAGE_KINDS.filter((k) => k.on.includes(page))
 export const pageTitleOf = (kind: string) => PAGE_KINDS.find((k) => k.kind === kind)?.title ?? kind
