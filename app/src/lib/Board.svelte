@@ -61,7 +61,10 @@
       case 'label':
         return row.kind === 'task'
           ? row.label_ids
-              .map((l) => cx.labels.get(l)?.name)
+              .map((l) => {
+                const name = cx.labels.get(l)?.name
+                return name ? `#${name}` : ''
+              })
               .filter(Boolean)
               .join(', ')
           : ''

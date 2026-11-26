@@ -403,7 +403,7 @@
                 onclick={() => toggleLabel(l.id)}
                 class="rounded-full border border-line px-2.5 py-1 text-xs aria-pressed:border-accent-line aria-pressed:bg-accent-soft"
               >
-                {l.name}
+                #{l.name}
               </button>
             {:else}
               <p class="text-sm text-muted">No labels yet.</p>

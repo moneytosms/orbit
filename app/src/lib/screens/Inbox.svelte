@@ -308,7 +308,7 @@
       {/if}
       {#each task.label_ids as id (id)}
         {#if names.has(id)}
-          <span class="rounded-full border border-line px-2 py-px text-xs text-muted">{names.get(id)}</span>
+          <span class="rounded-full border border-line px-2 py-px text-xs text-muted">#{names.get(id)}</span>
         {/if}
       {/each}
     </button>
