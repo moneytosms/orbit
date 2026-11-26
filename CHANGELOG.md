@@ -6,7 +6,11 @@
 
 - Labels can be renamed and deleted from Settings, with a count of the tasks that use each (new `label.rename` and `label.delete` operations)
 - Area and Project pages have a proper header with Overview, List, Board and Table tabs and a ⋯ menu (favourite, rename, archive, delete, layout)
-- Home, Areas and Projects share one layout editor behind the ⋯ menu: a bar above the grid, snap to a 12-column grid with a drop preview, corner resize, arrow keys, and a layout that reflows on tablet and phone
+- Home, Areas and Projects share one layout editor behind the ⋯ menu: a bar above the grid, drag a tile from anywhere, resize it from any of eight handles with a live size readout, tiles make room as you drag and close gaps when you let go, arrow keys, and a layout that reflows on tablet and phone (phones choose widgets; arranging needs a larger screen)
+- A widget gallery, like a phone's control centre: a card with an icon, a line of description and a switch for every widget; on Home your saved views are cards too
+- Six new widgets for Home, Areas and Projects: Due today, Overdue, Recently done, Progress, Quick add and Labels
+- A label chip opens a view of that label's tasks; custom views can have an emoji icon
+- Settings > About has icon links to the author's site, GitHub, the repository, Buy Me a Coffee and Ko-fi
 - Upcoming is a week strip with a day agenda, an overdue banner and a Later list
 - Your profile sits at the bottom of the sidebar; the arrow beside it opens Settings and Archive & Trash. Those two also appear on the Profile page
 - Trash is now Archive & Trash, with Archive first
@@ -23,6 +27,12 @@
 
 ### Fixes
 
+- Renaming a project did nothing: `project.update` had no `name` field (it has one now)
+- Area pages logged an endless effect loop on open
+- Quick add added the same task twice on a fast double submit
+- The tour counter skipped a number when a step had nothing to point at
+- Saving a layout failed in the browser database, and rapid widget toggles could lose a tile
+- Reloading straight onto a project page threw in the breadcrumb
 - The "Orbit update available" notice had no background and an unstyled button
 - Selected sidebar rows no longer paint a second highlight
 

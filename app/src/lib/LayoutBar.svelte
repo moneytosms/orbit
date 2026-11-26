@@ -40,16 +40,16 @@
   class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-sunk px-3 py-2"
 >
   {#if phone}
-    <p class="min-w-0 flex-1 text-sm text-muted">Edit layouts on a larger screen</p>
+    <p class="min-w-0 flex-1 text-sm text-muted">Choose what shows on this page. Arrange tiles on a larger screen.</p>
   {:else}
     <p class="min-w-0 flex-1 text-sm text-muted">
       Drag a tile to move it, pull its edges or corners to resize. Everything snaps to the grid.
     </p>
-    <Button variant="default" size="sm" aria-haspopup="dialog" onclick={() => (gallery = true)}
-      ><LayoutGrid size={15} /> Widgets</Button
-    >
-    <Button variant="default" size="sm" onclick={onreset}>Reset</Button>
   {/if}
+  <Button variant="default" size="sm" aria-haspopup="dialog" onclick={() => (gallery = true)}
+    ><LayoutGrid size={15} /> Widgets</Button
+  >
+  <Button variant="default" size="sm" onclick={onreset}>Reset</Button>
   <Button variant="primary" size="sm" onclick={ondone}>Done</Button>
 </div>
 
