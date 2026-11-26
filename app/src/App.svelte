@@ -274,7 +274,7 @@
       <span>{toast.text}</span>
       {#if toast.undo}
         <button
-          class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
+          class="tap-44 ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
           onclick={async () => {
             const undo = toast?.undo
             if (!undo) return
@@ -284,7 +284,7 @@
         >
       {:else if toast.restore}
         <button
-          class="ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
+          class="tap-44 ml-3 rounded px-1.5 py-0.5 font-semibold underline underline-offset-2"
           onclick={async () => {
             const restore = toast?.restore
             if (!restore) return
