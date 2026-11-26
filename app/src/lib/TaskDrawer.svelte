@@ -15,6 +15,7 @@
     labels as listLabels,
     pageOwner,
     removeReminder,
+    restoreItem,
     updateTask,
     type Goal,
     type Label as TaskLabel,
@@ -25,6 +26,8 @@
   import { POSTPONE, type Postpone } from '$lib/overdue'
   import { postponeTask } from '$lib/postpone'
   import { SNOOZE_LABELS, SNOOZE_PRESETS, snoozeTaskPreset } from '$lib/notify'
+  import { findRow, foldAway } from '$lib/foldAway'
+  import { pushRestore } from '$lib/undo'
   let { taskId, onclose }: { taskId: string | null; onclose: () => void } = $props()
 
   let open = $state(false)
@@ -152,9 +155,16 @@
   }
   async function remove() {
     if (!taskId) return
-    await deleteItem(taskId)
+    const id = taskId
+    const name = task?.title ?? 'Task'
+    await foldAway(findRow(id))
+    await deleteItem(id)
     open = false
     onclose()
+    pushRestore({
+      text: `"${name}" moved to Trash`,
+      restore: () => restoreItem(id),
+    })
   }
 </script>
 

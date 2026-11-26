@@ -3,6 +3,8 @@
   import Repeat from '@lucide/svelte/icons/repeat'
   import { Button } from '$lib/components/ui/button'
   import RoutineSheet from '$lib/RoutineSheet.svelte'
+  import { findRow, foldAway } from '$lib/foldAway'
+  import { pushRestore } from '$lib/undo'
   import {
     archiveItem,
     archivedRoutines,
@@ -91,8 +93,16 @@
     sheetOpen = true
   }
   async function archive(r: Routine) {
+    await foldAway(findRow(r.id))
     await archiveItem(r.id)
     await load()
+    pushRestore({
+      text: `"${r.name}" archived`,
+      restore: async () => {
+        await unarchiveItem(r.id)
+        await load()
+      },
+    })
   }
   async function unarchive(r: Routine) {
     await unarchiveItem(r.id)
@@ -112,7 +122,7 @@
 
 <div class="flex flex-col gap-3">
   {#each entries as e (e.routine.id)}
-    <article class="panel" aria-label={e.routine.name}>
+    <article class="panel" aria-label={e.routine.name} data-row-id={e.routine.id}>
       <div class="flex items-center gap-3">
         <button
           type="button"
