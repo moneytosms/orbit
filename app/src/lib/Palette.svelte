@@ -20,10 +20,18 @@
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import { knownJson, quickAddPrefs } from '$lib/captureKnown'
   import { deadlineLabel, dueLabel, durationLabel } from '$lib/captureEdit'
+  import SearchIcon from '@lucide/svelte/icons/search'
+  import SquareCheck from '@lucide/svelte/icons/square-check'
+  import FolderIcon from '@lucide/svelte/icons/folder'
+  import TargetIcon from '@lucide/svelte/icons/target'
+  import FileText from '@lucide/svelte/icons/file-text'
+  import ZapIcon from '@lucide/svelte/icons/zap'
+  import PlusIcon from '@lucide/svelte/icons/plus'
 
   let { open = $bindable(false), parentId }: { open: boolean; parentId: string } = $props()
 
-  type Item = { key: string; label: string; hint: string; run: () => Promise<void> | void }
+  type IconC = typeof SearchIcon
+  type Item = { key: string; label: string; hint: string; icon?: IconC; run: () => Promise<void> | void }
   type Section = { title: string; items: Item[] }
 
   let text = $state('')
@@ -43,6 +51,19 @@
     actions: 'Run an action',
     add: 'Quick-add a Task',
     filter: 'Filter Tasks',
+  }
+  const modeBadge: Record<string, string> = {
+    search: 'Search',
+    actions: 'Actions',
+    add: 'Quick add',
+    filter: 'Filter',
+  }
+  const KIND_ICON: Record<string, IconC> = {
+    task: SquareCheck,
+    project: FolderIcon,
+    area: FolderIcon,
+    goal: TargetIcon,
+    page: FileText,
   }
 
   $effect(() => {
@@ -73,7 +94,13 @@
       h.kind === 'view' ? `#/view/${h.id}` : h.kind === 'routine' ? '#/routines' : (await linkTarget(h.id))?.href
     if (href) location.hash = href
   }
-  const hitItem = (h: Hit): Item => ({ key: h.id, label: h.title || 'Untitled', hint: h.kind, run: () => openHit(h) })
+  const hitItem = (h: Hit): Item => ({
+    key: h.id,
+    label: h.title || 'Untitled',
+    hint: h.kind,
+    icon: KIND_ICON[h.kind],
+    run: () => openHit(h),
+  })
 
   async function refresh(t: string) {
     const mine = ++stamp
@@ -85,7 +112,12 @@
         open = false
         await a.run()
       }
-      out = [{ title: 'Actions', items: list.map((a) => ({ key: a.id, label: a.name, hint: a.group, run: run(a) })) }]
+      out = [
+        {
+          title: 'Actions',
+          items: list.map((a) => ({ key: a.id, label: a.name, hint: a.group, icon: ZapIcon, run: run(a) })),
+        },
+      ]
     } else if (t.startsWith('+')) {
       const [tr, all, gs, ps] = await Promise.all([tree(), labels(), listGoals(), listPages()])
       const known = {
@@ -116,6 +148,7 @@
                 ]
                   .filter(Boolean)
                   .join(' · '),
+                icon: PlusIcon,
                 run: async () => {
                   open = false
                   await quickAdd(parsed, parentId)
@@ -187,29 +220,43 @@
 <Dialog.Root bind:open>
   <Dialog.Content
     showCloseButton={false}
-    class="top-[12%] min-w-0 w-[min(640px,calc(100%-2rem))] -translate-y-0 gap-0 p-0"
+    class="pal-panel top-[16%] max-w-none min-w-0 w-[min(680px,calc(100%-2rem))] -translate-y-0 gap-0 overflow-hidden rounded-2xl border border-line-strong p-0 shadow-2 max-sm:top-3 max-sm:w-[calc(100%-1.5rem)]"
   >
     <Dialog.Title class="sr-only">Search and commands</Dialog.Title>
-    <input
-      bind:this={inputEl}
-      bind:value={text}
-      {onkeydown}
-      role="combobox"
-      aria-expanded={flat.length > 0}
-      aria-controls="pal-list"
-      aria-activedescendant={flat.length ? `pal-${active}` : undefined}
-      aria-label="Search and commands"
-      autocomplete="off"
-      placeholder="Search, or type > actions, + add, ? filter"
-      class="h-12 w-full border-b border-line bg-transparent px-4 text-[0.9375rem] outline-none placeholder:text-muted"
-    />
+
+    <div class="flex h-12 items-center gap-3 border-b border-line px-4">
+      <SearchIcon class="size-[18px] shrink-0 text-icon" aria-hidden="true" />
+      <input
+        bind:this={inputEl}
+        bind:value={text}
+        {onkeydown}
+        role="combobox"
+        aria-expanded={flat.length > 0}
+        aria-controls="pal-list"
+        aria-activedescendant={flat.length ? `pal-${active}` : undefined}
+        aria-label="Search and commands"
+        autocomplete="off"
+        placeholder="Search, or type > actions, + add, ? filter"
+        class="h-full min-w-0 flex-1 border-0 bg-transparent text-[0.9375rem] text-text outline-none placeholder:text-muted"
+      />
+      <span
+        class="shrink-0 rounded-md bg-sunk px-2 py-0.5 text-[0.6875rem] font-medium tracking-[0.02em] text-muted"
+        aria-hidden="true">{modeBadge[mode]}</span
+      >
+    </div>
+
     <div class="max-h-[50vh] overflow-y-auto p-2">
       {#if error}
         <p role="alert" class="px-2.5 py-2 text-[0.8125rem] text-danger-text">{error}</p>
       {/if}
       <ul id="pal-list" role="listbox" aria-label={hints[mode]} class="flex flex-col">
         {#each sections as sec (sec.title)}
-          <li role="presentation" class="px-2.5 pt-2 pb-1 text-[0.7812rem] font-semibold text-muted">{sec.title}</li>
+          <li
+            role="presentation"
+            class="px-2.5 pt-2.5 pb-1 text-[0.6875rem] font-semibold tracking-[0.08em] text-muted uppercase"
+          >
+            {sec.title}
+          </li>
           {#each sec.items as it (it.key)}
             {@const i = flat.indexOf(it)}
             <li
@@ -219,19 +266,45 @@
               onclick={() => it.run()}
               onkeydown={() => {}}
               onmousemove={() => (active = i)}
-              class="flex h-9 cursor-pointer items-center gap-2 rounded-[7px] px-2.5 aria-selected:bg-press"
+              class="relative flex h-9 cursor-pointer items-center gap-2.5 rounded-[7px] px-2.5 max-sm:h-11 aria-selected:bg-hover"
             >
-              <span class="task-title-1 flex-1" title={it.label}>{it.label}</span>
-              <span class="text-[0.7812rem] text-muted">{it.hint}</span>
+              {#if i === active}
+                <span class="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" aria-hidden="true"></span>
+              {/if}
+              {#if it.icon}
+                <it.icon class="size-[15px] shrink-0 text-icon" aria-hidden="true" />
+              {/if}
+              <span class="task-title-1 min-w-0 flex-1 truncate" title={it.label}>{it.label}</span>
+              <span class="shrink-0 pl-2 text-[0.75rem] text-muted">{it.hint}</span>
             </li>
           {/each}
         {/each}
       </ul>
       {#if !sections.length && !error}
-        <p class="px-2.5 py-3 text-[0.8125rem] text-muted">
-          {text.trim() || mode !== 'search' ? 'Nothing found.' : 'Nothing opened yet.'}
-        </p>
+        <div class="flex flex-col items-center gap-3 px-4 py-8 text-center">
+          <p class="text-[0.8125rem] text-muted">
+            {text.trim() || mode !== 'search' ? 'Nothing found.' : 'Nothing opened yet. Start typing to find anything.'}
+          </p>
+          <p class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[0.75rem] text-muted">
+            <span><kbd class="pal-kbd">&gt;</kbd> actions</span>
+            <span><kbd class="pal-kbd">+</kbd> add</span>
+            <span><kbd class="pal-kbd">?</kbd> filter</span>
+          </p>
+        </div>
       {/if}
+    </div>
+
+    <div
+      class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line bg-bg/60 px-4 py-2 text-[0.6875rem] text-muted"
+    >
+      <span class="flex items-center gap-1.5"><kbd class="pal-kbd">↑↓</kbd> move</span>
+      <span class="flex items-center gap-1.5"><kbd class="pal-kbd">↵</kbd> open</span>
+      <span class="flex items-center gap-1.5"><kbd class="pal-kbd">esc</kbd> close</span>
+      <span class="flex items-center gap-3 max-sm:ml-0 sm:ml-auto">
+        <span class="flex items-center gap-1.5"><kbd class="pal-kbd">&gt;</kbd> actions</span>
+        <span class="flex items-center gap-1.5"><kbd class="pal-kbd">+</kbd> add</span>
+        <span class="flex items-center gap-1.5"><kbd class="pal-kbd">?</kbd> filter</span>
+      </span>
     </div>
   </Dialog.Content>
 </Dialog.Root>
@@ -243,3 +316,43 @@
     setFocusedTask(null)
   }}
 />
+
+<style>
+  :global(.pal-kbd) {
+    display: inline-flex;
+    min-width: 1.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.3125rem;
+    border: 1px solid var(--line);
+    background: var(--sunk);
+    padding: 0 0.3125rem;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    line-height: 1.25rem;
+    color: var(--muted);
+  }
+  /* Open motion: fade and scale in over 120ms; the app's [data-motion] rules and reduced motion disable it. */
+  :global(.pal-panel[data-state='open']) {
+    animation: pal-in 120ms ease-out both;
+  }
+  :global(body:has(.pal-panel) [data-slot='dialog-overlay']) {
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  @keyframes pal-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.pal-panel[data-state='open']) {
+      animation: none;
+    }
+  }
+</style>
