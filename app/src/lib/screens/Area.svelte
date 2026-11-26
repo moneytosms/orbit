@@ -15,6 +15,10 @@
   import PageRoadmaps from '$lib/widgets/PageRoadmaps.svelte'
   import PageStats from '$lib/widgets/PageStats.svelte'
   import PageTasks from '$lib/widgets/PageTasks.svelte'
+  import LabelChips from '$lib/widgets/LabelChips.svelte'
+  import QuickAddTile from '$lib/widgets/QuickAddTile.svelte'
+  import TaskFeed from '$lib/widgets/TaskFeed.svelte'
+  import WeekProgress from '$lib/widgets/WeekProgress.svelte'
   import RoutineTicks from '$lib/widgets/RoutineTicks.svelte'
 
   /** The page of an Area or a Project: header, view tabs, then the Overview widgets or the task list. */
@@ -201,6 +205,14 @@
               <PageProjects {projects} {version} onmeta={(v) => setSummary(w.id, v)} />
             {:else if w.kind === 'roadmaps'}
               <PageRoadmaps parentId={id} {version} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'today' || w.kind === 'overdue' || w.kind === 'done'}
+              <TaskFeed mode={w.kind} parentId={id} {version} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'progress'}
+              <WeekProgress parentId={id} {version} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'quickadd'}
+              <QuickAddTile parentId={id} {onchange} onmeta={(v) => setSummary(w.id, v)} />
+            {:else if w.kind === 'labels'}
+              <LabelChips {version} onmeta={(v) => setSummary(w.id, v)} />
             {/if}
           </div>
         {/if}

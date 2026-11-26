@@ -14,6 +14,10 @@
   import Streaks from '$lib/widgets/Streaks.svelte'
   import CalendarEvents from '$lib/widgets/CalendarEvents.svelte'
   import Upcoming from '$lib/widgets/Upcoming.svelte'
+  import LabelChips from '$lib/widgets/LabelChips.svelte'
+  import QuickAddTile from '$lib/widgets/QuickAddTile.svelte'
+  import TaskFeed from '$lib/widgets/TaskFeed.svelte'
+  import WeekProgress from '$lib/widgets/WeekProgress.svelte'
   import ViewList from '$lib/widgets/ViewList.svelte'
 
   let { version = 0, onchange }: { version?: number; onchange?: () => void } = $props()
@@ -165,6 +169,14 @@
         <GoalProgress {version} onmeta={(value) => setSummary(w.id, value)} />
       {:else if w.kind === 'streaks'}
         <Streaks {version} onmeta={(value) => setSummary(w.id, value)} />
+      {:else if w.kind === 'today' || w.kind === 'overdue' || w.kind === 'done'}
+        <TaskFeed mode={w.kind} {version} {onchange} onmeta={(value) => setSummary(w.id, value)} />
+      {:else if w.kind === 'progress'}
+        <WeekProgress {version} onmeta={(value) => setSummary(w.id, value)} />
+      {:else if w.kind === 'quickadd'}
+        <QuickAddTile {onchange} onmeta={(value) => setSummary(w.id, value)} />
+      {:else if w.kind === 'labels'}
+        <LabelChips {version} onmeta={(value) => setSummary(w.id, value)} />
       {:else if w.kind === 'view' && w.view_id}
         <ViewList viewId={w.view_id} {version} onmeta={(value) => setSummary(w.id, value)} />
       {/if}

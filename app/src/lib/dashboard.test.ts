@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest'
+import { META } from './widgetMeta'
 import {
   colsFor,
+  KINDS,
+  PAGE_KINDS,
   defaultLayout,
   defaultPageLayout,
   expand,
@@ -179,4 +182,38 @@ test('page layouts: each kind has a default without overlaps, only with tiles it
   }
   expect(defaultPageLayout('area').map((x) => x.kind)).toContain('goals')
   expect(defaultPageLayout('project').map((x) => x.kind)).not.toContain('goals')
+})
+
+test('every tile kind has gallery metadata', () => {
+  for (const k of [...KINDS, ...PAGE_KINDS]) {
+    expect(META[k.kind], k.kind).toBeDefined()
+    expect(META[k.kind].desc, k.kind).not.toBe('')
+  }
+})
+
+test('the new kinds are offered but never in the default layouts', () => {
+  const added = ['today', 'overdue', 'done', 'progress', 'quickadd', 'labels']
+  for (const kind of added) {
+    expect(KINDS.some((k) => k.kind === kind)).toBe(true)
+    expect(pageKinds('area').some((k) => k.kind === kind)).toBe(true)
+    expect(pageKinds('project').some((k) => k.kind === kind)).toBe(true)
+    for (const l of [defaultLayout(), defaultPageLayout('area'), defaultPageLayout('project')])
+      expect(l.some((w) => w.kind === kind)).toBe(false)
+  }
+})
+
+test('default layouts are unchanged', () => {
+  const ids = (l: Widget[]) => l.map((w) => w.id)
+  expect(ids(defaultLayout())).toEqual(['glance', 'next', 'routines', 'upcoming', 'goals', 'streaks', 'calendar'])
+  expect(ids(defaultPageLayout('area'))).toEqual([
+    'stats',
+    'tasks',
+    'next',
+    'goals',
+    'routines',
+    'projects',
+    'pages',
+    'roadmaps',
+  ])
+  expect(ids(defaultPageLayout('project'))).toEqual(['stats', 'tasks', 'next', 'routines', 'pages', 'roadmaps'])
 })
