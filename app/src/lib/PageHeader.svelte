@@ -110,6 +110,7 @@
         <DropdownMenu.Trigger
           bind:ref={trigger}
           type="button"
+          data-tour="page-menu"
           aria-label="{title} actions"
           class="grid size-8 shrink-0 place-items-center rounded-md text-muted hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
         >

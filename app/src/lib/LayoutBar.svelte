@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui/select'
   import Plus from '@lucide/svelte/icons/plus'
   import { Button } from '$lib/components/ui/button'
   import { colsFor } from '$lib/dashboard'
@@ -62,21 +63,18 @@
           {#if views && onaddview}
             <label class="mt-1 grid gap-1 px-2 text-sm text-muted">
               View…
-              <select
-                class="h-8 rounded-md border border-line bg-surface px-2 text-text"
+              <Select
                 aria-label="Add a View widget"
-                onchange={(e) => {
-                  const id = e.currentTarget.value
+                value=""
+                segmented={false}
+                placeholder="Pick a View"
+                onchange={(id) => {
                   if (!id) return
                   adding = false
                   onaddview(id)
                 }}
-              >
-                <option value="">Pick a View</option>
-                {#each views as v (v.id)}
-                  <option value={v.id}>{v.name}</option>
-                {/each}
-              </select>
+                options={[{ value: '', label: 'Pick a View' }, ...views.map((v) => ({ value: v.id, label: v.name }))]}
+              />
             </label>
           {/if}
         </div>

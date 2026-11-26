@@ -652,16 +652,6 @@
             {onchange}
             onnewtask={(text) => open(text, true)}
           />
-          <EntityMenu
-            id={screen.id}
-            name={title}
-            kind="project"
-            fallbackHref={areas.find((a) => a.projects.some((p) => p.id === screen.id))?.area.id
-              ? `#/area/${areas.find((a) => a.projects.some((p) => p.id === screen.id))?.area.id}`
-              : '#/home'}
-            archiveable
-            {onchange}
-          />
         {/if}
       </div>
       <Button variant="ghost" class="hidden desk:inline-flex" data-tour="add" onclick={newTask}>
