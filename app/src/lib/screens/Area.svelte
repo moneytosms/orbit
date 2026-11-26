@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
   import Backlinks from '$lib/Backlinks.svelte'
   import Banner from '$lib/Banner.svelte'
   import EntityCreateMenu from '$lib/EntityCreateMenu.svelte'
@@ -85,7 +85,8 @@
   let version = $state(0)
   $effect(() => {
     void areas
-    version++
+    // `version++` reads as well as writes, so it must not count as a dependency of this effect.
+    untrack(() => version++)
   })
 
   let layout = $state<Widget[]>(defaultPageLayout('area'))

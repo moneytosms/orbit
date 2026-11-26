@@ -78,7 +78,7 @@
     ),
   )
   const contentClass =
-    'z-[60] max-h-72 min-w-[max(var(--bits-select-anchor-width,0px),var(--bits-combobox-anchor-width,0px),9rem)] overflow-y-auto rounded-xl border border-line-strong bg-surface p-1 text-sm text-text shadow-2 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0'
+    'z-[60] max-h-72 min-w-[max(var(--bits-select-anchor-width,0px),var(--bits-combobox-anchor-width,0px),9rem)] overflow-y-auto rounded-xl border border-line-strong bg-surface p-1 text-sm text-text shadow-2 outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0'
   const itemClass =
     'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 outline-none data-highlighted:bg-hover data-disabled:cursor-not-allowed data-disabled:opacity-40 data-selected:font-medium'
 </script>
