@@ -28,6 +28,8 @@
   import { SNOOZE_LABELS, SNOOZE_PRESETS, snoozeTaskPreset } from '$lib/notify'
   import { findRow, foldAway } from '$lib/foldAway'
   import { pushRestore } from '$lib/undo'
+  import { whenLabel } from '$lib/captureEdit'
+  import BellRing from '@lucide/svelte/icons/bell-ring'
   let { taskId, onclose }: { taskId: string | null; onclose: () => void } = $props()
 
   let open = $state(false)
@@ -42,6 +44,8 @@
   let remKind = $state<'due' | 'deadline' | 'at'>('due')
   let remMinutes = $state(30)
   let remAt = $state('')
+  // Where the last snooze from this drawer landed (local `YYYY-MM-DDTHH:MM`), shown until another Task opens.
+  let snoozedTo = $state<string | null>(null)
   const priorities = [1, 2, 3, 4] as const
 
   // A side drawer on desktop, a bottom sheet on phones; the viewport is read when a Task opens.
@@ -53,6 +57,7 @@
     side = typeof matchMedia === 'function' && matchMedia('(min-width: 768px)').matches ? 'right' : 'bottom'
     open = true
     task = undefined
+    snoozedTo = null
     load(taskId)
   })
 
@@ -217,26 +222,47 @@
           </div>
         {/if}
 
-        <div role="group" aria-label="Postpone" class="flex flex-wrap items-center gap-1.5">
-          <span class="text-xs font-medium text-muted">Postpone</span>
-          {#each POSTPONE as [choice, text] (choice)}
-            <Button size="sm" variant="ghost" onclick={() => postpone(choice)}>{text}</Button>
-          {/each}
+        <div role="group" aria-labelledby="task-postpone-heading" class="grid gap-1.5">
+          <div class="flex flex-wrap items-baseline gap-x-2">
+            <span id="task-postpone-heading" class="text-xs font-medium text-text">Postpone</span>
+            <span class="text-xs text-muted">Move the due date</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            {#each POSTPONE as [choice, text] (choice)}
+              <Button size="sm" variant="ghost" onclick={() => postpone(choice)}>{text}</Button>
+            {/each}
+          </div>
         </div>
 
-        <div role="group" aria-label="Snooze reminder" class="flex flex-wrap items-center gap-1.5">
-          <span class="text-xs font-medium text-muted">Snooze</span>
-          {#each SNOOZE_PRESETS as preset (preset)}
-            <Button
-              size="sm"
-              variant="ghost"
-              onclick={async () => {
-                if (!task) return
-                await snoozeTaskPreset(task.id, preset)
-                ui.notify(`Reminder snoozed until ${SNOOZE_LABELS[preset]}`)
-              }}>{SNOOZE_LABELS[preset]}</Button
-            >
-          {/each}
+        <div
+          role="group"
+          aria-labelledby="task-snooze-heading"
+          class="grid gap-1.5 rounded-lg border border-line bg-sunk p-3"
+        >
+          <div class="flex items-center gap-1.5">
+            <BellRing size={14} aria-hidden="true" class="text-accent-text" />
+            <span id="task-snooze-heading" class="text-xs font-medium text-text">Snooze reminder</span>
+          </div>
+          <p class="text-xs text-muted">Hide this task's reminder until…</p>
+          <div class="flex flex-wrap gap-1.5">
+            {#each SNOOZE_PRESETS as preset (preset)}
+              <Button
+                size="sm"
+                variant="default"
+                onclick={async () => {
+                  if (!task) return
+                  const at = await snoozeTaskPreset(task.id, preset)
+                  snoozedTo = at
+                  ui.notify(`Reminder snoozed until ${SNOOZE_LABELS[preset]}`)
+                }}>{SNOOZE_LABELS[preset]}</Button
+              >
+            {/each}
+          </div>
+          {#if snoozedTo}
+            <p role="status" class="text-sm font-medium text-accent-text">
+              Snoozed until {whenLabel(snoozedTo)}
+            </p>
+          {/if}
         </div>
 
         <div class="grid grid-cols-2 gap-3">

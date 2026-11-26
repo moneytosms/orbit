@@ -106,10 +106,12 @@ export function snoozeUntil(preset: SnoozePreset, now: string): string {
   }
 }
 
-/** Snoozes a Task by a preset, measured from the device's local now. */
-export async function snoozeTaskPreset(taskId: string, preset: SnoozePreset) {
-  await snoozeTask(taskId, snoozeUntil(preset, await localMinute()))
+/** Snoozes a Task by a preset, measured from the device's local now. Returns the local `YYYY-MM-DDTHH:MM` it lands on. */
+export async function snoozeTaskPreset(taskId: string, preset: SnoozePreset): Promise<string> {
+  const at = snoozeUntil(preset, await localMinute())
+  await snoozeTask(taskId, at)
   void refreshNotifier()
+  return at
 }
 
 /** Runs a notification action (also used for clicks on the notification body). */
