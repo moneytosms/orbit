@@ -26,6 +26,8 @@
     <string name="list_config_title">"Choose a list"</string>
     <string name="routines_config_title">"Routines: choose an area"</string>
     <string name="goal_config_title">"Goals: choose what to show"</string>
+    <string name="share_added">"Added to Orbit"</string>
+    <string name="share_failed">"Could not add to Orbit"</string>
     <string name="list_empty">"Nothing to show"</string>
     <string name="widget_complete">"Complete task"</string>
     <string name="widget_add">"Add task"</string>

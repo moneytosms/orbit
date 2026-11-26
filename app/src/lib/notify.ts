@@ -61,6 +61,15 @@ const inMinutes = async (m: number) => {
 /** Snooze presets offered for a Task, in menu order. */
 export const SNOOZE_PRESETS = ['10m', '30m', '1h', '3h', 'tomorrow9', 'monday9'] as const
 export type SnoozePreset = (typeof SNOOZE_PRESETS)[number]
+/** Menu wording for each preset. */
+export const SNOOZE_LABELS: Record<SnoozePreset, string> = {
+  '10m': '10 min',
+  '30m': '30 min',
+  '1h': '1 hour',
+  '3h': '3 hours',
+  tomorrow9: 'Tomorrow 9:00',
+  monday9: 'Monday 9:00',
+}
 
 /**
  * When a snooze preset lands, as local `YYYY-MM-DDTHH:MM`, given `now` in the same form.

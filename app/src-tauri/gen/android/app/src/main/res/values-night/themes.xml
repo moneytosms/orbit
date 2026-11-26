@@ -10,4 +10,10 @@
         <item name="android:textColorPrimary">@color/widget_text</item>
         <item name="android:textColor">@color/widget_text</item>
     </style>
+    <style name="Theme.Orbit.Alert" parent="Theme.Material3.DayNight.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/picker_bg</item>
+        <item name="android:textColorPrimary">@color/widget_text</item>
+        <item name="android:textColorSecondary">@color/widget_muted</item>
+        <item name="android:colorAccent">@color/widget_accent</item>
+    </style>
 </resources>

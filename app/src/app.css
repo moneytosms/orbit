@@ -367,3 +367,58 @@
   opacity: 0.55;
   text-decoration: line-through;
 }
+
+/* Task completion (completionFx.ts): a short shake and a few drifting specks. Motion settings above switch both off. */
+@keyframes task-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  55% {
+    transform: translateX(2.5px);
+  }
+  80% {
+    transform: translateX(-1px);
+  }
+}
+.task-shake {
+  animation: task-shake 260ms ease-in-out;
+}
+.stardust {
+  position: fixed;
+  z-index: 60;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.stardust i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: stardust var(--d) ease-out forwards;
+}
+.stardust i:nth-child(3n) {
+  background: var(--warn);
+}
+.stardust i:nth-child(3n + 1) {
+  background: var(--accent-line);
+}
+@keyframes stardust {
+  0% {
+    opacity: 0.9;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.4);
+  }
+}

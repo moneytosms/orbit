@@ -42,6 +42,7 @@
   } from './lib/sync'
   import type { CompletionUndo } from './lib/sync'
   import { onRestorable } from './lib/undo'
+  import { completionFx } from './lib/completionFx'
   import type { View as ViewRow } from './lib/sync'
   import { applyRemote, getAccent, getTheme, onAppearanceChange } from './lib/theme'
   import { refreshNotifier, startNotifier } from './lib/notify'
@@ -87,13 +88,7 @@
       if (order > 0) return
     }
     latestCompletion = undo.completion_hlc
-    if (matchMedia?.('(pointer: coarse)').matches && 'vibrate' in navigator) {
-      try {
-        navigator.vibrate(8)
-      } catch {
-        /* unsupported by this browser */
-      }
-    }
+    completionFx(undo.id)
     showToast({ text: 'Task completed', undo, sparkle: true })
   })
   // Other changes that can be taken back (reschedules, postpones) reuse this toast.

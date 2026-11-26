@@ -26,6 +26,7 @@ import { getTheme, setTheme } from './theme'
 import { clearCursor, moveCursor, openCursor } from './keys'
 import { POSTPONE } from './overdue'
 import { postponeById } from './postpone'
+import { SNOOZE_LABELS, SNOOZE_PRESETS, snoozeTaskPreset } from './notify'
 
 /** The item an action acts on: the open Task drawer, else the current screen's Area, Project, Page or View. */
 export type Target = { kind: 'task' | 'area' | 'project' | 'page' | 'view'; id: string }
@@ -168,6 +169,20 @@ export async function actions(): Promise<Action[]> {
       choice === 'none' ? 'Postpone: No date' : `Postpone: ${text}`,
       'Task',
       () => (here ? postponeById(here.id, choice) : undefined),
+      'task',
+    )
+  }
+  // Snooze the reminder (the drawer's buttons too): it fires again later, the due date stays.
+  for (const preset of SNOOZE_PRESETS) {
+    add(
+      `snooze.${preset}`,
+      `Snooze reminder: ${SNOOZE_LABELS[preset]}`,
+      'Task',
+      async () => {
+        if (!here) return
+        await snoozeTaskPreset(here.id, preset)
+        ui.notify(`Reminder snoozed until ${SNOOZE_LABELS[preset]}`)
+      },
       'task',
     )
   }

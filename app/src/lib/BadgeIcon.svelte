@@ -34,13 +34,21 @@
       rx="29"
       ry="10"
       fill="none"
-      stroke="#D9D4CC"
+      style="stroke: var(--line-strong, #D9D4CC)"
       stroke-width="3"
       opacity="0.8"
       transform="rotate(-18 32 32)"
     />
     <circle cx="32" cy="32" r="19" fill={c} />
-    <circle cx="32" cy="32" r="19" fill="none" stroke="#D9D4CC" stroke-width="1.5" opacity="0.5" />
+    <circle
+      cx="32"
+      cy="32"
+      r="19"
+      fill="none"
+      style="stroke: var(--line-strong, #D9D4CC)"
+      stroke-width="1.5"
+      opacity="0.5"
+    />
   {:else}
     <path d="M12 32L21 13l19-3 12 13-2 20-14 11-17-4-7-9z" fill={c} />
     <circle cx="25" cy="25" r="3.2" fill="black" opacity="0.18" />

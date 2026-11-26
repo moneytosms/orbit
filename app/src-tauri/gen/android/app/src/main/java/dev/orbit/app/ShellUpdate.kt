@@ -31,7 +31,7 @@ object ShellUpdate {
 
             activity.runOnUiThread {
                 val link = "$RELEASES/v$minimum/Orbit-$minimum-android.apk"
-                AlertDialog.Builder(activity)
+                AlertDialog.Builder(activity, R.style.Theme_Orbit_Alert)
                     .setTitle("Update the app")
                     .setMessage("This server requires Orbit $minimum. This app is $installed. Download the Android APK to continue.")
                     .setPositiveButton("Download APK") { _, _ ->

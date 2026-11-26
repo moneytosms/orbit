@@ -125,7 +125,7 @@
     />
   {/if}
   <form onsubmit={addRoadmap} class="mt-3 flex flex-wrap gap-2">
-    <Input bind:value={newName} placeholder="New roadmap" aria-label="New roadmap" class="min-w-0 flex-1" />
+    <Input bind:value={newName} placeholder="Add a roadmap" aria-label="New roadmap" class="min-w-0 flex-1" />
     <select
       bind:value={parentId}
       aria-label="Roadmap owner"
@@ -189,7 +189,7 @@
 
   {#if mode !== 'canvas'}
     <form onsubmit={addPhase} class="mt-4 flex gap-2">
-      <Input bind:value={newPhase} placeholder="New phase" aria-label="New phase" class="min-w-0 flex-1" />
+      <Input bind:value={newPhase} placeholder="Add a phase" aria-label="New phase" class="min-w-0 flex-1" />
       <Button type="submit" variant="primary">Add phase</Button>
     </form>
   {/if}

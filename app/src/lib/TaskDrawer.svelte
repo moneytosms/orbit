@@ -2,7 +2,7 @@
   import * as Sheet from '$lib/components/ui/sheet'
   import Backlinks from '$lib/Backlinks.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { copyTaskLink } from '$lib/actions'
+  import { copyTaskLink, ui } from '$lib/actions'
   import {
     addReminder,
     createLabel,
@@ -23,6 +23,7 @@
 
   import { POSTPONE, type Postpone } from '$lib/overdue'
   import { postponeTask } from '$lib/postpone'
+  import { SNOOZE_LABELS, SNOOZE_PRESETS, snoozeTaskPreset } from '$lib/notify'
   let { taskId, onclose }: { taskId: string | null; onclose: () => void } = $props()
 
   let open = $state(false)
@@ -212,6 +213,21 @@
           {/each}
         </div>
 
+        <div role="group" aria-label="Snooze reminder" class="flex flex-wrap items-center gap-1.5">
+          <span class="text-xs font-medium text-muted">Snooze</span>
+          {#each SNOOZE_PRESETS as preset (preset)}
+            <Button
+              size="sm"
+              variant="ghost"
+              onclick={async () => {
+                if (!task) return
+                await snoozeTaskPreset(task.id, preset)
+                ui.notify(`Reminder snoozed until ${SNOOZE_LABELS[preset]}`)
+              }}>{SNOOZE_LABELS[preset]}</Button
+            >
+          {/each}
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div class="grid gap-1.5">
             <label for="task-due-date" class="text-xs font-medium text-muted">Due date</label>
@@ -359,7 +375,7 @@
             <input
               id="task-new-label"
               bind:value={newLabel}
-              placeholder="New label, then Enter"
+              placeholder="Add a label"
               aria-label="New label"
               class="h-[2.125rem] w-full rounded-md border border-line bg-surface px-2.5 text-sm text-text shadow-1 outline-none placeholder:text-muted focus-visible:border-accent-line"
             />

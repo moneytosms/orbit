@@ -16,7 +16,7 @@ object BatteryGuidance {
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(SEEN, false)) return
         prefs.edit().putBoolean(SEEN, true).apply()
-        AlertDialog.Builder(activity)
+        AlertDialog.Builder(activity, R.style.Theme_Orbit_Alert)
             .setTitle(R.string.battery_title)
             .setMessage(R.string.battery_message)
             .setPositiveButton(R.string.battery_open) { _, _ ->

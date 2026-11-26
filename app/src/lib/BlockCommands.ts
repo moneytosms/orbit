@@ -45,7 +45,13 @@ export const BlockCommands = Extension.create<BlockOptions>({
 })
 
 type EditorRef = { chain: () => any; state: { selection: { from: number; to: number; $from: { before: () => number; after: () => number; depth: number; node: (depth: number) => { type: { name: string } } }; }; doc: { textBetween: (a: number, b: number) => string } } }
-type Context = { owner: string | null; attach: (files: File[]) => Promise<void>; pageId: string }
+type Context = {
+  owner: string | null
+  attach: (files: File[]) => Promise<void>
+  pageId: string
+  /** Asks for a line of text in the app's own dialog; null when cancelled. */
+  ask: (question: string) => Promise<string | null>
+}
 
 export function runBlockCommand(editor: EditorRef, id: string, context: Context) {
   const chain = editor.chain().focus()
@@ -80,10 +86,13 @@ export function runBlockCommand(editor: EditorRef, id: string, context: Context)
     input.onchange = () => { if (input.files?.length) void context.attach([...input.files]) }
     input.click()
   } else if (id === 'page' && context.owner) {
-    const title = prompt('Page title')?.trim()
-    if (title) void createPage(context.owner, title).then((page) => editor.chain().focus().insertContent([
+    const owner = context.owner
+    void context.ask('Page title').then((answer) => {
+      const title = answer?.trim()
+      if (title) void createPage(owner, title).then((page) => editor.chain().focus().insertContent([
       { type: 'orbitLink', attrs: { id: page, label: title, mentionSuggestionChar: '[[' } },
       { type: 'text', text: ' ' },
     ]).run())
+    })
   }
 }

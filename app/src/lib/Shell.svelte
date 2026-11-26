@@ -445,7 +445,7 @@
               <Plus size={13} aria-hidden="true" />
               <input
                 bind:value={newProject[a.id]}
-                placeholder="Add project"
+                placeholder="Add a project"
                 aria-label="Add project in {a.area.name}"
                 class="h-7 w-full bg-transparent text-[0.8125rem] outline-none placeholder:text-muted"
               />

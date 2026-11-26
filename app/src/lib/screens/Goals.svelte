@@ -205,7 +205,7 @@
       <form class="mt-2" onsubmit={(e) => addMilestone(e, goal.id)}>
         <Input
           bind:value={newMilestone[goal.id]}
-          placeholder="New milestone, then Enter"
+          placeholder="Add a milestone"
           aria-label="New milestone for {goal.name}"
         />
       </form>

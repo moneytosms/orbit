@@ -123,7 +123,7 @@
     box-sizing: border-box;
     margin: 16px;
     padding: 12px 16px 8px;
-    border: 1px solid var(--line, #d7dce2);
+    border: 1px solid var(--line, #ebe7e0);
     border-radius: 16px;
     background: var(--surface, #fff);
     color: var(--text, #222);
@@ -135,7 +135,7 @@
     gap: 10px;
   }
   .capture-mark {
-    color: var(--accent, #4569c8);
+    color: var(--accent, #4f7f5b);
     font-size: 22px;
   }
   input {
@@ -153,7 +153,7 @@
     border: 0;
     border-radius: 8px;
     padding: 8px 14px;
-    background: var(--accent, #4569c8);
+    background: var(--accent, #4f7f5b);
     color: white;
     font: inherit;
     cursor: pointer;
@@ -174,23 +174,23 @@
     list-style: none;
   }
   .capture-chips li {
-    border: 1px solid var(--line, #d7dce2);
+    border: 1px solid var(--line, #ebe7e0);
     border-radius: 999px;
     padding: 2px 9px;
-    color: var(--muted, #68717d);
+    color: var(--muted, #6b665e);
     font-size: 12px;
   }
   .capture-chips li.unknown {
-    color: var(--warn, #a36517);
+    color: var(--warn, #9a5d08);
   }
   .capture-hint {
     margin: 8px 0 0 32px;
-    color: var(--muted, #68717d);
+    color: var(--muted, #6b665e);
     font-size: 12px;
   }
   .capture-message {
     margin: 6px 0 0 32px;
-    color: var(--warn, #a12a2a);
+    color: var(--warn, #bb3a2a);
     font-size: 12px;
   }
 </style>

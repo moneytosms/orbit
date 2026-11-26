@@ -157,7 +157,7 @@
         {/each}
       </ul>
       <form class="mt-3" onsubmit={addGoal}>
-        <Input bind:value={goalName} placeholder="New goal, then Enter" aria-label="New goal" />
+        <Input bind:value={goalName} placeholder="Add a goal" aria-label="New goal" />
       </form>
     </section>
 

@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import * as Dialog from '$lib/components/ui/dialog'
   import TaskDrawer from '$lib/TaskDrawer.svelte'
-  import { actions, filterActions, setFocusedTask, type Action } from '$lib/actions'
+  import { actions, filterActions, setFocusedTask, ui, type Action } from '$lib/actions'
   import { groupHits, KIND_LABEL, search, searchReady, type Hit } from '$lib/search'
   import {
     goals as listGoals,
@@ -19,6 +19,7 @@
   } from '$lib/sync'
   import { parse_quick_add } from '../../wasm/orbit_wasm'
   import { knownJson, quickAddPrefs } from '$lib/captureKnown'
+  import { deadlineLabel, dueLabel, durationLabel } from '$lib/captureEdit'
 
   let { open = $bindable(false), parentId }: { open: boolean; parentId: string } = $props()
 
@@ -96,6 +97,7 @@
       const parsed: Parsed = JSON.parse(
         parse_quick_add(t.slice(1), localNow(), knownJson(known, await quickAddPrefs())),
       )
+      const extra = parsed as Parsed & { deadline?: string | null; duration_min?: number | null }
       const title = quickTitle(parsed).trim()
       if (title) {
         out = [
@@ -105,10 +107,28 @@
               {
                 key: 'add',
                 label: `Add “${title}”`,
-                hint: parsed.due ? `due ${parsed.due.date}` : 'Inbox',
+                hint: [
+                  parsed.place ?? 'Inbox',
+                  parsed.due ? dueLabel(parsed.due) : '',
+                  extra.deadline ? `by ${deadlineLabel(extra.deadline)}` : '',
+                  extra.duration_min ? durationLabel(extra.duration_min) : '',
+                  parsed.priority ? `P${parsed.priority}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
                 run: async () => {
                   open = false
                   await quickAdd(parsed, parentId)
+                },
+              },
+              {
+                // The same option bar as every other capture place, with this line already typed.
+                key: 'add-review',
+                label: 'Review in the capture window',
+                hint: 'Dates, priority, labels',
+                run: () => {
+                  open = false
+                  ui.capture(t.slice(1).trim())
                 },
               },
             ],

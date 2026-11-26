@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased (0.9.0)
+
+### Features
+
+- Snooze a task's reminder from the task drawer or the command palette (10 min, 30 min, 1 hour, 3 hours, tomorrow 9:00, Monday 9:00)
+- Completing a task gives a short shake, a few specks of stardust and a light tick on phones, with the existing Undo toast; all of it follows the motion setting
+- Android widgets: the + button opens the app's own capture window with the list's @Area or #label typed in; the list widget shows how many tasks are left
+
+### Fixes
+
+- Android widget and picker screens are readable in dark mode and use the app's palette; the native update and battery dialogs match
+- Android: the task-complete tick works (the app now declares the vibrate permission)
+- Sharing text to Orbit on Android confirms with a toast
+- Command palette quick add shows what it understood and can open the full capture window
+- Adding a page link in the editor uses an in-app dialog instead of the browser prompt
+- "Add a task" in the dashboard widgets opens capture; add-field wording is consistent across screens
+- Capture window and badge ring colours follow the theme tokens
+
 ## 0.8.0 - 2026-11-25
 
 ### Features

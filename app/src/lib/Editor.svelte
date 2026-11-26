@@ -15,6 +15,9 @@
   import { Section } from './Section'
   import { addFile, blobUrl } from './blobs'
   import { createPage, linkTarget, restoreItem, searchLinks } from './sync'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import { Button } from '$lib/components/ui/button'
+  import { Input } from '$lib/components/ui/input'
 
   let {
     value,
@@ -138,7 +141,8 @@
       }),
       BlockCommands.configure({
         render: popup,
-        command: (id) => runBlockCommand($editor, id, { owner: untrack(() => owner), attach, pageId: untrack(() => pageId) }),
+        command: (id) =>
+          runBlockCommand($editor, id, { owner: untrack(() => owner), attach, pageId: untrack(() => pageId), ask }),
       }),
       Section.configure({ pageId: untrack(() => pageId) }),
     ],
@@ -200,9 +204,50 @@
   onDestroy(() => {
     if (timer !== undefined) flush()
   })
+
+  // A one-line question in the app's own dialog (the browser's prompt() is unstyled and can be blocked in a WebView).
+  let asking = $state<{ question: string; answer: string; done: (value: string | null) => void } | null>(null)
+  function ask(question: string): Promise<string | null> {
+    return new Promise((done) => (asking = { question, answer: '', done }))
+  }
+  function settle(value: string | null) {
+    const a = asking
+    asking = null
+    a?.done(value)
+  }
 </script>
 
-<div class="editor {chrome === 'page' ? 'page-editor min-h-[60vh]' : 'rounded-lg border border-line bg-surface px-3 py-2 focus-within:border-accent-line'}">
+<Dialog.Root
+  open={asking !== null}
+  onOpenChange={(o) => {
+    if (!o) settle(null)
+  }}
+>
+  <Dialog.Content class="w-[min(26rem,calc(100vw-2rem))]" showCloseButton={false}>
+    {#if asking}
+      <form
+        class="flex flex-col gap-3"
+        onsubmit={(e) => {
+          e.preventDefault()
+          settle(asking?.answer ?? null)
+        }}
+      >
+        <Dialog.Title class="text-base font-semibold">{asking.question}</Dialog.Title>
+        <Input bind:value={asking.answer} aria-label={asking.question} autofocus />
+        <div class="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onclick={() => settle(null)}>Cancel</Button>
+          <Button type="submit" disabled={!asking.answer.trim()}>Create</Button>
+        </div>
+      </form>
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>
+
+<div
+  class="editor {chrome === 'page'
+    ? 'page-editor min-h-[60vh]'
+    : 'rounded-lg border border-line bg-surface px-3 py-2 focus-within:border-accent-line'}"
+>
   <EditorContent editor={$editor} />
   {#if problem}<p role="alert" class="mt-1 text-sm text-red-600">{problem}</p>{/if}
 </div>
@@ -214,11 +259,24 @@
     font-size: 15px;
     line-height: var(--lh, 1.55);
   }
-  .editor.page-editor :global(.editor-body) { cursor: text; }
-  .editor.page-editor :global(.editor-body) { min-height: 60vh; }
-  .editor :global(.orbit-section) { position: relative; }
-  .editor :global(.orbit-section-toggle) { position: absolute; left: -1.5rem; top: .1rem; color: var(--color-muted); }
-  .editor :global(.orbit-section-content[hidden]) { display: none; }
+  .editor.page-editor :global(.editor-body) {
+    cursor: text;
+  }
+  .editor.page-editor :global(.editor-body) {
+    min-height: 60vh;
+  }
+  .editor :global(.orbit-section) {
+    position: relative;
+  }
+  .editor :global(.orbit-section-toggle) {
+    position: absolute;
+    left: -1.5rem;
+    top: 0.1rem;
+    color: var(--color-muted);
+  }
+  .editor :global(.orbit-section-content[hidden]) {
+    display: none;
+  }
   .editor :global(.editor-body > * + *) {
     margin-top: 0.5rem;
   }
@@ -238,10 +296,25 @@
     list-style: disc;
     padding-left: 1.4rem;
   }
-  .editor :global(ul[data-type='taskList']) { list-style: none; padding-left: 0; }
-  .editor :global(ul[data-type='taskList'] li) { display: flex; align-items: baseline; gap: .45rem; }
-  .editor :global(table) { width: 100%; border-collapse: collapse; }
-  .editor :global(th), .editor :global(td) { border: 1px solid var(--color-line); padding: .35rem .5rem; text-align: left; }
+  .editor :global(ul[data-type='taskList']) {
+    list-style: none;
+    padding-left: 0;
+  }
+  .editor :global(ul[data-type='taskList'] li) {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+  }
+  .editor :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .editor :global(th),
+  .editor :global(td) {
+    border: 1px solid var(--color-line);
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+  }
   .editor :global(ol) {
     list-style: decimal;
     padding-left: 1.4rem;
