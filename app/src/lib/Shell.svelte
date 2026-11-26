@@ -130,6 +130,8 @@
 
   let areaOrder: AreaItem[] = $derived(areas.map((t) => ({ id: t.area.id, ...t })))
   let newArea = $state('')
+  let newViewOpen = $state(false)
+  let newViewName = $state('')
   let addingArea = $state(false)
   let areaOpener: HTMLElement | null = null
   let areaSection: HTMLElement | null = null
@@ -205,8 +207,17 @@
     hiddenViews = allViewRows.filter((v) => v.hidden)
     activeGoals = await goals()
   }
-  async function newView() {
-    const id = await createView('New view', 'task')
+  // Asks for a name first, so a view never exists under a placeholder title.
+  function newView() {
+    newViewName = ''
+    newViewOpen = true
+  }
+  async function createNewView(e: SubmitEvent) {
+    e.preventDefault()
+    const name = newViewName.trim()
+    if (!name) return
+    newViewOpen = false
+    const id = await createView(name, 'task')
     await updateView(id, { pinned: true })
     await loadViews()
     drawer = false
@@ -351,7 +362,7 @@
     href="#/{r}"
     onclick={() => (drawer = false)}
     aria-current={screen.name === r || (r === 'roadmaps' && screen.name === 'roadmap') ? 'page' : undefined}
-    class="group flex h-8 items-center gap-[9px] rounded-[7px] px-2.5 hover:bg-hover aria-[current=page]:bg-press aria-[current=page]:font-semibold"
+    class="group flex h-8 items-center gap-[9px] rounded-[7px] px-2.5 hover:bg-hover pointer-coarse:h-11 aria-[current=page]:bg-press aria-[current=page]:font-semibold"
   >
     {#if r === 'profile'}
       <ProfileAvatar name={profile.display_name} avatar={profile.avatar} {device} size="size-5 text-[0.625rem]" />
@@ -401,7 +412,7 @@
         <li class="flex flex-col gap-0.5">
           <DropTarget parentId={a.id}>
             <div
-              class="group flex h-8 items-center rounded-[7px] hover:bg-hover"
+              class="group flex h-8 items-center rounded-[7px] hover:bg-hover pointer-coarse:h-11"
               class:bg-press={screen.name === 'area' && screen.id === a.id}
             >
               <a
@@ -431,7 +442,7 @@
             {#each a.projects.slice(0, 4) as p (p.id)}
               <DropTarget parentId={p.id}>
                 <div
-                  class="group flex h-8 items-center rounded-[7px] hover:bg-hover"
+                  class="group flex h-8 items-center rounded-[7px] hover:bg-hover pointer-coarse:h-11"
                   class:bg-press={screen.name === 'project' && screen.id === p.id}
                 >
                   <a
@@ -493,7 +504,7 @@
           <a
             href={f.href}
             onclick={() => (drawer = false)}
-            class="flex h-8 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover"
+            class="flex h-8 items-center rounded-[7px] px-2.5 text-[0.8438rem] hover:bg-hover pointer-coarse:h-11"
           >
             <span class="min-w-0 flex-1 truncate">{f.name}</span>
           </a>
@@ -532,7 +543,7 @@
         {#each viewOrder as v (v.id)}
           <!-- One highlight, on the row: the drag list outlines its items on focus, and the link used to paint a second pill inside. -->
           <li
-            class="group flex h-8 items-center rounded-[7px] outline-none hover:bg-hover"
+            class="group flex h-8 items-center rounded-[7px] outline-none hover:bg-hover pointer-coarse:h-11"
             class:bg-press={screen.name === 'view' && screen.id === v.id}
           >
             <a
@@ -726,6 +737,28 @@
     </Button>
   </div>
 {/snippet}
+
+<Dialog.Root bind:open={newViewOpen}>
+  <Dialog.Content class="!min-w-0 w-[min(384px,calc(100vw-2rem))]">
+    <Dialog.Title>New view</Dialog.Title>
+    <form onsubmit={createNewView} class="mt-3 grid gap-3">
+      <label class="grid gap-1 text-sm">
+        Name
+        <input
+          bind:value={newViewName}
+          autofocus
+          aria-label="View name"
+          placeholder="Name this view"
+          class="h-9 rounded-md border border-line bg-surface px-2.5 outline-none focus-visible:border-accent-line"
+        />
+      </label>
+      <div class="flex justify-end gap-2">
+        <Button variant="ghost" onclick={() => (newViewOpen = false)}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={!newViewName.trim()}>Create</Button>
+      </div>
+    </form>
+  </Dialog.Content>
+</Dialog.Root>
 
 <Palette bind:open={palette} {parentId} />
 <Shortcuts bind:open={help} />

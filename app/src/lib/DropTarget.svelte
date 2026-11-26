@@ -23,7 +23,7 @@
   <div
     class="pointer-events-none absolute inset-0"
     aria-hidden="true"
-    use:dndzone={{ items, type: 'task', dragDisabled: true, flipDurationMs: 0, dropTargetStyle: {} }}
+    use:dndzone={{ items, type: 'task', dragDisabled: true, flipDurationMs: 0, dropTargetStyle: {}, zoneTabIndex: -1 }}
     onconsider={consider}
     onfinalize={finalize}
   >
